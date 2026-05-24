@@ -548,6 +548,42 @@
 
     <section>
         <div class="head">
+            <h2>审计日志</h2>
+            <span class="status" id="auditPageMeta">-</span>
+        </div>
+        <div class="filters">
+            <input class="small" id="auditAction" placeholder="action（如 rule.create）">
+            <input class="small" id="auditOperator" placeholder="操作人">
+            <input class="small" id="auditTarget" placeholder="目标">
+            <label>从</label>
+            <input class="small" id="auditStart" type="datetime-local">
+            <label>到</label>
+            <input class="small" id="auditEnd" type="datetime-local">
+            <span class="grow"></span>
+            <button class="small" data-target="audit">查询</button>
+            <button class="small secondary" data-reset="audit">重置</button>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>时间</th>
+                    <th>action</th>
+                    <th>操作人</th>
+                    <th>operatorId</th>
+                    <th>目标</th>
+                    <th>IP</th>
+                    <th>detail</th>
+                </tr>
+                </thead>
+                <tbody id="auditRows"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <section>
+        <div class="head">
             <h2>接口原始返回</h2>
             <span class="status">/admin/dashboard</span>
         </div>
@@ -796,12 +832,43 @@
     }
     window.handleAlert = handleAlert;
 
+    function truncate(value, max) {
+        if (value === null || value === undefined) return "-";
+        const str = String(value);
+        return str.length > max ? str.slice(0, max) + "…" : str;
+    }
+
+    async function loadAudits() {
+        const startLocal = $("auditStart").value;
+        const endLocal = $("auditEnd").value;
+        const params = {
+            action: $("auditAction").value.trim(),
+            operatorName: $("auditOperator").value.trim(),
+            target: $("auditTarget").value.trim(),
+            startTime: startLocal ? `${startLocal}:00` : "",
+            endTime: endLocal ? `${endLocal}:00` : "",
+        };
+        const data = await requestJson("/admin/audits" + buildQuery(params));
+        renderPage(data, "auditPageMeta", "auditRows", 8, (item) => `
+            <tr>
+                <td>${text(item.id)}</td>
+                <td>${text(item.createTime)}</td>
+                <td>${text(item.action)}</td>
+                <td>${text(item.operatorName)}</td>
+                <td>${text(item.operatorId)}</td>
+                <td>${text(item.target)}</td>
+                <td>${text(item.ip)}</td>
+                <td title="${(item.detail || "").replace(/"/g, "&quot;")}">${truncate(item.detail, 60)}</td>
+            </tr>`);
+    }
+
     const loaders = {
         blacklist: loadBlacklist,
         session: loadSessions,
         traffic: loadTraffic,
         rule: loadRules,
         alert: loadAlerts,
+        audit: loadAudits,
     };
 
     const filterInputs = {
@@ -810,6 +877,7 @@
         traffic: ["trafficMac", "trafficSessionId", "trafficDstIp", "trafficStart", "trafficEnd"],
         rule: ["ruleType", "ruleEnabled", "ruleKeyword"],
         alert: ["alertLevel", "alertStatus", "alertMac", "alertStart", "alertEnd"],
+        audit: ["auditAction", "auditOperator", "auditTarget", "auditStart", "auditEnd"],
     };
 
     async function runLoader(name) {
@@ -839,6 +907,7 @@
                 loadTraffic(),
                 loadRules(),
                 loadAlerts(),
+                loadAudits(),
             ]);
             $("statusText").textContent = `最后刷新：${new Date().toLocaleString()}`;
         } catch (error) {
