@@ -17,7 +17,7 @@ spring:
         - id: device-service-route
           uri: lb://device-service
           predicates:
-            - Path=/devices/**,/blacklist/**
+            - Path=/devices/**,/blacklist/**,/sessions/**,/traffic/**
         - id: admin-service-route
           uri: lb://admin-service
           predicates:

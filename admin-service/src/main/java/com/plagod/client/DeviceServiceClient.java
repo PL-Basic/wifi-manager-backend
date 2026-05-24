@@ -29,6 +29,11 @@ public interface DeviceServiceClient {
     @PostMapping("/devices/{deviceCode}/kick")
     ApiResponse<Object> kickDevice(@PathVariable("deviceCode") String deviceCode, @RequestBody Map<String, Object> body);
 
+    @GetMapping("/blacklist")
+    ApiResponse<Object> pageBlacklist(@RequestParam("current") Long current,
+                                      @RequestParam("size") Long size,
+                                      @RequestParam(value = "keyword", required = false) String keyword);
+
     @PostMapping("/blacklist")
     ApiResponse<Void> addBlacklist(@RequestBody Map<String, Object> body);
 
@@ -37,4 +42,21 @@ public interface DeviceServiceClient {
 
     @GetMapping("/devices/stats")
     ApiResponse<DeviceStatsVO> getDeviceStats();
+
+    @GetMapping("/sessions")
+    ApiResponse<Object> pageSessions(@RequestParam("current") Long current,
+                                     @RequestParam("size") Long size,
+                                     @RequestParam(value = "mac", required = false) String mac,
+                                     @RequestParam(value = "nodeId", required = false) Long nodeId,
+                                     @RequestParam(value = "userId", required = false) Long userId,
+                                     @RequestParam(value = "status", required = false) Integer status);
+
+    @GetMapping("/traffic")
+    ApiResponse<Object> pageTraffic(@RequestParam("current") Long current,
+                                    @RequestParam("size") Long size,
+                                    @RequestParam(value = "mac", required = false) String mac,
+                                    @RequestParam(value = "sessionId", required = false) Long sessionId,
+                                    @RequestParam(value = "dstIp", required = false) String dstIp,
+                                    @RequestParam(value = "startTime", required = false) String startTime,
+                                    @RequestParam(value = "endTime", required = false) String endTime);
 }

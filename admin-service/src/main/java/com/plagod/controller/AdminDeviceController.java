@@ -27,7 +27,7 @@ public class AdminDeviceController {
     public ApiResponse<Object> pageDevices(@RequestParam(defaultValue = "1") Long current,
                                            @RequestParam(defaultValue = "10") Long size,
                                            @RequestParam(required = false) String keyword) {
-        return ApiResponse.success(deviceServiceClient.pageDevices(current, size, keyword).getData());
+        return deviceServiceClient.pageDevices(current, size, keyword);
     }
 
     @GetMapping("/stats")
@@ -49,6 +49,13 @@ public class AdminDeviceController {
     public ApiResponse<Object> kickDevice(@PathVariable String deviceCode,
                                           @RequestBody(required = false) Map<String, Object> body) {
         return deviceServiceClient.kickDevice(deviceCode, body == null ? Collections.emptyMap() : body);
+    }
+
+    @GetMapping("/blacklist")
+    public ApiResponse<Object> pageBlacklist(@RequestParam(defaultValue = "1") Long current,
+                                             @RequestParam(defaultValue = "10") Long size,
+                                             @RequestParam(required = false) String keyword) {
+        return deviceServiceClient.pageBlacklist(current, size, keyword);
     }
 
     @PostMapping("/blacklist")
