@@ -5,3 +5,11 @@ spring:
     nacos:
       discovery:
         server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+      config:
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        file-extension: yml
+        # 跟 auth-service 共拉 wifi-jwt.yml，保证签发与解析使用同一 secret。
+        extension-configs:
+          - data-id: wifi-jwt.yml
+            group: DEFAULT_GROUP
+            refresh: true
