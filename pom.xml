@@ -26,6 +26,7 @@
         <module>user-service</module>
         <module>device-service</module>
         <module>admin-service</module>
+        <module>monitor-service</module>
     </modules>
 
     <properties>
