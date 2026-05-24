@@ -10,6 +10,7 @@ import com.plagod.entity.AlertEvent;
 import com.plagod.mapper.AlertEventMapper;
 import com.plagod.service.AccessRuleCache;
 import com.plagod.service.TrafficEvaluationService;
+import com.plagod.ws.AlertWebSocketHandler;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -27,6 +28,9 @@ public class TrafficEvaluationServiceImpl implements TrafficEvaluationService {
 
     @Autowired
     private AlertEventMapper alertEventMapper;
+
+    @Autowired
+    private AlertWebSocketHandler alertWebSocketHandler;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -56,7 +60,23 @@ public class TrafficEvaluationServiceImpl implements TrafficEvaluationService {
         result.setHit(true);
         result.setHits(hits);
         result.setAlertId(alert.getId());
+
+        broadcast(alert, hits);
         return result;
+    }
+
+    private void broadcast(AlertEvent alert, List<RuleHitVO> hits) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("type", "alert");
+        payload.put("alertId", alert.getId());
+        payload.put("level", alert.getLevel());
+        payload.put("ruleCode", alert.getRuleCode());
+        payload.put("title", alert.getTitle());
+        payload.put("mac", alert.getMac());
+        payload.put("userId", alert.getUserId());
+        payload.put("createTime", alert.getCreateTime());
+        payload.put("hits", hits);
+        alertWebSocketHandler.broadcast(payload);
     }
 
     private boolean matches(AccessRule rule, TrafficEvaluationRequest req) {
