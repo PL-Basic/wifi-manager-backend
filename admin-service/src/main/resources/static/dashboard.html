@@ -234,13 +234,56 @@
             header { flex-direction: column; align-items: flex-start; }
             .stats, .columns { grid-template-columns: 1fr; }
         }
+
+        .ws-indicator {
+            display: inline-block;
+            margin-left: 10px;
+            padding: 0 8px;
+            height: 22px;
+            line-height: 22px;
+            border-radius: 999px;
+            font-size: 12px;
+            background: #edf2f7;
+            color: #334155;
+        }
+        .ws-indicator.ok  { background: #e7f6ee; color: var(--ok); }
+        .ws-indicator.bad { background: #fdeceb; color: var(--bad); }
+
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-width: 360px;
+        }
+        .toast {
+            padding: 12px 14px;
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-left: 4px solid var(--bad);
+            border-radius: 6px;
+            box-shadow: 0 6px 18px rgba(15, 23, 42, 0.10);
+            animation: slideIn 0.2s ease-out;
+        }
+        .toast .toast-title { font-weight: 600; margin-bottom: 4px; }
+        .toast .toast-body  { font-size: 12px; color: var(--muted); }
+        @keyframes slideIn {
+            from { transform: translateX(120%); opacity: 0; }
+            to   { transform: translateX(0);    opacity: 1; }
+        }
     </style>
 </head>
 <body>
 <header>
     <div>
         <h1>Wifi Manager Admin Dashboard</h1>
-        <div class="status" id="statusText">等待刷新</div>
+        <div class="status">
+            <span id="statusText">等待刷新</span>
+            <span class="ws-indicator" id="wsStatus">实时未连接</span>
+        </div>
     </div>
     <div class="toolbar">
         <input id="keywordInput" placeholder="按用户名 / 设备编码 / 位置搜索">
@@ -829,7 +872,72 @@
         if (event.key === "Enter") refreshAll();
     });
 
+    const WS_URL = `ws://${location.hostname}:8384/ws/alerts`;
+    let wsClient = null;
+    let wsReconnectTimer = null;
+
+    function setWsStatus(text, cls) {
+        const el = $("wsStatus");
+        el.textContent = text;
+        el.className = "ws-indicator" + (cls ? " " + cls : "");
+    }
+
+    function ensureToastContainer() {
+        let container = document.getElementById("toastContainer");
+        if (!container) {
+            container = document.createElement("div");
+            container.id = "toastContainer";
+            container.className = "toast-container";
+            document.body.appendChild(container);
+        }
+        return container;
+    }
+
+    function showAlertToast(alert) {
+        const container = ensureToastContainer();
+        const div = document.createElement("div");
+        div.className = "toast";
+        const levelText = LEVEL[alert.level] || text(alert.level);
+        const title = alert.title || alert.ruleCode || "新告警";
+        const macInfo = alert.mac ? `MAC ${alert.mac} · ` : "";
+        div.innerHTML = `
+            <div class="toast-title">[${levelText}] ${title}</div>
+            <div class="toast-body">${macInfo}alertId=${text(alert.alertId)}</div>`;
+        container.appendChild(div);
+        setTimeout(() => div.remove(), 6000);
+    }
+
+    function connectWebSocket() {
+        if (wsReconnectTimer) {
+            clearTimeout(wsReconnectTimer);
+            wsReconnectTimer = null;
+        }
+        setWsStatus("连接中…");
+        try {
+            wsClient = new WebSocket(WS_URL);
+        } catch (err) {
+            setWsStatus("连接失败 · 5s 后重连", "bad");
+            wsReconnectTimer = setTimeout(connectWebSocket, 5000);
+            return;
+        }
+        wsClient.addEventListener("open", () => setWsStatus("实时已连接", "ok"));
+        wsClient.addEventListener("error", () => setWsStatus("连接错误", "bad"));
+        wsClient.addEventListener("close", () => {
+            setWsStatus("已断开 · 5s 后重连", "bad");
+            wsReconnectTimer = setTimeout(connectWebSocket, 5000);
+        });
+        wsClient.addEventListener("message", (event) => {
+            let msg;
+            try { msg = JSON.parse(event.data); } catch (e) { return; }
+            if (msg && msg.type === "alert") {
+                showAlertToast(msg);
+                loadAlerts().catch(() => {});
+            }
+        });
+    }
+
     refreshAll();
+    connectWebSocket();
 </script>
 </body>
 </html>
