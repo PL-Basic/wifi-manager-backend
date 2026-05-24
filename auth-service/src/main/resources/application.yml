@@ -15,3 +15,9 @@ mybatis-plus:
       logic-delete-field: delFlag
       logic-delete-value: 1
       logic-not-delete-value: 0
+
+jwt:
+  # 至少 256 位的密钥。生产环境放到 Nacos 配置中心覆盖此值。
+  secret: YourSecretKey-AtLeast256Bits-ChangeInProduction!
+  # token 过期时长，毫秒；默认 24 小时。
+  expiration-millis: 86400000

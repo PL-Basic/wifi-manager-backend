@@ -2,6 +2,7 @@ package com.plagod.filter;
 
 import com.plagod.utils.JwtUtils;
 import io.jsonwebtoken.Claims;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
@@ -26,6 +27,9 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
             "/auth/register"
     );
 
+    @Autowired
+    private JwtUtils jwtUtils;
+
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         String path = exchange.getRequest().getURI().getPath();
@@ -40,7 +44,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
 
         String token = authorization.substring(BEARER_PREFIX.length());
         try {
-            Claims claims = JwtUtils.parseToken(token);
+            Claims claims = jwtUtils.parseToken(token);
             ServerHttpRequest request = exchange.getRequest().mutate()
                     .header("X-User-Id", String.valueOf(JwtUtils.getUserId(claims)))
                     .header("X-User-Name", String.valueOf(claims.get("username")))

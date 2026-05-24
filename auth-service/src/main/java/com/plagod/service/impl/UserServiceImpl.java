@@ -29,6 +29,9 @@ public class UserServiceImpl implements UserService {
     @Autowired
     private UserMapper userMapper;
 
+    @Autowired
+    private JwtUtils jwtUtils;
+
     @Override
     @Audited(action = "auth.register")
     public RegisterResult register(RegisterDTO registerDTO){
@@ -113,7 +116,7 @@ public class UserServiceImpl implements UserService {
         }
 
         //获取token，判断用的参数
-        String token = JwtUtils.generateToken(user.getUserId(),user.getUsername(),user.getRole());
+        String token = jwtUtils.generateToken(user.getUserId(),user.getUsername(),user.getRole());
 
         //将该用户的信息取出并返回到controller
         AuthResultDTO authResultDTO = new AuthResultDTO();
