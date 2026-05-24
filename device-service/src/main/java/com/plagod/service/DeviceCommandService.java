@@ -1,0 +1,18 @@
+package com.plagod.service;
+
+import com.plagod.dto.DeviceCommandResult;
+import com.plagod.dto.DeviceNodeVO;
+import com.plagod.dto.KickDeviceDTO;
+import com.plagod.dto.MacBlacklistCreateDTO;
+
+public interface DeviceCommandService {
+    DeviceNodeVO getDevice(Long nodeId);
+
+    DeviceCommandResult allowDevice(String deviceCode);
+
+    DeviceCommandResult kickDevice(String deviceCode, KickDeviceDTO kickDeviceDTO);
+
+    void addBlacklist(MacBlacklistCreateDTO createDTO);
+
+    void removeBlacklist(String mac);
+}

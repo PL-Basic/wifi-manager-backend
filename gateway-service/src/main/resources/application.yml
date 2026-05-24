@@ -1,0 +1,24 @@
+server:
+  port: 8080
+spring:
+  cloud:
+    gateway:
+      default-filters:
+        - DedupeResponseHeader=Access-Control-Allow-Credentials Access-Control-Allow-Origin
+      routes:
+        - id: auth-service-route
+          uri: lb://auth-service
+          predicates:
+            - Path=/auth/**
+        - id: user-service-route
+          uri: lb://user-service
+          predicates:
+            - Path=/users/**
+        - id: device-service-route
+          uri: lb://device-service
+          predicates:
+            - Path=/devices/**,/blacklist/**
+        - id: admin-service-route
+          uri: lb://admin-service
+          predicates:
+            - Path=/admin/**

@@ -1,0 +1,14 @@
+spring:
+  application:
+    name: auth-service
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+        # 服务端默认账密 nacos/nacos；后续开鉴权再启用
+        # username: nacos
+        # password: nacos
+      # 配置中心：本步先不启用，下一步 JwtUtils 改注入时再开
+      # config:
+      #   server-addr: localhost:8848
+      #   file-extension: yml
