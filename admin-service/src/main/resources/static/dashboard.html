@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Wifi Manager Admin Dashboard</title>
+    <style>
+        :root {
+            --bg: #f6f7f9;
+            --panel: #ffffff;
+            --text: #17202a;
+            --muted: #64748b;
+            --line: #d8dee8;
+            --accent: #1769aa;
+            --ok: #18895a;
+            --bad: #c24135;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+            font-size: 14px;
+        }
+
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 18px 28px;
+            background: var(--panel);
+            border-bottom: 1px solid var(--line);
+        }
+
+        h1, h2, p { margin: 0; }
+
+        h1 { font-size: 20px; font-weight: 650; }
+        h2 { font-size: 16px; font-weight: 650; }
+
+        main {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 22px 24px 36px;
+        }
+
+        button, input {
+            height: 34px;
+            border-radius: 6px;
+            font: inherit;
+        }
+
+        button {
+            padding: 0 14px;
+            border: 1px solid var(--accent);
+            background: var(--accent);
+            color: #fff;
+            cursor: pointer;
+        }
+
+        button.secondary {
+            background: #fff;
+            color: var(--accent);
+        }
+
+        input {
+            min-width: 240px;
+            padding: 0 10px;
+            border: 1px solid var(--line);
+            background: #fff;
+        }
+
+        .toolbar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .status {
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .grid {
+            display: grid;
+            gap: 14px;
+        }
+
+        .stats {
+            grid-template-columns: repeat(6, minmax(120px, 1fr));
+            margin-bottom: 18px;
+        }
+
+        .metric {
+            min-height: 86px;
+            padding: 14px;
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+        }
+
+        .metric .label {
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .metric .value {
+            margin-top: 10px;
+            font-size: 26px;
+            font-weight: 700;
+        }
+
+        .columns { grid-template-columns: 1fr 1fr; }
+
+        section {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--line);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 11px 12px;
+            border-bottom: 1px solid #edf0f5;
+            text-align: left;
+            white-space: nowrap;
+        }
+
+        th {
+            color: var(--muted);
+            font-weight: 600;
+            background: #fafbfc;
+        }
+
+        tr:last-child td { border-bottom: 0; }
+
+        .table-wrap { overflow-x: auto; }
+
+        .tag {
+            display: inline-flex;
+            align-items: center;
+            height: 22px;
+            padding: 0 8px;
+            border-radius: 999px;
+            font-size: 12px;
+            background: #edf2f7;
+            color: #334155;
+        }
+
+        .tag.ok {
+            background: #e7f6ee;
+            color: var(--ok);
+        }
+
+        .tag.bad {
+            background: #fdeceb;
+            color: var(--bad);
+        }
+
+        .error {
+            margin-bottom: 16px;
+            padding: 12px 14px;
+            border: 1px solid #f2b8b5;
+            border-radius: 8px;
+            background: #fff4f3;
+            color: var(--bad);
+            display: none;
+        }
+
+        .raw { margin-top: 18px; }
+
+        pre {
+            margin: 0;
+            max-height: 360px;
+            overflow: auto;
+            padding: 14px;
+            background: #111827;
+            color: #d1d5db;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        @media (max-width: 980px) {
+            header { flex-direction: column; align-items: flex-start; }
+            .stats, .columns { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+<header>
+    <div>
+        <h1>Wifi Manager Admin Dashboard</h1>
+        <div class="status" id="statusText">等待刷新</div>
+    </div>
+    <div class="toolbar">
+        <input id="keywordInput" placeholder="按用户名、设备编码、位置搜索">
+        <button id="refreshButton">刷新</button>
+        <button class="secondary" id="clearButton">清空搜索</button>
+    </div>
+</header>
+
+<main>
+    <div class="error" id="errorBox"></div>
+
+    <div class="grid stats">
+        <div class="metric"><div class="label">用户总数</div><div class="value" id="totalUsers">-</div></div>
+        <div class="metric"><div class="label">启用用户</div><div class="value" id="enabledUsers">-</div></div>
+        <div class="metric"><div class="label">设备节点</div><div class="value" id="totalNodes">-</div></div>
+        <div class="metric"><div class="label">在线节点</div><div class="value" id="onlineNodes">-</div></div>
+        <div class="metric"><div class="label">当前客户端</div><div class="value" id="currentClients">-</div></div>
+        <div class="metric"><div class="label">黑名单</div><div class="value" id="blacklistCount">-</div></div>
+    </div>
+
+    <div class="grid columns">
+        <section>
+            <div class="head">
+                <h2>用户</h2>
+                <span class="status" id="userPageMeta">-</span>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>账号</th>
+                        <th>昵称</th>
+                        <th>状态</th>
+                        <th>创建时间</th>
+                    </tr>
+                    </thead>
+                    <tbody id="userRows"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section>
+            <div class="head">
+                <h2>ESP32 节点</h2>
+                <span class="status" id="devicePageMeta">-</span>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>编码</th>
+                        <th>名称</th>
+                        <th>IP</th>
+                        <th>状态</th>
+                        <th>客户端</th>
+                    </tr>
+                    </thead>
+                    <tbody id="deviceRows"></tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <section class="raw">
+        <div class="head">
+            <h2>接口原始返回</h2>
+            <span class="status">/admin/dashboard</span>
+        </div>
+        <pre id="rawJson">{}</pre>
+    </section>
+</main>
+
+<script>
+    const $ = (id) => document.getElementById(id);
+
+    function text(value) {
+        return value === null || value === undefined || value === "" ? "-" : String(value);
+    }
+
+    function tagStatus(value) {
+        const ok = Number(value) === 1;
+        return `<span class="tag ${ok ? "ok" : "bad"}">${ok ? "启用/在线" : "禁用/离线"}</span>`;
+    }
+
+    function showError(message) {
+        const box = $("errorBox");
+        box.textContent = message;
+        box.style.display = message ? "block" : "none";
+    }
+
+    async function requestJson(url) {
+        const response = await fetch(url, { headers: { Accept: "application/json" } });
+        if (!response.ok) {
+            throw new Error(`${url} HTTP ${response.status}`);
+        }
+        const body = await response.json();
+        if (body.code && body.code !== 200) {
+            throw new Error(`${url} ${body.message || body.code}`);
+        }
+        return body.data;
+    }
+
+    function renderStats(dashboard) {
+        const userStats = dashboard.userStats || {};
+        const deviceStats = dashboard.deviceStats || {};
+        $("totalUsers").textContent = text(userStats.totalUsers);
+        $("enabledUsers").textContent = text(userStats.enabledUsers);
+        $("totalNodes").textContent = text(deviceStats.totalNodes);
+        $("onlineNodes").textContent = text(deviceStats.onlineNodes);
+        $("currentClients").textContent = text(deviceStats.currentClients);
+        $("blacklistCount").textContent = text(deviceStats.blacklistCount);
+    }
+
+    function renderUsers(page) {
+        const records = page && page.records ? page.records : [];
+        $("userPageMeta").textContent = page ? `共 ${page.total} 条` : "-";
+        $("userRows").innerHTML = records.map((item) => `
+            <tr>
+                <td>${text(item.userId)}</td>
+                <td>${text(item.username)}</td>
+                <td>${text(item.nickname)}</td>
+                <td>${tagStatus(item.status)}</td>
+                <td>${text(item.createTime)}</td>
+            </tr>
+        `).join("") || `<tr><td colspan="5">暂无数据</td></tr>`;
+    }
+
+    function renderDevices(page) {
+        const records = page && page.records ? page.records : [];
+        $("devicePageMeta").textContent = page ? `共 ${page.total} 条` : "-";
+        $("deviceRows").innerHTML = records.map((item) => `
+            <tr>
+                <td>${text(item.nodeId)}</td>
+                <td>${text(item.deviceCode)}</td>
+                <td>${text(item.name)}</td>
+                <td>${text(item.ip)}</td>
+                <td>${tagStatus(item.status)}</td>
+                <td>${text(item.currentClients)} / ${text(item.maxClients)}</td>
+            </tr>
+        `).join("") || `<tr><td colspan="6">暂无数据</td></tr>`;
+    }
+
+    function buildQuery(keyword) {
+        return keyword ? `&keyword=${encodeURIComponent(keyword)}` : "";
+    }
+
+    async function refresh() {
+        const keyword = $("keywordInput").value.trim();
+        $("statusText").textContent = "刷新中...";
+        showError("");
+
+        try {
+            const dashboard = await requestJson("/admin/dashboard");
+            const users = await requestJson(`/admin/users?current=1&size=10${buildQuery(keyword)}`);
+            const devices = await requestJson(`/admin/devices?current=1&size=10${buildQuery(keyword)}`);
+
+            renderStats(dashboard || {});
+            renderUsers(users);
+            renderDevices(devices);
+            $("rawJson").textContent = JSON.stringify(dashboard, null, 2);
+            $("statusText").textContent = `最后刷新：${new Date().toLocaleString()}`;
+        } catch (error) {
+            showError(error.message);
+            $("statusText").textContent = "刷新失败";
+        }
+    }
+
+    $("refreshButton").addEventListener("click", refresh);
+    $("clearButton").addEventListener("click", () => {
+        $("keywordInput").value = "";
+        refresh();
+    });
+    $("keywordInput").addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+            refresh();
+        }
+    });
+
+    refresh();
+</script>
+</body>
+</html>
