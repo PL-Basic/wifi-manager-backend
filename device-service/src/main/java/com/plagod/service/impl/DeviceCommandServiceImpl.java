@@ -1,6 +1,7 @@
 package com.plagod.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.plagod.audit.Audited;
 import com.plagod.constant.MqttTopics;
 import com.plagod.dto.DeviceCommandResult;
 import com.plagod.dto.DeviceNodeVO;
@@ -53,6 +54,7 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     }
 
     @Override
+    @Audited(action = "device.allow")
     public DeviceCommandResult allowDevice(String deviceCode) {
         String topic = MqttTopics.deviceAllow(deviceCode);
         String payload = "{\"deviceCode\":\"" + deviceCode + "\"}";
@@ -61,6 +63,7 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     }
 
     @Override
+    @Audited(action = "device.kick")
     public DeviceCommandResult kickDevice(String deviceCode, KickDeviceDTO kickDeviceDTO) {
         String topic = MqttTopics.deviceKick(deviceCode);
         String reason = kickDeviceDTO == null || kickDeviceDTO.getReason() == null ? "" : kickDeviceDTO.getReason();
@@ -70,6 +73,7 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     }
 
     @Override
+    @Audited(action = "blacklist.add")
     public void addBlacklist(MacBlacklistCreateDTO createDTO) {
         MacBlacklist blacklist = new MacBlacklist();
         BeanUtils.copyProperties(createDTO, blacklist);
@@ -77,6 +81,7 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     }
 
     @Override
+    @Audited(action = "blacklist.remove")
     public void removeBlacklist(String mac) {
         QueryWrapper<MacBlacklist> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("mac", mac);

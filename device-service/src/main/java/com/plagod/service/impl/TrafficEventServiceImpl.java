@@ -1,10 +1,7 @@
 package com.plagod.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.plagod.client.MonitorServiceClient;
-import com.plagod.constant.MqttTopics;
 import com.plagod.dto.ApiResponse;
 import com.plagod.dto.DeviceTrafficEvent;
 import com.plagod.dto.RuleHitVO;
@@ -16,7 +13,7 @@ import com.plagod.entity.TrafficLog;
 import com.plagod.mapper.Esp32NodeMapper;
 import com.plagod.mapper.SessionRecordMapper;
 import com.plagod.mapper.TrafficLogMapper;
-import com.plagod.mqtt.MqttCommandPublisher;
+import com.plagod.service.RuleActionExecutor;
 import com.plagod.service.TrafficEventService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,9 +21,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 @Service
 public class TrafficEventServiceImpl implements TrafficEventService {
@@ -50,9 +45,7 @@ public class TrafficEventServiceImpl implements TrafficEventService {
     private MonitorServiceClient monitorServiceClient;
 
     @Autowired
-    private MqttCommandPublisher mqttCommandPublisher;
-
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private RuleActionExecutor ruleActionExecutor;
 
     @Override
     public void handleTrafficEvent(DeviceTrafficEvent event) {
@@ -145,9 +138,9 @@ public class TrafficEventServiceImpl implements TrafficEventService {
 
         try {
             if (action == ACTION_KICK) {
-                publishDisconnectMac(deviceCode, event.getMac(), result.getAlertId());
+                ruleActionExecutor.disconnectMac(deviceCode, event.getMac(), result.getAlertId());
             } else if (action == ACTION_BLOCK_TRAFFIC) {
-                publishBlockTraffic(deviceCode, event.getDstIp(), event.getSni(), result.getAlertId());
+                ruleActionExecutor.blockTraffic(deviceCode, event.getDstIp(), event.getSni(), result.getAlertId());
             }
         } catch (Exception ex) {
             log.warn("auto-action publish failed action={} mac={} alertId={}: {}",
@@ -179,34 +172,5 @@ public class TrafficEventServiceImpl implements TrafficEventService {
         }
         Esp32Node node = esp32NodeMapper.selectById(sessionRecord.getNodeId());
         return node == null ? null : node.getDeviceCode();
-    }
-
-    private void publishDisconnectMac(String deviceCode, String mac, Long alertId) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("mac", mac);
-        body.put("alertId", alertId);
-        String topic = MqttTopics.deviceDisconnectMac(deviceCode);
-        String payload = toJson(body);
-        mqttCommandPublisher.publish(topic, payload);
-        log.info("auto-action disconnect-mac deviceCode={} mac={} alertId={}", deviceCode, mac, alertId);
-    }
-
-    private void publishBlockTraffic(String deviceCode, String dstIp, String sni, Long alertId) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("dstIp", dstIp);
-        body.put("sni", sni);
-        body.put("alertId", alertId);
-        String topic = MqttTopics.deviceBlockTraffic(deviceCode);
-        String payload = toJson(body);
-        mqttCommandPublisher.publish(topic, payload);
-        log.info("auto-action block-traffic deviceCode={} dstIp={} sni={} alertId={}", deviceCode, dstIp, sni, alertId);
-    }
-
-    private String toJson(Map<String, Object> body) {
-        try {
-            return objectMapper.writeValueAsString(body);
-        } catch (JsonProcessingException ex) {
-            throw new IllegalStateException("MQTT payload 序列化失败", ex);
-        }
     }
 }

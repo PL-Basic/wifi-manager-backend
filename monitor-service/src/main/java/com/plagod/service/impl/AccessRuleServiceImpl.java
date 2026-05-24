@@ -1,6 +1,7 @@
 package com.plagod.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.plagod.audit.Audited;
 import com.plagod.dto.AccessRuleCreateDTO;
 import com.plagod.dto.AccessRulePageResult;
 import com.plagod.dto.AccessRuleUpdateDTO;
@@ -27,6 +28,7 @@ public class AccessRuleServiceImpl implements AccessRuleService {
     private AccessRuleCache accessRuleCache;
 
     @Override
+    @Audited(action = "rule.create")
     public AccessRuleVO create(AccessRuleCreateDTO createDTO) {
         QueryWrapper<AccessRule> existsWrapper = new QueryWrapper<>();
         existsWrapper.eq("rule_code", createDTO.getRuleCode());
@@ -48,6 +50,7 @@ public class AccessRuleServiceImpl implements AccessRuleService {
     }
 
     @Override
+    @Audited(action = "rule.update")
     public AccessRuleVO update(Long id, AccessRuleUpdateDTO updateDTO) {
         AccessRule entity = accessRuleMapper.selectById(id);
         if (entity == null) {
@@ -74,6 +77,7 @@ public class AccessRuleServiceImpl implements AccessRuleService {
     }
 
     @Override
+    @Audited(action = "rule.delete")
     public void delete(Long id) {
         int affected = accessRuleMapper.deleteById(id);
         if (affected == 0) {
@@ -83,6 +87,7 @@ public class AccessRuleServiceImpl implements AccessRuleService {
     }
 
     @Override
+    @Audited(action = "rule.toggle")
     public void toggleEnabled(Long id, Integer enabled) {
         if (enabled == null || (enabled != 0 && enabled != 1)) {
             throw new IllegalArgumentException("enabled 只能是 0 或 1");

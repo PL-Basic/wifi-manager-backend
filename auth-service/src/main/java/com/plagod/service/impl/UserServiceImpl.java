@@ -1,6 +1,7 @@
 package com.plagod.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.plagod.audit.Audited;
 import com.plagod.dto.*;
 import com.plagod.entity.User;
 import com.plagod.enums.ConflictFieldEnum;
@@ -29,6 +30,7 @@ public class UserServiceImpl implements UserService {
     private UserMapper userMapper;
 
     @Override
+    @Audited(action = "auth.register")
     public RegisterResult register(RegisterDTO registerDTO){
         QueryWrapper<User> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("del_flag", 0);

@@ -1,6 +1,7 @@
 package com.plagod.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.plagod.audit.Audited;
 import com.plagod.dto.AlertEventPageResult;
 import com.plagod.dto.AlertEventVO;
 import com.plagod.entity.AlertEvent;
@@ -64,6 +65,7 @@ public class AlertEventServiceImpl implements AlertEventService {
     }
 
     @Override
+    @Audited(action = "alert.handle")
     public void handle(Long id, Long handleUserId) {
         AlertEvent entity = alertEventMapper.selectById(id);
         if (entity == null) {

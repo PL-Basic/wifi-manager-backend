@@ -2,6 +2,7 @@ package com.plagod.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.plagod.audit.Audited;
 import com.plagod.dto.UserPageResult;
 import com.plagod.dto.UserStatsVO;
 import com.plagod.dto.UserStatusDTO;
@@ -64,6 +65,7 @@ public class UserManageServiceImpl implements UserManageService {
     }
 
     @Override
+    @Audited(action = "user.update")
     public UserVO updateUser(Long userId, UserUpdateDTO updateDTO) {
         User user = getExistingUser(userId);
         BeanUtils.copyProperties(updateDTO, user);
@@ -72,6 +74,7 @@ public class UserManageServiceImpl implements UserManageService {
     }
 
     @Override
+    @Audited(action = "user.status")
     public void updateStatus(Long userId, UserStatusDTO statusDTO) {
         User user = getExistingUser(userId);
         user.setStatus(statusDTO.getStatus());
@@ -79,12 +82,14 @@ public class UserManageServiceImpl implements UserManageService {
     }
 
     @Override
+    @Audited(action = "user.delete")
     public void deleteUser(Long userId) {
         getExistingUser(userId);
         userMapper.deleteById(userId);
     }
 
     @Override
+    @Audited(action = "user.purge")
     public void purgeUser(Long userId) {
         jdbcTemplate.update("DELETE FROM sys_user WHERE user_id = ?", userId);
     }
