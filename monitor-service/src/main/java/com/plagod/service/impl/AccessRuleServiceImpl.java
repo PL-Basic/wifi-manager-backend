@@ -7,6 +7,7 @@ import com.plagod.dto.AccessRuleUpdateDTO;
 import com.plagod.dto.AccessRuleVO;
 import com.plagod.entity.AccessRule;
 import com.plagod.mapper.AccessRuleMapper;
+import com.plagod.service.AccessRuleCache;
 import com.plagod.service.AccessRuleService;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,6 +22,9 @@ public class AccessRuleServiceImpl implements AccessRuleService {
 
     @Autowired
     private AccessRuleMapper accessRuleMapper;
+
+    @Autowired
+    private AccessRuleCache accessRuleCache;
 
     @Override
     public AccessRuleVO create(AccessRuleCreateDTO createDTO) {
@@ -39,6 +43,7 @@ public class AccessRuleServiceImpl implements AccessRuleService {
             entity.setEnabled(1);
         }
         accessRuleMapper.insert(entity);
+        accessRuleCache.reload();
         return toVO(accessRuleMapper.selectById(entity.getId()));
     }
 
@@ -55,6 +60,7 @@ public class AccessRuleServiceImpl implements AccessRuleService {
         if (updateDTO.getEnabled() != null) entity.setEnabled(updateDTO.getEnabled());
         if (updateDTO.getDescription() != null) entity.setDescription(updateDTO.getDescription());
         accessRuleMapper.updateById(entity);
+        accessRuleCache.reload();
         return toVO(accessRuleMapper.selectById(id));
     }
 
@@ -73,6 +79,7 @@ public class AccessRuleServiceImpl implements AccessRuleService {
         if (affected == 0) {
             throw new IllegalArgumentException("规则不存在");
         }
+        accessRuleCache.reload();
     }
 
     @Override
@@ -86,6 +93,7 @@ public class AccessRuleServiceImpl implements AccessRuleService {
         }
         entity.setEnabled(enabled);
         accessRuleMapper.updateById(entity);
+        accessRuleCache.reload();
     }
 
     @Override
