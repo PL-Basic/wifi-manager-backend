@@ -17,3 +17,8 @@ mybatis-plus:
       logic-delete-field: delFlag
       logic-delete-value: 1
       logic-not-delete-value: 0
+
+monitor:
+  evaluation:
+    # 同一 mac 命中同一规则在冷却窗口内不再写告警 / 不再触发自动 action
+    cooldown-seconds: 30

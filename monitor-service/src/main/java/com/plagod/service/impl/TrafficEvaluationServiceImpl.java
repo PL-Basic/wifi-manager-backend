@@ -11,7 +11,10 @@ import com.plagod.mapper.AlertEventMapper;
 import com.plagod.service.AccessRuleCache;
 import com.plagod.service.TrafficEvaluationService;
 import com.plagod.ws.AlertWebSocketHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -19,9 +22,12 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class TrafficEvaluationServiceImpl implements TrafficEvaluationService {
+
+    private static final Logger log = LoggerFactory.getLogger(TrafficEvaluationServiceImpl.class);
 
     @Autowired
     private AccessRuleCache accessRuleCache;
@@ -32,7 +38,13 @@ public class TrafficEvaluationServiceImpl implements TrafficEvaluationService {
     @Autowired
     private AlertWebSocketHandler alertWebSocketHandler;
 
+    @Value("${monitor.evaluation.cooldown-seconds:30}")
+    private long cooldownSeconds;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    /** (mac|ruleCode) -> last trigger epoch millis. 同一 mac 命中同一规则在冷却内不再触发告警/动作。 */
+    private final ConcurrentHashMap<String, Long> lastHit = new ConcurrentHashMap<>();
 
     @Override
     public TrafficEvaluationResult evaluate(TrafficEvaluationRequest request) {
@@ -44,11 +56,26 @@ public class TrafficEvaluationServiceImpl implements TrafficEvaluationService {
             return result;
         }
 
+        long now = System.currentTimeMillis();
+        long cooldownMillis = cooldownSeconds * 1000L;
+
         List<RuleHitVO> hits = new ArrayList<>();
+        int suppressed = 0;
         for (AccessRule rule : accessRuleCache.getEnabledRules()) {
-            if (matches(rule, request)) {
-                hits.add(toHit(rule));
+            if (!matches(rule, request)) {
+                continue;
             }
+            String key = (request.getMac() == null ? "" : request.getMac()) + "|" + rule.getRuleCode();
+            Long last = lastHit.get(key);
+            if (last != null && (now - last) < cooldownMillis) {
+                suppressed++;
+                continue;
+            }
+            lastHit.put(key, now);
+            hits.add(toHit(rule));
+        }
+        if (suppressed > 0) {
+            log.debug("evaluation suppressed {} hit(s) under cooldown for mac={}", suppressed, request.getMac());
         }
         if (hits.isEmpty()) {
             return result;
