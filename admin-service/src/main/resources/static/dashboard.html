@@ -47,7 +47,7 @@
             padding: 22px 24px 36px;
         }
 
-        button, input {
+        button, input, select {
             height: 34px;
             border-radius: 6px;
             font: inherit;
@@ -66,12 +66,27 @@
             color: var(--accent);
         }
 
-        input {
-            min-width: 240px;
+        button.small {
+            height: 30px;
+            padding: 0 10px;
+            font-size: 13px;
+        }
+
+        input, select {
             padding: 0 10px;
             border: 1px solid var(--line);
             background: #fff;
         }
+
+        input { min-width: 240px; }
+
+        input.small, select.small {
+            height: 30px;
+            min-width: 120px;
+            font-size: 13px;
+        }
+
+        input.small[type="datetime-local"] { min-width: 180px; }
 
         .toolbar {
             display: flex;
@@ -79,6 +94,23 @@
             gap: 10px;
             flex-wrap: wrap;
         }
+
+        .filters {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--line);
+            background: #fafbfc;
+        }
+
+        .filters label {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .filters .grow { flex: 1; }
 
         .status {
             color: var(--muted);
@@ -122,6 +154,8 @@
             border-radius: 8px;
             overflow: hidden;
         }
+
+        section + section, .grid + .grid, .grid + section, section + .grid { margin-top: 14px; }
 
         .head {
             display: flex;
@@ -185,8 +219,6 @@
             display: none;
         }
 
-        .raw { margin-top: 18px; }
-
         pre {
             margin: 0;
             max-height: 360px;
@@ -211,9 +243,9 @@
         <div class="status" id="statusText">等待刷新</div>
     </div>
     <div class="toolbar">
-        <input id="keywordInput" placeholder="按用户名、设备编码、位置搜索">
-        <button id="refreshButton">刷新</button>
-        <button class="secondary" id="clearButton">清空搜索</button>
+        <input id="keywordInput" placeholder="按用户名 / 设备编码 / 位置搜索">
+        <button id="refreshButton">全部刷新</button>
+        <button class="secondary" id="clearButton">清空</button>
     </div>
 </header>
 
@@ -280,6 +312,13 @@
                 <h2>黑名单</h2>
                 <span class="status" id="blacklistPageMeta">-</span>
             </div>
+            <div class="filters">
+                <input class="small" id="blacklistMac" placeholder="MAC">
+                <input class="small" id="blacklistReason" placeholder="原因">
+                <span class="grow"></span>
+                <button class="small" data-target="blacklist">查询</button>
+                <button class="small secondary" data-reset="blacklist">重置</button>
+            </div>
             <div class="table-wrap">
                 <table>
                     <thead>
@@ -302,6 +341,19 @@
                 <h2>会话</h2>
                 <span class="status" id="sessionPageMeta">-</span>
             </div>
+            <div class="filters">
+                <input class="small" id="sessionMac" placeholder="MAC">
+                <input class="small" id="sessionNodeId" placeholder="节点 ID" type="number">
+                <input class="small" id="sessionUserId" placeholder="用户 ID" type="number">
+                <select class="small" id="sessionStatus">
+                    <option value="">全部状态</option>
+                    <option value="1">在线</option>
+                    <option value="0">离线</option>
+                </select>
+                <span class="grow"></span>
+                <button class="small" data-target="session">查询</button>
+                <button class="small secondary" data-reset="session">重置</button>
+            </div>
             <div class="table-wrap">
                 <table>
                     <thead>
@@ -322,10 +374,22 @@
         </section>
     </div>
 
-    <section style="margin-top:14px;">
+    <section>
         <div class="head">
             <h2>流量日志</h2>
             <span class="status" id="trafficPageMeta">-</span>
+        </div>
+        <div class="filters">
+            <input class="small" id="trafficMac" placeholder="MAC">
+            <input class="small" id="trafficSessionId" placeholder="会话 ID" type="number">
+            <input class="small" id="trafficDstIp" placeholder="目标 IP">
+            <label>从</label>
+            <input class="small" id="trafficStart" type="datetime-local">
+            <label>到</label>
+            <input class="small" id="trafficEnd" type="datetime-local">
+            <span class="grow"></span>
+            <button class="small" data-target="traffic">查询</button>
+            <button class="small secondary" data-reset="traffic">重置</button>
         </div>
         <div class="table-wrap">
             <table>
@@ -348,7 +412,7 @@
         </div>
     </section>
 
-    <section class="raw">
+    <section>
         <div class="head">
             <h2>接口原始返回</h2>
             <span class="status">/admin/dashboard</span>
@@ -387,6 +451,15 @@
         return body.data;
     }
 
+    function buildQuery(params) {
+        const parts = ["current=1", "size=10"];
+        Object.entries(params).forEach(([key, value]) => {
+            if (value === null || value === undefined || value === "") return;
+            parts.push(`${key}=${encodeURIComponent(value)}`);
+        });
+        return "?" + parts.join("&");
+    }
+
     function renderStats(dashboard) {
         const userStats = dashboard.userStats || {};
         const deviceStats = dashboard.deviceStats || {};
@@ -398,24 +471,35 @@
         $("blacklistCount").textContent = text(deviceStats.blacklistCount);
     }
 
-    function renderUsers(page) {
+    function renderPage(page, metaId, rowsId, colspan, rowFn) {
         const records = page && page.records ? page.records : [];
-        $("userPageMeta").textContent = page ? `共 ${page.total} 条` : "-";
-        $("userRows").innerHTML = records.map((item) => `
+        $(metaId).textContent = page ? `共 ${page.total} 条` : "-";
+        $(rowsId).innerHTML = records.map(rowFn).join("") || `<tr><td colspan="${colspan}">暂无数据</td></tr>`;
+    }
+
+    async function loadDashboard() {
+        const data = await requestJson("/admin/dashboard");
+        renderStats(data || {});
+        $("rawJson").textContent = JSON.stringify(data, null, 2);
+    }
+
+    async function loadUsers() {
+        const keyword = $("keywordInput").value.trim();
+        const data = await requestJson("/admin/users" + buildQuery({ keyword }));
+        renderPage(data, "userPageMeta", "userRows", 5, (item) => `
             <tr>
                 <td>${text(item.userId)}</td>
                 <td>${text(item.username)}</td>
                 <td>${text(item.nickname)}</td>
                 <td>${tagStatus(item.status)}</td>
                 <td>${text(item.createTime)}</td>
-            </tr>
-        `).join("") || `<tr><td colspan="5">暂无数据</td></tr>`;
+            </tr>`);
     }
 
-    function renderDevices(page) {
-        const records = page && page.records ? page.records : [];
-        $("devicePageMeta").textContent = page ? `共 ${page.total} 条` : "-";
-        $("deviceRows").innerHTML = records.map((item) => `
+    async function loadDevices() {
+        const keyword = $("keywordInput").value.trim();
+        const data = await requestJson("/admin/devices" + buildQuery({ keyword }));
+        renderPage(data, "devicePageMeta", "deviceRows", 6, (item) => `
             <tr>
                 <td>${text(item.nodeId)}</td>
                 <td>${text(item.deviceCode)}</td>
@@ -423,14 +507,15 @@
                 <td>${text(item.ip)}</td>
                 <td>${tagStatus(item.status)}</td>
                 <td>${text(item.currentClients)} / ${text(item.maxClients)}</td>
-            </tr>
-        `).join("") || `<tr><td colspan="6">暂无数据</td></tr>`;
+            </tr>`);
     }
 
-    function renderBlacklist(page) {
-        const records = page && page.records ? page.records : [];
-        $("blacklistPageMeta").textContent = page ? `共 ${page.total} 条` : "-";
-        $("blacklistRows").innerHTML = records.map((item) => `
+    async function loadBlacklist() {
+        const mac = $("blacklistMac").value.trim();
+        const reason = $("blacklistReason").value.trim();
+        const keyword = reason || mac;
+        const data = await requestJson("/admin/devices/blacklist" + buildQuery({ keyword }));
+        renderPage(data, "blacklistPageMeta", "blacklistRows", 6, (item) => `
             <tr>
                 <td>${text(item.id)}</td>
                 <td>${text(item.mac)}</td>
@@ -438,14 +523,18 @@
                 <td>${text(item.operatorId)}</td>
                 <td>${text(item.expireTime)}</td>
                 <td>${text(item.createTime)}</td>
-            </tr>
-        `).join("") || `<tr><td colspan="6">暂无数据</td></tr>`;
+            </tr>`);
     }
 
-    function renderSessions(page) {
-        const records = page && page.records ? page.records : [];
-        $("sessionPageMeta").textContent = page ? `共 ${page.total} 条` : "-";
-        $("sessionRows").innerHTML = records.map((item) => `
+    async function loadSessions() {
+        const params = {
+            mac: $("sessionMac").value.trim(),
+            nodeId: $("sessionNodeId").value.trim(),
+            userId: $("sessionUserId").value.trim(),
+            status: $("sessionStatus").value,
+        };
+        const data = await requestJson("/admin/sessions" + buildQuery(params));
+        renderPage(data, "sessionPageMeta", "sessionRows", 8, (item) => `
             <tr>
                 <td>${text(item.sessionId)}</td>
                 <td>${text(item.userId)}</td>
@@ -455,14 +544,21 @@
                 <td>${tagStatus(item.status)}</td>
                 <td>${text(item.bytesUp)} / ${text(item.bytesDown)}</td>
                 <td>${text(item.loginTime)}</td>
-            </tr>
-        `).join("") || `<tr><td colspan="8">暂无数据</td></tr>`;
+            </tr>`);
     }
 
-    function renderTraffic(page) {
-        const records = page && page.records ? page.records : [];
-        $("trafficPageMeta").textContent = page ? `共 ${page.total} 条` : "-";
-        $("trafficRows").innerHTML = records.map((item) => `
+    async function loadTraffic() {
+        const startLocal = $("trafficStart").value;
+        const endLocal = $("trafficEnd").value;
+        const params = {
+            mac: $("trafficMac").value.trim(),
+            sessionId: $("trafficSessionId").value.trim(),
+            dstIp: $("trafficDstIp").value.trim(),
+            startTime: startLocal ? `${startLocal}:00` : "",
+            endTime: endLocal ? `${endLocal}:00` : "",
+        };
+        const data = await requestJson("/admin/traffic" + buildQuery(params));
+        renderPage(data, "trafficPageMeta", "trafficRows", 10, (item) => `
             <tr>
                 <td>${text(item.id)}</td>
                 <td>${text(item.sessionId)}</td>
@@ -474,34 +570,47 @@
                 <td>${text(item.bytesUp)}</td>
                 <td>${text(item.bytesDown)}</td>
                 <td>${text(item.logTime)}</td>
-            </tr>
-        `).join("") || `<tr><td colspan="10">暂无数据</td></tr>`;
+            </tr>`);
     }
 
-    function buildQuery(keyword) {
-        return keyword ? `&keyword=${encodeURIComponent(keyword)}` : "";
+    const loaders = {
+        blacklist: loadBlacklist,
+        session: loadSessions,
+        traffic: loadTraffic,
+    };
+
+    const filterInputs = {
+        blacklist: ["blacklistMac", "blacklistReason"],
+        session: ["sessionMac", "sessionNodeId", "sessionUserId", "sessionStatus"],
+        traffic: ["trafficMac", "trafficSessionId", "trafficDstIp", "trafficStart", "trafficEnd"],
+    };
+
+    async function runLoader(name) {
+        showError("");
+        try {
+            await loaders[name]();
+        } catch (error) {
+            showError(error.message);
+        }
     }
 
-    async function refresh() {
-        const keyword = $("keywordInput").value.trim();
+    function resetFilters(name) {
+        filterInputs[name].forEach((id) => { $(id).value = ""; });
+        runLoader(name);
+    }
+
+    async function refreshAll() {
         $("statusText").textContent = "刷新中...";
         showError("");
-
         try {
-            const dashboard = await requestJson("/admin/dashboard");
-            const users = await requestJson(`/admin/users?current=1&size=10${buildQuery(keyword)}`);
-            const devices = await requestJson(`/admin/devices?current=1&size=10${buildQuery(keyword)}`);
-            const blacklist = await requestJson(`/admin/devices/blacklist?current=1&size=10${buildQuery(keyword)}`);
-            const sessions = await requestJson(`/admin/sessions?current=1&size=10${keyword ? `&mac=${encodeURIComponent(keyword)}` : ""}`);
-            const traffic = await requestJson(`/admin/traffic?current=1&size=10${keyword ? `&mac=${encodeURIComponent(keyword)}` : ""}`);
-
-            renderStats(dashboard || {});
-            renderUsers(users);
-            renderDevices(devices);
-            renderBlacklist(blacklist);
-            renderSessions(sessions);
-            renderTraffic(traffic);
-            $("rawJson").textContent = JSON.stringify(dashboard, null, 2);
+            await Promise.all([
+                loadDashboard(),
+                loadUsers(),
+                loadDevices(),
+                loadBlacklist(),
+                loadSessions(),
+                loadTraffic(),
+            ]);
             $("statusText").textContent = `最后刷新：${new Date().toLocaleString()}`;
         } catch (error) {
             showError(error.message);
@@ -509,18 +618,32 @@
         }
     }
 
-    $("refreshButton").addEventListener("click", refresh);
-    $("clearButton").addEventListener("click", () => {
-        $("keywordInput").value = "";
-        refresh();
+    document.querySelectorAll("button[data-target]").forEach((btn) => {
+        btn.addEventListener("click", () => runLoader(btn.dataset.target));
     });
-    $("keywordInput").addEventListener("keydown", (event) => {
-        if (event.key === "Enter") {
-            refresh();
-        }
+    document.querySelectorAll("button[data-reset]").forEach((btn) => {
+        btn.addEventListener("click", () => resetFilters(btn.dataset.reset));
+    });
+    document.querySelectorAll(".filters input, .filters select").forEach((el) => {
+        el.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") {
+                const filtersDiv = el.closest(".filters");
+                const target = filtersDiv.querySelector("button[data-target]");
+                if (target) runLoader(target.dataset.target);
+            }
+        });
     });
 
-    refresh();
+    $("refreshButton").addEventListener("click", refreshAll);
+    $("clearButton").addEventListener("click", () => {
+        $("keywordInput").value = "";
+        refreshAll();
+    });
+    $("keywordInput").addEventListener("keydown", (event) => {
+        if (event.key === "Enter") refreshAll();
+    });
+
+    refreshAll();
 </script>
 </body>
 </html>
