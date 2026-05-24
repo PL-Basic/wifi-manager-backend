@@ -8,6 +8,8 @@ import com.plagod.dto.DevicePageResult;
 import com.plagod.dto.DeviceStatsVO;
 import com.plagod.dto.KickDeviceDTO;
 import com.plagod.dto.MacBlacklistCreateDTO;
+import com.plagod.dto.MacBlacklistPageResult;
+import com.plagod.dto.MacBlacklistVO;
 import com.plagod.entity.Esp32Node;
 import com.plagod.entity.MacBlacklist;
 import com.plagod.entity.SessionRecord;
@@ -142,6 +144,37 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         }
 
         DevicePageResult result = new DevicePageResult();
+        result.setTotal(page.getTotal());
+        result.setCurrent(page.getCurrent());
+        result.setSize(page.getSize());
+        result.setRecords(records);
+        return result;
+    }
+
+    @Override
+    public MacBlacklistPageResult pageBlacklist(long current, long size, String keyword) {
+        long pageCurrent = current <= 0 ? 1 : current;
+        long pageSize = size <= 0 ? 10 : Math.min(size, 100);
+
+        QueryWrapper<MacBlacklist> queryWrapper = new QueryWrapper<>();
+        if (StringUtils.hasText(keyword)) {
+            queryWrapper.and(wrapper -> wrapper
+                    .like("mac", keyword)
+                    .or().like("reason", keyword));
+        }
+        queryWrapper.orderByDesc("create_time");
+
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<MacBlacklist> page =
+                macBlacklistMapper.selectPage(new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(pageCurrent, pageSize), queryWrapper);
+
+        List<MacBlacklistVO> records = new ArrayList<>();
+        for (MacBlacklist item : page.getRecords()) {
+            MacBlacklistVO vo = new MacBlacklistVO();
+            BeanUtils.copyProperties(item, vo);
+            records.add(vo);
+        }
+
+        MacBlacklistPageResult result = new MacBlacklistPageResult();
         result.setTotal(page.getTotal());
         result.setCurrent(page.getCurrent());
         result.setSize(page.getSize());

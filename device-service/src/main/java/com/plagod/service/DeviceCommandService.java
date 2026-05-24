@@ -6,6 +6,7 @@ import com.plagod.dto.DevicePageResult;
 import com.plagod.dto.DeviceStatsVO;
 import com.plagod.dto.KickDeviceDTO;
 import com.plagod.dto.MacBlacklistCreateDTO;
+import com.plagod.dto.MacBlacklistPageResult;
 
 public interface DeviceCommandService {
     DeviceNodeVO getDevice(Long nodeId);
@@ -21,4 +22,6 @@ public interface DeviceCommandService {
     DeviceStatsVO getDeviceStats();
 
     DevicePageResult pageDevices(long current, long size, String keyword);
+
+    MacBlacklistPageResult pageBlacklist(long current, long size, String keyword);
 }
