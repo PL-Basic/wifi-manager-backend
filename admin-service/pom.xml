@@ -52,4 +52,25 @@
         </plugins>
     </build>
 
+    <profiles>
+        <!--
+            打生产包：mvnw -P prod -pl admin-service -am package
+            排除后端联调页 static/dashboard.html，避免无鉴权页面被打入 jar。
+            默认 build 仍然包含该页，IDEA / 本地 mvn 直接跑均可用。
+        -->
+        <profile>
+            <id>prod</id>
+            <build>
+                <resources>
+                    <resource>
+                        <directory>src/main/resources</directory>
+                        <excludes>
+                            <exclude>static/dashboard.html</exclude>
+                        </excludes>
+                    </resource>
+                </resources>
+            </build>
+        </profile>
+    </profiles>
+
 </project>
