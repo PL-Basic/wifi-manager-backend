@@ -1,6 +1,7 @@
 package com.plagod.client;
 
 import com.plagod.dto.ApiResponse;
+import com.plagod.dto.UserStatsVO;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -33,4 +34,7 @@ public interface UserServiceClient {
 
     @DeleteMapping("/users/{userId}/purge")
     ApiResponse<Void> purgeUser(@PathVariable("userId") Long userId);
+
+    @GetMapping("/users/stats")
+    ApiResponse<UserStatsVO> getUserStats();
 }

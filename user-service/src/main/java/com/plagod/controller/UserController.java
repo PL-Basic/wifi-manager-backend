@@ -2,6 +2,7 @@ package com.plagod.controller;
 
 import com.plagod.dto.ApiResponse;
 import com.plagod.dto.UserPageResult;
+import com.plagod.dto.UserStatsVO;
 import com.plagod.dto.UserStatusDTO;
 import com.plagod.dto.UserUpdateDTO;
 import com.plagod.dto.UserVO;
@@ -30,6 +31,11 @@ public class UserController {
                                                  @RequestParam(defaultValue = "10") Long size,
                                                  @RequestParam(required = false) String keyword) {
         return ApiResponse.success(userManageService.pageUsers(current, size, keyword));
+    }
+
+    @GetMapping("/stats")
+    public ApiResponse<UserStatsVO> getUserStats() {
+        return ApiResponse.success(userManageService.getUserStats());
     }
 
     @GetMapping("/{userId}")

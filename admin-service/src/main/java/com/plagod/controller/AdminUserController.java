@@ -2,6 +2,7 @@ package com.plagod.controller;
 
 import com.plagod.client.UserServiceClient;
 import com.plagod.dto.ApiResponse;
+import com.plagod.dto.UserStatsVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,6 +27,11 @@ public class AdminUserController {
                                          @RequestParam(defaultValue = "10") Long size,
                                          @RequestParam(required = false) String keyword) {
         return userServiceClient.pageUsers(current, size, keyword);
+    }
+
+    @GetMapping("/stats")
+    public ApiResponse<UserStatsVO> getUserStats() {
+        return userServiceClient.getUserStats();
     }
 
     @GetMapping("/{userId}")

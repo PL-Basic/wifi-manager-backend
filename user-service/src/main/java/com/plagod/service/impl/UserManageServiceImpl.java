@@ -3,6 +3,7 @@ package com.plagod.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.plagod.dto.UserPageResult;
+import com.plagod.dto.UserStatsVO;
 import com.plagod.dto.UserStatusDTO;
 import com.plagod.dto.UserUpdateDTO;
 import com.plagod.dto.UserVO;
@@ -86,6 +87,30 @@ public class UserManageServiceImpl implements UserManageService {
     @Override
     public void purgeUser(Long userId) {
         jdbcTemplate.update("DELETE FROM sys_user WHERE user_id = ?", userId);
+    }
+
+    @Override
+    public UserStatsVO getUserStats() {
+        long totalUsers = userMapper.selectCount(new QueryWrapper<User>());
+
+        QueryWrapper<User> enabledWrapper = new QueryWrapper<>();
+        enabledWrapper.eq("status", 1);
+        long enabledUsers = userMapper.selectCount(enabledWrapper);
+
+        QueryWrapper<User> disabledWrapper = new QueryWrapper<>();
+        disabledWrapper.eq("status", 0);
+        long disabledUsers = userMapper.selectCount(disabledWrapper);
+
+        QueryWrapper<User> adminWrapper = new QueryWrapper<>();
+        adminWrapper.eq("role", 1);
+        long adminUsers = userMapper.selectCount(adminWrapper);
+
+        UserStatsVO statsVO = new UserStatsVO();
+        statsVO.setTotalUsers(totalUsers);
+        statsVO.setEnabledUsers(enabledUsers);
+        statsVO.setDisabledUsers(disabledUsers);
+        statsVO.setAdminUsers(adminUsers);
+        return statsVO;
     }
 
     private User getExistingUser(Long userId) {

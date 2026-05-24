@@ -8,4 +8,6 @@ public class AdminOverviewVO {
     private String userServiceStatus;
     private String deviceServiceStatus;
     private String monitorServiceStatus;
+    private UserStatsVO userStats;
+    private DeviceStatsVO deviceStats;
 }

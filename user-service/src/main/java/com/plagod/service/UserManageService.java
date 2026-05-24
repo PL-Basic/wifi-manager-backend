@@ -1,6 +1,7 @@
 package com.plagod.service;
 
 import com.plagod.dto.UserPageResult;
+import com.plagod.dto.UserStatsVO;
 import com.plagod.dto.UserStatusDTO;
 import com.plagod.dto.UserUpdateDTO;
 import com.plagod.dto.UserVO;
@@ -17,4 +18,6 @@ public interface UserManageService {
     void deleteUser(Long userId);
 
     void purgeUser(Long userId);
+
+    UserStatsVO getUserStats();
 }

@@ -2,6 +2,7 @@ package com.plagod.controller;
 
 import com.plagod.client.DeviceServiceClient;
 import com.plagod.dto.ApiResponse;
+import com.plagod.dto.DeviceStatsVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -9,6 +10,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Collections;
@@ -20,6 +22,18 @@ public class AdminDeviceController {
 
     @Autowired
     private DeviceServiceClient deviceServiceClient;
+
+    @GetMapping
+    public ApiResponse<Object> pageDevices(@RequestParam(defaultValue = "1") Long current,
+                                           @RequestParam(defaultValue = "10") Long size,
+                                           @RequestParam(required = false) String keyword) {
+        return ApiResponse.success(deviceServiceClient.pageDevices(current, size, keyword).getData());
+    }
+
+    @GetMapping("/stats")
+    public ApiResponse<DeviceStatsVO> getDeviceStats() {
+        return deviceServiceClient.getDeviceStats();
+    }
 
     @GetMapping("/{nodeId}")
     public ApiResponse<Object> getDevice(@PathVariable Long nodeId) {
