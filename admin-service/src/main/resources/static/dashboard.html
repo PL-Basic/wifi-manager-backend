@@ -274,6 +274,80 @@
         </section>
     </div>
 
+    <div class="grid columns">
+        <section>
+            <div class="head">
+                <h2>黑名单</h2>
+                <span class="status" id="blacklistPageMeta">-</span>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>MAC</th>
+                        <th>原因</th>
+                        <th>操作员</th>
+                        <th>过期时间</th>
+                        <th>创建时间</th>
+                    </tr>
+                    </thead>
+                    <tbody id="blacklistRows"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section>
+            <div class="head">
+                <h2>会话</h2>
+                <span class="status" id="sessionPageMeta">-</span>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                    <tr>
+                        <th>SID</th>
+                        <th>用户</th>
+                        <th>节点</th>
+                        <th>MAC</th>
+                        <th>IP</th>
+                        <th>状态</th>
+                        <th>上/下行</th>
+                        <th>登录时间</th>
+                    </tr>
+                    </thead>
+                    <tbody id="sessionRows"></tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <section style="margin-top:14px;">
+        <div class="head">
+            <h2>流量日志</h2>
+            <span class="status" id="trafficPageMeta">-</span>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>会话</th>
+                    <th>MAC</th>
+                    <th>目标 IP</th>
+                    <th>端口</th>
+                    <th>SNI</th>
+                    <th>协议</th>
+                    <th>上行</th>
+                    <th>下行</th>
+                    <th>时间</th>
+                </tr>
+                </thead>
+                <tbody id="trafficRows"></tbody>
+            </table>
+        </div>
+    </section>
+
     <section class="raw">
         <div class="head">
             <h2>接口原始返回</h2>
@@ -353,6 +427,57 @@
         `).join("") || `<tr><td colspan="6">暂无数据</td></tr>`;
     }
 
+    function renderBlacklist(page) {
+        const records = page && page.records ? page.records : [];
+        $("blacklistPageMeta").textContent = page ? `共 ${page.total} 条` : "-";
+        $("blacklistRows").innerHTML = records.map((item) => `
+            <tr>
+                <td>${text(item.id)}</td>
+                <td>${text(item.mac)}</td>
+                <td>${text(item.reason)}</td>
+                <td>${text(item.operatorId)}</td>
+                <td>${text(item.expireTime)}</td>
+                <td>${text(item.createTime)}</td>
+            </tr>
+        `).join("") || `<tr><td colspan="6">暂无数据</td></tr>`;
+    }
+
+    function renderSessions(page) {
+        const records = page && page.records ? page.records : [];
+        $("sessionPageMeta").textContent = page ? `共 ${page.total} 条` : "-";
+        $("sessionRows").innerHTML = records.map((item) => `
+            <tr>
+                <td>${text(item.sessionId)}</td>
+                <td>${text(item.userId)}</td>
+                <td>${text(item.nodeId)}</td>
+                <td>${text(item.mac)}</td>
+                <td>${text(item.ip)}</td>
+                <td>${tagStatus(item.status)}</td>
+                <td>${text(item.bytesUp)} / ${text(item.bytesDown)}</td>
+                <td>${text(item.loginTime)}</td>
+            </tr>
+        `).join("") || `<tr><td colspan="8">暂无数据</td></tr>`;
+    }
+
+    function renderTraffic(page) {
+        const records = page && page.records ? page.records : [];
+        $("trafficPageMeta").textContent = page ? `共 ${page.total} 条` : "-";
+        $("trafficRows").innerHTML = records.map((item) => `
+            <tr>
+                <td>${text(item.id)}</td>
+                <td>${text(item.sessionId)}</td>
+                <td>${text(item.mac)}</td>
+                <td>${text(item.dstIp)}</td>
+                <td>${text(item.dstPort)}</td>
+                <td>${text(item.sni)}</td>
+                <td>${text(item.protocol)}</td>
+                <td>${text(item.bytesUp)}</td>
+                <td>${text(item.bytesDown)}</td>
+                <td>${text(item.logTime)}</td>
+            </tr>
+        `).join("") || `<tr><td colspan="10">暂无数据</td></tr>`;
+    }
+
     function buildQuery(keyword) {
         return keyword ? `&keyword=${encodeURIComponent(keyword)}` : "";
     }
@@ -366,10 +491,16 @@
             const dashboard = await requestJson("/admin/dashboard");
             const users = await requestJson(`/admin/users?current=1&size=10${buildQuery(keyword)}`);
             const devices = await requestJson(`/admin/devices?current=1&size=10${buildQuery(keyword)}`);
+            const blacklist = await requestJson(`/admin/devices/blacklist?current=1&size=10${buildQuery(keyword)}`);
+            const sessions = await requestJson(`/admin/sessions?current=1&size=10${keyword ? `&mac=${encodeURIComponent(keyword)}` : ""}`);
+            const traffic = await requestJson(`/admin/traffic?current=1&size=10${keyword ? `&mac=${encodeURIComponent(keyword)}` : ""}`);
 
             renderStats(dashboard || {});
             renderUsers(users);
             renderDevices(devices);
+            renderBlacklist(blacklist);
+            renderSessions(sessions);
+            renderTraffic(traffic);
             $("rawJson").textContent = JSON.stringify(dashboard, null, 2);
             $("statusText").textContent = `最后刷新：${new Date().toLocaleString()}`;
         } catch (error) {
