@@ -414,6 +414,97 @@
 
     <section>
         <div class="head">
+            <h2>访问管控规则</h2>
+            <span class="status" id="rulePageMeta">-</span>
+        </div>
+        <div class="filters">
+            <select class="small" id="ruleType">
+                <option value="">全部类型</option>
+                <option value="1">域名精确</option>
+                <option value="2">域名包含</option>
+                <option value="3">IP精确</option>
+                <option value="4">SNI 包含</option>
+            </select>
+            <select class="small" id="ruleEnabled">
+                <option value="">全部状态</option>
+                <option value="1">启用</option>
+                <option value="0">禁用</option>
+            </select>
+            <input class="small" id="ruleKeyword" placeholder="规则编码 / pattern / 描述">
+            <span class="grow"></span>
+            <button class="small" data-target="rule">查询</button>
+            <button class="small secondary" data-reset="rule">重置</button>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>编码</th>
+                    <th>类型</th>
+                    <th>Pattern</th>
+                    <th>动作</th>
+                    <th>级别</th>
+                    <th>启用</th>
+                    <th>描述</th>
+                    <th>创建时间</th>
+                </tr>
+                </thead>
+                <tbody id="ruleRows"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <section>
+        <div class="head">
+            <h2>告警事件</h2>
+            <span class="status" id="alertPageMeta">-</span>
+        </div>
+        <div class="filters">
+            <select class="small" id="alertLevel">
+                <option value="">全部级别</option>
+                <option value="1">严重</option>
+                <option value="2">警告</option>
+                <option value="3">信息</option>
+            </select>
+            <select class="small" id="alertStatus">
+                <option value="">全部状态</option>
+                <option value="0">待处理</option>
+                <option value="1">已处理</option>
+            </select>
+            <input class="small" id="alertMac" placeholder="MAC">
+            <label>从</label>
+            <input class="small" id="alertStart" type="datetime-local">
+            <label>到</label>
+            <input class="small" id="alertEnd" type="datetime-local">
+            <span class="grow"></span>
+            <button class="small" data-target="alert">查询</button>
+            <button class="small secondary" data-reset="alert">重置</button>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>级别</th>
+                    <th>规则</th>
+                    <th>标题</th>
+                    <th>MAC</th>
+                    <th>用户</th>
+                    <th>状态</th>
+                    <th>处理人</th>
+                    <th>处理时间</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody id="alertRows"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <section>
+        <div class="head">
             <h2>接口原始返回</h2>
             <span class="status">/admin/dashboard</span>
         </div>
@@ -573,16 +664,109 @@
             </tr>`);
     }
 
+    const RULE_TYPE = { 1: "域名精确", 2: "域名包含", 3: "IP精确", 4: "SNI包含" };
+    const ACTION_TYPE = { 1: "踢人", 2: "拦流量", 3: "仅告警" };
+    const LEVEL = { 1: "严重", 2: "警告", 3: "信息" };
+
+    function tagLevel(value) {
+        const n = Number(value);
+        const cls = n === 1 ? "bad" : n === 2 ? "" : "ok";
+        return `<span class="tag ${cls}">${LEVEL[n] || text(value)}</span>`;
+    }
+
+    function tagAlertStatus(value) {
+        const n = Number(value);
+        const cls = n === 1 ? "ok" : "bad";
+        return `<span class="tag ${cls}">${n === 1 ? "已处理" : "待处理"}</span>`;
+    }
+
+    async function loadRules() {
+        const params = {
+            ruleType: $("ruleType").value,
+            enabled: $("ruleEnabled").value,
+            keyword: $("ruleKeyword").value.trim(),
+        };
+        const data = await requestJson("/admin/rules" + buildQuery(params));
+        renderPage(data, "rulePageMeta", "ruleRows", 9, (item) => `
+            <tr>
+                <td>${text(item.id)}</td>
+                <td>${text(item.ruleCode)}</td>
+                <td>${RULE_TYPE[item.ruleType] || text(item.ruleType)}</td>
+                <td>${text(item.pattern)}</td>
+                <td>${ACTION_TYPE[item.actionType] || text(item.actionType)}</td>
+                <td>${tagLevel(item.level)}</td>
+                <td>${tagStatus(item.enabled)}</td>
+                <td>${text(item.description)}</td>
+                <td>${text(item.createTime)}</td>
+            </tr>`);
+    }
+
+    async function loadAlerts() {
+        const startLocal = $("alertStart").value;
+        const endLocal = $("alertEnd").value;
+        const params = {
+            level: $("alertLevel").value,
+            status: $("alertStatus").value,
+            mac: $("alertMac").value.trim(),
+            startTime: startLocal ? `${startLocal}:00` : "",
+            endTime: endLocal ? `${endLocal}:00` : "",
+        };
+        const data = await requestJson("/admin/alerts" + buildQuery(params));
+        renderPage(data, "alertPageMeta", "alertRows", 11, (item) => {
+            const pending = Number(item.status) !== 1;
+            const btn = pending
+                ? `<button class="small" onclick="handleAlert(${item.id})">标记处理</button>`
+                : "-";
+            return `
+            <tr>
+                <td>${text(item.id)}</td>
+                <td>${tagLevel(item.level)}</td>
+                <td>${text(item.ruleCode)}</td>
+                <td>${text(item.title)}</td>
+                <td>${text(item.mac)}</td>
+                <td>${text(item.userId)}</td>
+                <td>${tagAlertStatus(item.status)}</td>
+                <td>${text(item.handleUserId)}</td>
+                <td>${text(item.handleTime)}</td>
+                <td>${text(item.createTime)}</td>
+                <td>${btn}</td>
+            </tr>`;
+        });
+    }
+
+    async function handleAlert(id) {
+        const operator = prompt("处理人 ID（用户 ID）", "1");
+        if (operator === null) return;
+        showError("");
+        try {
+            const response = await fetch(`/admin/alerts/${id}/handle?handleUserId=${encodeURIComponent(operator)}`, {
+                method: "PATCH",
+                headers: { Accept: "application/json" },
+            });
+            if (!response.ok) throw new Error(`PATCH /admin/alerts/${id}/handle HTTP ${response.status}`);
+            const body = await response.json();
+            if (body.code && body.code !== 200) throw new Error(body.message || `code ${body.code}`);
+            await loadAlerts();
+        } catch (error) {
+            showError(error.message);
+        }
+    }
+    window.handleAlert = handleAlert;
+
     const loaders = {
         blacklist: loadBlacklist,
         session: loadSessions,
         traffic: loadTraffic,
+        rule: loadRules,
+        alert: loadAlerts,
     };
 
     const filterInputs = {
         blacklist: ["blacklistMac", "blacklistReason"],
         session: ["sessionMac", "sessionNodeId", "sessionUserId", "sessionStatus"],
         traffic: ["trafficMac", "trafficSessionId", "trafficDstIp", "trafficStart", "trafficEnd"],
+        rule: ["ruleType", "ruleEnabled", "ruleKeyword"],
+        alert: ["alertLevel", "alertStatus", "alertMac", "alertStart", "alertEnd"],
     };
 
     async function runLoader(name) {
@@ -610,6 +794,8 @@
                 loadBlacklist(),
                 loadSessions(),
                 loadTraffic(),
+                loadRules(),
+                loadAlerts(),
             ]);
             $("statusText").textContent = `最后刷新：${new Date().toLocaleString()}`;
         } catch (error) {

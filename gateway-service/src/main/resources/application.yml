@@ -22,3 +22,7 @@ spring:
           uri: lb://admin-service
           predicates:
             - Path=/admin/**
+        - id: monitor-service-route
+          uri: lb://monitor-service
+          predicates:
+            - Path=/rules/**,/alerts/**
