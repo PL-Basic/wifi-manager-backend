@@ -26,16 +26,26 @@ public interface UserServiceClient {
     ApiResponse<Object> getUser(@PathVariable("userId") Long userId);
 
     @PutMapping("/users/{userId}")
-    ApiResponse<Object> updateUser(@PathVariable("userId") Long userId, @RequestBody Map<String, Object> body);
+    ApiResponse<Object> updateUser(@PathVariable("userId") Long userId,
+                                   @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
+                                   @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole,
+                                   @RequestBody Map<String, Object> body);
 
     @PutMapping("/users/{userId}/status")
-    ApiResponse<Void> updateStatus(@PathVariable("userId") Long userId, @RequestBody Map<String, Object> body);
+    ApiResponse<Void> updateStatus(@PathVariable("userId") Long userId,
+                                   @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
+                                   @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole,
+                                   @RequestBody Map<String, Object> body);
 
     @DeleteMapping("/users/{userId}")
-    ApiResponse<Void> deleteUser(@PathVariable("userId") Long userId);
+    ApiResponse<Void> deleteUser(@PathVariable("userId") Long userId,
+                                 @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
+                                 @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole);
 
     @DeleteMapping("/users/{userId}/purge")
-    ApiResponse<Void> purgeUser(@PathVariable("userId") Long userId);
+    ApiResponse<Void> purgeUser(@PathVariable("userId") Long userId,
+                                @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
+                                @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole);
 
     @PostMapping("/users/{userId}/purge-requests")
     ApiResponse<Long> requestPurgeUser(@PathVariable("userId") Long userId,

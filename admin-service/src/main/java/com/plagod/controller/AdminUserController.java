@@ -42,23 +42,33 @@ public class AdminUserController {
     }
 
     @PutMapping("/{userId}")
-    public ApiResponse<Object> updateUser(@PathVariable Long userId, @RequestBody Map<String, Object> body) {
-        return userServiceClient.updateUser(userId, body);
+    public ApiResponse<Object> updateUser(@PathVariable Long userId,
+                                          @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
+                                          @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole,
+                                          @RequestBody Map<String, Object> body) {
+        return userServiceClient.updateUser(userId, operatorId, operatorRole, body);
     }
 
     @PutMapping("/{userId}/status")
-    public ApiResponse<Void> updateStatus(@PathVariable Long userId, @RequestBody Map<String, Object> body) {
-        return userServiceClient.updateStatus(userId, body);
+    public ApiResponse<Void> updateStatus(@PathVariable Long userId,
+                                          @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
+                                          @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole,
+                                          @RequestBody Map<String, Object> body) {
+        return userServiceClient.updateStatus(userId, operatorId, operatorRole, body);
     }
 
     @DeleteMapping("/{userId}")
-    public ApiResponse<Void> deleteUser(@PathVariable Long userId) {
-        return userServiceClient.deleteUser(userId);
+    public ApiResponse<Void> deleteUser(@PathVariable Long userId,
+                                        @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
+                                        @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole) {
+        return userServiceClient.deleteUser(userId, operatorId, operatorRole);
     }
 
     @DeleteMapping("/{userId}/purge")
-    public ApiResponse<Void> purgeUser(@PathVariable Long userId) {
-        return userServiceClient.purgeUser(userId);
+    public ApiResponse<Void> purgeUser(@PathVariable Long userId,
+                                       @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
+                                       @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole) {
+        return userServiceClient.purgeUser(userId, operatorId, operatorRole);
     }
 
     @PostMapping("/{userId}/purge-requests")

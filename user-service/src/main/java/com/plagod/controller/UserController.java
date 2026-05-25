@@ -68,19 +68,31 @@ public class UserController {
 
     @PutMapping("/{userId}/status")
     public ApiResponse<Void> updateStatus(@PathVariable Long userId,
+                                          @RequestHeader(value = "X-User-Role", required = false) Integer currentRole,
                                           @Valid @RequestBody UserStatusDTO statusDTO) {
+        if (!Integer.valueOf(0).equals(currentRole) && userManageService.getUser(userId).getRole() <= 1) {
+            throw new IllegalArgumentException("管理员之间不能互相修改");
+        }
         userManageService.updateStatus(userId, statusDTO);
         return ApiResponse.success("用户状态修改成功", null);
     }
 
     @DeleteMapping("/{userId}")
-    public ApiResponse<Void> deleteUser(@PathVariable Long userId) {
+    public ApiResponse<Void> deleteUser(@PathVariable Long userId,
+                                        @RequestHeader(value = "X-User-Role", required = false) Integer currentRole) {
+        if (!Integer.valueOf(0).equals(currentRole) && userManageService.getUser(userId).getRole() <= 1) {
+            throw new IllegalArgumentException("管理员之间不能互相修改");
+        }
         userManageService.deleteUser(userId);
         return ApiResponse.success("用户已逻辑删除", null);
     }
 
     @DeleteMapping("/{userId}/purge")
-    public ApiResponse<Void> purgeUser(@PathVariable Long userId) {
+    public ApiResponse<Void> purgeUser(@PathVariable Long userId,
+                                       @RequestHeader(value = "X-User-Role", required = false) Integer currentRole) {
+        if (!Integer.valueOf(0).equals(currentRole)) {
+            throw new IllegalArgumentException("只有超级管理员可以直接物理删除");
+        }
         userManageService.purgeUser(userId);
         return ApiResponse.success("用户已物理删除", null);
     }
