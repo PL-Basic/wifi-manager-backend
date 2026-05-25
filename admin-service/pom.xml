@@ -20,7 +20,7 @@
     <dependencies>
         <dependency>
             <groupId>org.example</groupId>
-            <artifactId>wifi-common</artifactId>
+            <artifactId>wifi-common-api</artifactId>
         </dependency>
 
         <dependency>

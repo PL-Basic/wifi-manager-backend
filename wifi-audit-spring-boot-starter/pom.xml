@@ -9,61 +9,50 @@
         <version>0.0.1-SNAPSHOT</version>
     </parent>
 
-    <artifactId>wifi-common</artifactId>
+    <artifactId>wifi-audit-spring-boot-starter</artifactId>
+    <description>
+        Servlet 容器内的 @Audited 切面 Starter。
+        通过 Spring Boot AutoConfiguration 自动激活；条件：
+          - classpath 上存在 javax.servlet.http.HttpServletRequest（即非 webflux 服务）
+          - 容器内已注册 AuditLogMapper（即业务服务已启用 MyBatis-Plus 并扫描到 mapper）
+          - wifi.audit.enabled 未显式置 false
+    </description>
 
     <dependencies>
-        <!-- MyBatis-Plus 核心注解（@TableName/@TableId/@TableLogic 等） -->
         <dependency>
-            <groupId>com.baomidou</groupId>
-            <artifactId>mybatis-plus-core</artifactId>
+            <groupId>org.example</groupId>
+            <artifactId>wifi-common-mybatis</artifactId>
         </dependency>
 
-        <!-- @Audited 切面所需：spring AOP + 拿 HttpServletRequest -->
+        <!-- AOP 切面 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
+
+        <!-- AuditAspect 用 RequestContextHolder / HttpServletRequest -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-web</artifactId>
         </dependency>
         <dependency>
             <groupId>javax.servlet</groupId>
             <artifactId>javax.servlet-api</artifactId>
             <scope>provided</scope>
         </dependency>
+
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
         </dependency>
-        <dependency>
-            <groupId>org.springframework</groupId>
-            <artifactId>spring-web</artifactId>
-        </dependency>
 
-        <!-- BCrypt 密码工具 -->
-        <dependency>
-            <groupId>org.springframework.security</groupId>
-            <artifactId>spring-security-core</artifactId>
-        </dependency>
-
-        <!-- DTO 参数校验 -->
+        <!-- 配置元数据生成（IDE 在 application.yml 提示 wifi.audit.enabled） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-validation</artifactId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <optional>true</optional>
         </dependency>
 
-        <!-- JWT 0.11.5 三件套 -->
-        <dependency>
-            <groupId>io.jsonwebtoken</groupId>
-            <artifactId>jjwt-api</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.jsonwebtoken</groupId>
-            <artifactId>jjwt-impl</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.jsonwebtoken</groupId>
-            <artifactId>jjwt-jackson</artifactId>
-        </dependency>
-
-        <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>

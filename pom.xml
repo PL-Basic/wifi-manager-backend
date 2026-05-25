@@ -19,7 +19,9 @@
     <description>家庭WiFi管理系统 - 微服务后端</description>
 
     <modules>
-        <module>wifi-common</module>
+        <module>wifi-common-api</module>
+        <module>wifi-common-mybatis</module>
+        <module>wifi-audit-spring-boot-starter</module>
         <module>wifi-gen</module>
         <module>gateway-service</module>
         <module>auth-service</module>
@@ -154,7 +156,17 @@
             <!-- ===== 内部模块 ===== -->
             <dependency>
                 <groupId>org.example</groupId>
-                <artifactId>wifi-common</artifactId>
+                <artifactId>wifi-common-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.example</groupId>
+                <artifactId>wifi-common-mybatis</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.example</groupId>
+                <artifactId>wifi-audit-spring-boot-starter</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>
