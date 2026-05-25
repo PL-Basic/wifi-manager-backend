@@ -63,6 +63,7 @@ public class ClientLocationServiceImpl implements ClientLocationService {
         }
         queryWrapper.orderByDesc("report_time");
 
+        Long total = clientLocationMapper.selectCount(queryWrapper);
         Page<ClientLocation> page = clientLocationMapper.selectPage(new Page<>(pageCurrent, pageSize), queryWrapper);
         List<ClientLocationVO> records = new ArrayList<>();
         for (ClientLocation item : page.getRecords()) {
@@ -72,7 +73,7 @@ public class ClientLocationServiceImpl implements ClientLocationService {
         }
 
         ClientLocationPageResult result = new ClientLocationPageResult();
-        result.setTotal(page.getTotal());
+        result.setTotal(total == null ? 0 : total);
         result.setCurrent(page.getCurrent());
         result.setSize(page.getSize());
         result.setRecords(records);
