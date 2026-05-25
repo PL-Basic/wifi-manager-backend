@@ -5,6 +5,7 @@ spring:
     nacos:
       discovery:
         server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        ip: 127.0.0.1
       config:
         server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
         file-extension: yml
