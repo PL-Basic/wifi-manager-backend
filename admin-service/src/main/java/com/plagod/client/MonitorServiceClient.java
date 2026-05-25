@@ -58,4 +58,12 @@ public interface MonitorServiceClient {
                                    @RequestParam(value = "target", required = false) String target,
                                    @RequestParam(value = "startTime", required = false) String startTime,
                                    @RequestParam(value = "endTime", required = false) String endTime);
+
+    @GetMapping("/locations")
+    ApiResponse<Object> pageLocations(@RequestParam("current") Long current,
+                                      @RequestParam("size") Long size,
+                                      @RequestParam(value = "mac", required = false) String mac,
+                                      @RequestParam(value = "userId", required = false) Long userId,
+                                      @RequestParam(value = "startTime", required = false) String startTime,
+                                      @RequestParam(value = "endTime", required = false) String endTime);
 }

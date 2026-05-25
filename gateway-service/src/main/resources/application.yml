@@ -25,7 +25,7 @@ spring:
         - id: monitor-service-route
           uri: lb://monitor-service
           predicates:
-            - Path=/rules/**,/alerts/**,/audits/**
+            - Path=/rules/**,/alerts/**,/audits/**,/locations/**
 
 jwt:
   # 必须与 auth-service 的 jwt.secret 保持一致；签发与解析使用同一密钥。
