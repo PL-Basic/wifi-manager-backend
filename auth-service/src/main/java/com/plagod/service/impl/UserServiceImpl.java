@@ -122,6 +122,7 @@ public class UserServiceImpl implements UserService {
         AuthResultDTO authResultDTO = new AuthResultDTO();
         authResultDTO.setToken(token);
         authResultDTO.setUsername(user.getUsername());
+        authResultDTO.setRole(user.getRole());
         authResultDTO.setNickname(user.getNickname());
         authResultDTO.setAvatar(user.getAvatar());
 

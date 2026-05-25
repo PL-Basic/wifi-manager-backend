@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -45,7 +46,15 @@ public class UserController {
 
     @PutMapping("/{userId}")
     public ApiResponse<UserVO> updateUser(@PathVariable Long userId,
+                                          @RequestHeader(value = "X-User-Id", required = false) Long currentUserId,
+                                          @RequestHeader(value = "X-User-Role", required = false) Integer currentRole,
                                           @RequestBody UserUpdateDTO updateDTO) {
+        if (!Integer.valueOf(1).equals(currentRole) && userId.equals(currentUserId)) {
+            updateDTO.setRole(null);
+            updateDTO.setMaxConnections(null);
+            updateDTO.setDailyQuotaMinutes(null);
+            updateDTO.setExpireTime(null);
+        }
         return ApiResponse.success("用户信息修改成功", userManageService.updateUser(userId, updateDTO));
     }
 

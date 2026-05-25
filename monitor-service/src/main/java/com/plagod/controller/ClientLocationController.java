@@ -35,10 +35,15 @@ public class ClientLocationController {
                                                                @RequestParam(defaultValue = "10") Long size,
                                                                @RequestParam(required = false) String mac,
                                                                @RequestParam(required = false) Long userId,
+                                                               @RequestHeader(value = "X-User-Id", required = false) Long currentUserId,
+                                                               @RequestHeader(value = "X-User-Role", required = false) Integer currentRole,
                                                                @RequestParam(required = false)
                                                                @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTime,
                                                                @RequestParam(required = false)
                                                                @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime) {
+        if (!Integer.valueOf(1).equals(currentRole)) {
+            userId = currentUserId;
+        }
         return ApiResponse.success(clientLocationService.pageLocations(current, size, mac, userId, startTime, endTime));
     }
 }

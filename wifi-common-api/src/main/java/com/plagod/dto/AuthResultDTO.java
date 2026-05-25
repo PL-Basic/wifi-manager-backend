@@ -7,6 +7,7 @@ import lombok.Data;
 public class AuthResultDTO {
     private String token;
     private String username;
+    private Integer role;
     private String nickname;
     private String avatar;
 }
