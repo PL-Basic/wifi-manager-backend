@@ -51,9 +51,7 @@ public class AlertEventServiceImpl implements AlertEventService {
 
         List<AlertEventVO> records = new ArrayList<>();
         for (AlertEvent item : page.getRecords()) {
-            AlertEventVO vo = new AlertEventVO();
-            BeanUtils.copyProperties(item, vo);
-            records.add(vo);
+            records.add(toVO(item));
         }
 
         AlertEventPageResult result = new AlertEventPageResult();
@@ -62,6 +60,15 @@ public class AlertEventServiceImpl implements AlertEventService {
         result.setSize(page.getSize());
         result.setRecords(records);
         return result;
+    }
+
+    @Override
+    public AlertEventVO getAlert(Long id) {
+        AlertEvent entity = alertEventMapper.selectById(id);
+        if (entity == null) {
+            throw new IllegalArgumentException("告警事件不存在");
+        }
+        return toVO(entity);
     }
 
     @Override
@@ -78,5 +85,11 @@ public class AlertEventServiceImpl implements AlertEventService {
         entity.setHandleUserId(handleUserId);
         entity.setHandleTime(LocalDateTime.now());
         alertEventMapper.updateById(entity);
+    }
+
+    private AlertEventVO toVO(AlertEvent entity) {
+        AlertEventVO vo = new AlertEventVO();
+        BeanUtils.copyProperties(entity, vo);
+        return vo;
     }
 }

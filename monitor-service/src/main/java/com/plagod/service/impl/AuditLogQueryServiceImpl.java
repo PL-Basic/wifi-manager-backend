@@ -50,9 +50,7 @@ public class AuditLogQueryServiceImpl implements AuditLogQueryService {
 
         List<AuditLogVO> records = new ArrayList<>();
         for (AuditLog item : page.getRecords()) {
-            AuditLogVO vo = new AuditLogVO();
-            BeanUtils.copyProperties(item, vo);
-            records.add(vo);
+            records.add(toVO(item));
         }
 
         AuditLogPageResult result = new AuditLogPageResult();
@@ -61,5 +59,20 @@ public class AuditLogQueryServiceImpl implements AuditLogQueryService {
         result.setSize(page.getSize());
         result.setRecords(records);
         return result;
+    }
+
+    @Override
+    public AuditLogVO getAudit(Long id) {
+        AuditLog entity = auditLogMapper.selectById(id);
+        if (entity == null) {
+            throw new IllegalArgumentException("审计记录不存在");
+        }
+        return toVO(entity);
+    }
+
+    private AuditLogVO toVO(AuditLog entity) {
+        AuditLogVO vo = new AuditLogVO();
+        BeanUtils.copyProperties(entity, vo);
+        return vo;
     }
 }

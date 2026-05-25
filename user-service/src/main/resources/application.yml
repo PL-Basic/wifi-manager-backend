@@ -7,6 +7,14 @@ spring:
     url: jdbc:mysql://localhost:3306/wifi?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&useSSL=false
     username: root
     password: 20040903
+  servlet:
+    multipart:
+      max-file-size: 2MB
+      max-request-size: 2MB
+
+wifi:
+  upload:
+    avatar-dir: ${WIFI_AVATAR_DIR:uploads/avatars}
 
 mybatis-plus:
   configuration:

@@ -50,6 +50,9 @@ public interface MonitorServiceClient {
     @PatchMapping("/alerts/{id}/handle")
     ApiResponse<Void> handleAlert(@PathVariable("id") Long id, @RequestParam("handleUserId") Long handleUserId);
 
+    @GetMapping("/alerts/{id}")
+    ApiResponse<Object> getAlert(@PathVariable("id") Long id);
+
     @GetMapping("/audits")
     ApiResponse<Object> pageAudits(@RequestParam("current") Long current,
                                    @RequestParam("size") Long size,
@@ -58,6 +61,9 @@ public interface MonitorServiceClient {
                                    @RequestParam(value = "target", required = false) String target,
                                    @RequestParam(value = "startTime", required = false) String startTime,
                                    @RequestParam(value = "endTime", required = false) String endTime);
+
+    @GetMapping("/audits/{id}")
+    ApiResponse<Object> getAudit(@PathVariable("id") Long id);
 
     @GetMapping("/locations")
     ApiResponse<Object> pageLocations(@RequestParam("current") Long current,

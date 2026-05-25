@@ -28,6 +28,11 @@ public class AdminAlertController {
         return monitorServiceClient.pageAlerts(current, size, level, status, mac, startTime, endTime);
     }
 
+    @GetMapping("/{id}")
+    public ApiResponse<Object> getAlert(@PathVariable Long id) {
+        return monitorServiceClient.getAlert(id);
+    }
+
     @PatchMapping("/{id}/handle")
     public ApiResponse<Void> handle(@PathVariable Long id, @RequestParam Long handleUserId) {
         return monitorServiceClient.handleAlert(id, handleUserId);

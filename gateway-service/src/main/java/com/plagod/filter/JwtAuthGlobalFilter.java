@@ -28,7 +28,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
             "/auth/login",
             "/auth/register"
     );
-    private static final Pattern USER_SELF_PATH = Pattern.compile("^/users/(\\d+)$");
+    private static final Pattern USER_SELF_PATH = Pattern.compile("^/users/(\\d+)(/avatar)?$");
     private static final int SUPER_ADMIN_ROLE = 0;
     private static final int ADMIN_ROLE = 1;
 
@@ -72,7 +72,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     }
 
     private boolean isWhitePath(String path) {
-        return WHITE_PATHS.contains(path);
+        return WHITE_PATHS.contains(path) || path.startsWith("/users/avatars/");
     }
 
     private boolean isAllowed(String path, Long userId, Integer role) {

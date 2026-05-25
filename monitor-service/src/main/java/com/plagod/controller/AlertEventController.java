@@ -1,6 +1,7 @@
 package com.plagod.controller;
 
 import com.plagod.dto.AlertEventPageResult;
+import com.plagod.dto.AlertEventVO;
 import com.plagod.dto.ApiResponse;
 import com.plagod.service.AlertEventService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,6 +33,11 @@ public class AlertEventController {
                                                         @RequestParam(required = false)
                                                         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime) {
         return ApiResponse.success(alertEventService.pageAlerts(current, size, level, status, mac, startTime, endTime));
+    }
+
+    @GetMapping("/{id}")
+    public ApiResponse<AlertEventVO> getAlert(@PathVariable Long id) {
+        return ApiResponse.success(alertEventService.getAlert(id));
     }
 
     @PatchMapping("/{id}/handle")

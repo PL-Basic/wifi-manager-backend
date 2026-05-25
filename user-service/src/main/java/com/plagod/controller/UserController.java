@@ -1,6 +1,7 @@
 package com.plagod.controller;
 
 import com.plagod.dto.ApiResponse;
+import com.plagod.dto.AvatarUploadResult;
 import com.plagod.dto.UserPageResult;
 import com.plagod.dto.UserOperationRequestPageResult;
 import com.plagod.dto.UserOperationReviewDTO;
@@ -9,6 +10,7 @@ import com.plagod.dto.UserStatusDTO;
 import com.plagod.dto.UserUpdateDTO;
 import com.plagod.dto.UserVO;
 import com.plagod.entity.UserOperationRequest;
+import com.plagod.service.AvatarStorageService;
 import com.plagod.service.UserManageService;
 import com.plagod.service.UserOperationRequestService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.validation.Valid;
 
@@ -34,6 +37,9 @@ public class UserController {
 
     @Autowired
     private UserOperationRequestService userOperationRequestService;
+
+    @Autowired
+    private AvatarStorageService avatarStorageService;
 
     @GetMapping
     public ApiResponse<UserPageResult> pageUsers(@RequestParam(defaultValue = "1") Long current,
@@ -64,6 +70,25 @@ public class UserController {
             updateDTO.setExpireTime(null);
         }
         return ApiResponse.success("用户信息修改成功", userManageService.updateUser(userId, updateDTO, currentRole));
+    }
+
+    @PostMapping("/{userId}/avatar")
+    public ApiResponse<AvatarUploadResult> uploadAvatar(@PathVariable Long userId,
+                                                        @RequestHeader(value = "X-User-Id", required = false) Long currentUserId,
+                                                        @RequestHeader(value = "X-User-Role", required = false) Integer currentRole,
+                                                        @RequestParam("file") MultipartFile file) {
+        if (Integer.valueOf(2).equals(currentRole) && !userId.equals(currentUserId)) {
+            throw new IllegalArgumentException("普通用户只能上传自己的头像");
+        }
+        if (!Integer.valueOf(0).equals(currentRole) && !userId.equals(currentUserId)
+                && userManageService.getUser(userId).getRole() <= 1) {
+            throw new IllegalArgumentException("管理员之间不能互相修改");
+        }
+        AvatarUploadResult result = avatarStorageService.store(userId, file);
+        UserUpdateDTO updateDTO = new UserUpdateDTO();
+        updateDTO.setAvatar(result.getUrl());
+        userManageService.updateUser(userId, updateDTO, currentRole);
+        return ApiResponse.success("头像上传成功", result);
     }
 
     @PutMapping("/{userId}/status")

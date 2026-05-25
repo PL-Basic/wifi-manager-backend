@@ -4,6 +4,7 @@ import com.plagod.client.MonitorServiceClient;
 import com.plagod.dto.ApiResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -24,5 +25,10 @@ public class AdminAuditController {
                                           @RequestParam(required = false) String startTime,
                                           @RequestParam(required = false) String endTime) {
         return monitorServiceClient.pageAudits(current, size, action, operatorName, target, startTime, endTime);
+    }
+
+    @GetMapping("/{id}")
+    public ApiResponse<Object> getAudit(@PathVariable Long id) {
+        return monitorServiceClient.getAudit(id);
     }
 }
