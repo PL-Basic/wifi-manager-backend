@@ -11,7 +11,7 @@ public interface UserManageService {
 
     UserVO getUser(Long userId);
 
-    UserVO updateUser(Long userId, UserUpdateDTO updateDTO);
+    UserVO updateUser(Long userId, UserUpdateDTO updateDTO, Integer operatorRole);
 
     void updateStatus(Long userId, UserStatusDTO statusDTO);
 

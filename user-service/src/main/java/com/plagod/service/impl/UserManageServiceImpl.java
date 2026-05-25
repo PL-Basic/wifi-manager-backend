@@ -66,8 +66,14 @@ public class UserManageServiceImpl implements UserManageService {
 
     @Override
     @Audited(action = "user.update")
-    public UserVO updateUser(Long userId, UserUpdateDTO updateDTO) {
+    public UserVO updateUser(Long userId, UserUpdateDTO updateDTO, Integer operatorRole) {
         User user = getExistingUser(userId);
+        if (!Integer.valueOf(0).equals(operatorRole)) {
+            if (user.getRole() != null && user.getRole() <= 1) {
+                throw new IllegalArgumentException("管理员之间不能互相修改");
+            }
+            updateDTO.setRole(null);
+        }
         BeanUtils.copyProperties(updateDTO, user);
         userMapper.updateById(user);
         return toVO(userMapper.selectById(userId));

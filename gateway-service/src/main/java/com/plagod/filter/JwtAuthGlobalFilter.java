@@ -29,6 +29,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
             "/auth/register"
     );
     private static final Pattern USER_SELF_PATH = Pattern.compile("^/users/(\\d+)$");
+    private static final int SUPER_ADMIN_ROLE = 0;
     private static final int ADMIN_ROLE = 1;
 
     @Autowired
@@ -75,7 +76,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     }
 
     private boolean isAllowed(String path, Long userId, Integer role) {
-        if (Integer.valueOf(ADMIN_ROLE).equals(role)) {
+        if (Integer.valueOf(SUPER_ADMIN_ROLE).equals(role) || Integer.valueOf(ADMIN_ROLE).equals(role)) {
             return true;
         }
         if (path.startsWith("/admin/")) {
