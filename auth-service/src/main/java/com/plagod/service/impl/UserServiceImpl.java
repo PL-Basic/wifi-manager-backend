@@ -21,10 +21,14 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 @Service
 @Slf4j
 public class UserServiceImpl implements UserService {
+
+    private static final Pattern PHONE_PATTERN = Pattern.compile("^1[3-9]\\d{9}$");
+    private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
     @Autowired
     private UserMapper userMapper;
@@ -41,6 +45,8 @@ public class UserServiceImpl implements UserService {
         queryWrapper.and(wrapper->{
             //用户名一定会被输入因此直接作为判断规则
             wrapper.eq("username", registerDTO.getUsername());
+            wrapper.or().eq("phone", registerDTO.getUsername());
+            wrapper.or().eq("email", registerDTO.getUsername());
             //邮箱和手机号都是可选且唯一，因此先进行判断是否存在
             //如果存在则作为判断规则
             if (StringUtils.hasText(registerDTO.getEmail())){
@@ -57,7 +63,9 @@ public class UserServiceImpl implements UserService {
         //收集冲突的字段
         if (!users.isEmpty()) {
             for (User user : users) {
-                if (Objects.equals(user.getUsername(), registerDTO.getUsername())) {
+                if (Objects.equals(user.getUsername(), registerDTO.getUsername())
+                        || Objects.equals(user.getPhone(), registerDTO.getUsername())
+                        || Objects.equals(user.getEmail(), registerDTO.getUsername())) {
                     conflictField.add(ConflictFieldEnum.USERNAME);
                 }
                 if (StringUtils.hasText(user.getEmail())
@@ -95,15 +103,8 @@ public class UserServiceImpl implements UserService {
     public LoginResult login(LoginDTO loginDTO){
         //判断使用的是什么登录，写出指定规则
         String account = loginDTO.getAccount();
-        QueryWrapper<User> queryWrapper = new QueryWrapper<>();
-        queryWrapper.eq("del_flag", 0);
-        queryWrapper.and(wrapper->{
-            wrapper.eq("username", account)
-                    .or().eq("email", account)
-                    .or().eq("phone", account);
-        });
         //使用指定规则找出账号
-        User user = userMapper.selectOne(queryWrapper);
+        User user = findLoginUser(account);
         //判断输入的内容是否是正确的，存在的
         if (user == null) {
             return LoginResult.fail(LoginStatusEnum.ACCOUNT_NOT_FOUND,"账号不存在");
@@ -127,6 +128,33 @@ public class UserServiceImpl implements UserService {
         authResultDTO.setAvatar(user.getAvatar());
 
         return LoginResult.success(authResultDTO);
+    }
+
+    private boolean isPhone(String value) {
+        return value != null && PHONE_PATTERN.matcher(value).matches();
+    }
+
+    private boolean isEmail(String value) {
+        return value != null && EMAIL_PATTERN.matcher(value).matches();
+    }
+
+    private User findLoginUser(String account) {
+        if (isPhone(account)) {
+            User user = findByField("phone", account);
+            return user != null ? user : findByField("username", account);
+        }
+        if (isEmail(account)) {
+            User user = findByField("email", account);
+            return user != null ? user : findByField("username", account);
+        }
+        return findByField("username", account);
+    }
+
+    private User findByField(String field, String value) {
+        QueryWrapper<User> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("del_flag", 0);
+        queryWrapper.eq(field, value);
+        return userMapper.selectOne(queryWrapper);
     }
 
 
