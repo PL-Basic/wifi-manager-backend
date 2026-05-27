@@ -94,8 +94,8 @@ public class AccessRuleServiceImpl implements AccessRuleService {
             throw new IllegalArgumentException("规则不存在");
         }
 
-        Integer finalEnabled = updateDTO.getEnabled() == null ? 1 : updateDTO.getEnabled();
-        Integer finalActionType = updateDTO.getActionType() == null ? 1 : updateDTO.getActionType();
+        Integer finalEnabled = updateDTO.getEnabled() == null ? entity.getEnabled() : updateDTO.getEnabled();
+        Integer finalActionType = updateDTO.getActionType() == null ? entity.getActionType() : updateDTO.getActionType();
         Integer finalLevel = updateDTO.getLevel() != null ? updateDTO.getLevel() : entity.getLevel();
         Integer finalRuleType = updateDTO.getRuleType() != null ? updateDTO.getRuleType() : entity.getRuleType();
         String finalPattern = updateDTO.getPattern() != null ? cleanRequiredText(updateDTO.getPattern(), "匹配值不能为空") : entity.getPattern();
