@@ -45,8 +45,6 @@ public class UserServiceImpl implements UserService {
         queryWrapper.and(wrapper->{
             //用户名一定会被输入因此直接作为判断规则
             wrapper.eq("username", registerDTO.getUsername());
-            wrapper.or().eq("phone", registerDTO.getUsername());
-            wrapper.or().eq("email", registerDTO.getUsername());
             //邮箱和手机号都是可选且唯一，因此先进行判断是否存在
             //如果存在则作为判断规则
             if (StringUtils.hasText(registerDTO.getEmail())){
@@ -63,9 +61,7 @@ public class UserServiceImpl implements UserService {
         //收集冲突的字段
         if (!users.isEmpty()) {
             for (User user : users) {
-                if (Objects.equals(user.getUsername(), registerDTO.getUsername())
-                        || Objects.equals(user.getPhone(), registerDTO.getUsername())
-                        || Objects.equals(user.getEmail(), registerDTO.getUsername())) {
+                if (Objects.equals(user.getUsername(), registerDTO.getUsername())){
                     conflictField.add(ConflictFieldEnum.USERNAME);
                 }
                 if (StringUtils.hasText(user.getEmail())
@@ -101,10 +97,19 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public LoginResult login(LoginDTO loginDTO){
-        //判断使用的是什么登录，写出指定规则
+        //判断使用的是什么登录
         String account = loginDTO.getAccount();
-        //使用指定规则找出账号
-        User user = findLoginUser(account);
+        String loginType = loginDTO.getLoginType();
+        User user = new User();
+        if("username".equals(loginType)){
+            user = findByField("username", account);
+        }else if("contact".equals(loginType)){
+            user = findContactLoginUser(account);
+        }else {
+            throw new RuntimeException("登录类型错误");
+        }
+
+
         //判断输入的内容是否是正确的，存在的
         if (user == null) {
             return LoginResult.fail(LoginStatusEnum.ACCOUNT_NOT_FOUND,"账号不存在");
@@ -137,24 +142,34 @@ public class UserServiceImpl implements UserService {
     private boolean isEmail(String value) {
         return value != null && EMAIL_PATTERN.matcher(value).matches();
     }
-
-    private User findLoginUser(String account) {
-        if (isPhone(account)) {
-            User user = findByField("phone", account);
-            return user != null ? user : findByField("username", account);
-        }
-        if (isEmail(account)) {
-            User user = findByField("email", account);
-            return user != null ? user : findByField("username", account);
-        }
-        return findByField("username", account);
-    }
+    //处理账号类型的方法。
+//    private User findLoginUser(String account) {
+//        if (isPhone(account)) {
+//            User user = findByField("phone", account);
+//            return user != null ? user : findByField("username", account);
+//        }
+//        if (isEmail(account)) {
+//            User user = findByField("email", account);
+//            return user != null ? user : findByField("username", account);
+//        }
+//        return findByField("username", account);
+//    }
 
     private User findByField(String field, String value) {
         QueryWrapper<User> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("del_flag", 0);
         queryWrapper.eq(field, value);
         return userMapper.selectOne(queryWrapper);
+    }
+
+    private User findContactLoginUser(String account) {
+        if (isPhone(account)) {
+            return findByField("phone",account);
+        }
+        if (isEmail(account)) {
+            return findByField("email",account);
+        }
+        return null;
     }
 
 

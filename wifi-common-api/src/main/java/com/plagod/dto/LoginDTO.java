@@ -13,4 +13,7 @@ public class LoginDTO {
     private String account;
     @NotBlank(message = "密码不能为空")
     private String password;
+    @NotBlank(message = "登录类型错误")
+    @Pattern(regexp = "^(username|contact)$")
+    private String loginType;
 }

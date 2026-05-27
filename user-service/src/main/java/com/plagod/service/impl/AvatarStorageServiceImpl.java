@@ -19,7 +19,7 @@ import java.util.UUID;
 @Service
 public class AvatarStorageServiceImpl implements AvatarStorageService {
 
-    private static final long MAX_SIZE = 2L * 1024 * 1024;
+    private static final long MAX_SIZE = 16L * 1024 * 1024;
 
     @Value("${wifi.upload.avatar-dir:uploads/avatars}")
     private String avatarDir;
@@ -33,7 +33,7 @@ public class AvatarStorageServiceImpl implements AvatarStorageService {
             throw new IllegalArgumentException("头像文件不能为空");
         }
         if (file.getSize() > MAX_SIZE) {
-            throw new IllegalArgumentException("头像文件不能超过 2MB");
+            throw new IllegalArgumentException("头像文件不能超过 16MB");
         }
 
         String extension = resolveExtension(file);

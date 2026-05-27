@@ -9,8 +9,8 @@ spring:
     password: 20040903
   servlet:
     multipart:
-      max-file-size: 2MB
-      max-request-size: 2MB
+      max-file-size: 16MB
+      max-request-size: 16MB
 
 wifi:
   upload:

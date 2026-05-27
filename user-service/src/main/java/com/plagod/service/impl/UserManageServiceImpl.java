@@ -68,13 +68,32 @@ public class UserManageServiceImpl implements UserManageService {
     @Audited(action = "user.update")
     public UserVO updateUser(Long userId, UserUpdateDTO updateDTO, Integer operatorRole) {
         User user = getExistingUser(userId);
+
+        updateDTO.setNickname(cleanText(user.getNickname()));
+        updateDTO.setEmail(cleanText(user.getEmail()));
+        updateDTO.setPhone(cleanText(user.getPhone()));
+        updateDTO.setAvatar(cleanText(user.getAvatar()));
+
         if (!Integer.valueOf(0).equals(operatorRole)) {
             if (user.getRole() != null && user.getRole() <= 1) {
                 throw new IllegalArgumentException("管理员之间不能互相修改");
             }
             updateDTO.setRole(null);
         }
-        BeanUtils.copyProperties(updateDTO, user);
+
+        if(updateDTO.getEmail() != null){
+            user.setEmail(updateDTO.getEmail());
+        }
+        if(updateDTO.getPhone() != null){
+            user.setPhone(updateDTO.getPhone());
+        }
+        if(updateDTO.getAvatar() != null){
+            user.setAvatar(updateDTO.getAvatar());
+        }
+        if(updateDTO.getNickname() != null){
+            user.setNickname(updateDTO.getNickname());
+        }
+
         userMapper.updateById(user);
         return toVO(userMapper.selectById(userId));
     }
@@ -137,4 +156,13 @@ public class UserManageServiceImpl implements UserManageService {
         BeanUtils.copyProperties(user, userVO);
         return userVO;
     }
+
+    private String cleanText(String text) {
+        if (!StringUtils.hasText(text)) {
+            return null;
+        }
+        return text.trim();
+    }
+
+
 }

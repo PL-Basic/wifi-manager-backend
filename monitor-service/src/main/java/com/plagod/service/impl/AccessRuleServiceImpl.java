@@ -17,9 +17,35 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 @Service
 public class AccessRuleServiceImpl implements AccessRuleService {
+
+    // IPv4
+    private static final Pattern IPV4 = Pattern.compile(
+            "^((25[0-5]|2[0-4]\\d|1\\d{2}|[1-9]\\d|\\d)\\.){3}(25[0-5]|2[0-4]\\d|1\\d{2}|[1-9]\\d|\\d)$"
+    );
+
+    // IPv4 CIDR
+    private static final Pattern IPV4_CIDR = Pattern.compile(
+            "^((25[0-5]|2[0-4]\\d|1\\d{2}|[1-9]\\d|\\d)\\.){3}(25[0-5]|2[0-4]\\d|1\\d{2}|[1-9]\\d|\\d)/(3[0-2]|[12]\\d|\\d)$"
+    );
+
+    // IPv6
+    private static final Pattern IPV6 = Pattern.compile(
+            "^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$|^(([0-9a-fA-F]{1,4}:)*[0-9a-fA-F]{1,4})?::(([0-9a-fA-F]{1,4}:)*[0-9a-fA-F]{1,4})?$"
+    );
+
+    // IPv6 CIDR
+    private static final Pattern IPV6_CIDR = Pattern.compile(
+            "^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:)*:([0-9a-fA-F]{1,4}:)*[0-9a-fA-F]{1,4})/(12[0-8]|1[01]\\d|[1-9]\\d|\\d)$"
+    );
+
+    // 完整域名 或 通配符域名 或 关键词片段
+    private static final Pattern DOMAIN_PATTERN = Pattern.compile(
+            "^(\\*\\.)?([a-zA-Z0-9]([a-zA-Z0-9\\-]*[a-zA-Z0-9])?\\.)*[a-zA-Z0-9]([a-zA-Z0-9\\-]*[a-zA-Z0-9])?$"
+    );
 
     @Autowired
     private AccessRuleMapper accessRuleMapper;
@@ -30,6 +56,17 @@ public class AccessRuleServiceImpl implements AccessRuleService {
     @Override
     @Audited(action = "rule.create")
     public AccessRuleVO create(AccessRuleCreateDTO createDTO) {
+        createDTO.setRuleCode(cleanRequiredText(createDTO.getRuleCode(),"规则编码不能为空"));
+        createDTO.setPattern(cleanRequiredText(createDTO.getPattern(),"匹配值不能为空"));
+        createDTO.setDescription(cleanOptionalText(createDTO.getDescription()));
+
+        //校验
+        validateRuleType(createDTO.getRuleType());
+        validateActionType(createDTO.getActionType());
+        validateEnabled(createDTO.getEnabled());
+        validateLevel(createDTO.getLevel());
+        validatePattern(createDTO.getPattern(),createDTO.getRuleType());
+
         QueryWrapper<AccessRule> existsWrapper = new QueryWrapper<>();
         existsWrapper.eq("rule_code", createDTO.getRuleCode());
         if (accessRuleMapper.selectCount(existsWrapper) > 0) {
@@ -56,15 +93,22 @@ public class AccessRuleServiceImpl implements AccessRuleService {
         if (entity == null) {
             throw new IllegalArgumentException("规则不存在");
         }
+
+        Integer finalRuleType = updateDTO.getRuleType() != null ? updateDTO.getRuleType() : entity.getRuleType();
+        String finalPattern = updateDTO.getPattern() != null ? cleanRequiredText(updateDTO.getPattern(), "匹配值不能为空") : entity.getPattern();
+
+        validateRuleType(finalRuleType);
+        validatePattern(finalPattern,finalRuleType);
+
         if (updateDTO.getRuleType() != null) entity.setRuleType(updateDTO.getRuleType());
-        if (updateDTO.getPattern() != null) entity.setPattern(updateDTO.getPattern());
+        if (updateDTO.getPattern() != null) entity.setPattern(cleanRequiredText(updateDTO.getPattern(),"匹配值不能为空"));
         if (updateDTO.getActionType() != null) entity.setActionType(updateDTO.getActionType());
         if (updateDTO.getLevel() != null) entity.setLevel(updateDTO.getLevel());
         if (updateDTO.getEnabled() != null) entity.setEnabled(updateDTO.getEnabled());
-        if (updateDTO.getDescription() != null) entity.setDescription(updateDTO.getDescription());
+        if (updateDTO.getDescription() != null) entity.setDescription(cleanOptionalText(updateDTO.getDescription()));
         accessRuleMapper.updateById(entity);
         accessRuleCache.reload();
-        return toVO(accessRuleMapper.selectById(id));
+        return toVO(accessRuleMapper.selectById(entity.getId()));
     }
 
     @Override
@@ -142,4 +186,61 @@ public class AccessRuleServiceImpl implements AccessRuleService {
         BeanUtils.copyProperties(entity, vo);
         return vo;
     }
+
+
+    private String cleanRequiredText(String text,String message) {
+        if (StringUtils.hasText(text)) {
+            throw new IllegalArgumentException(message);
+        }
+        return text.trim();
+    }
+
+    private String cleanOptionalText(String text) {
+        if (StringUtils.hasText(text)) {
+            return null;
+        }
+        return text.trim();
+    }
+
+    private void validateRuleType(Integer ruleType) {
+        if (ruleType == null || ruleType < 1 || ruleType > 4) {
+            throw new IllegalArgumentException("规则类型只能是 1-4");
+        }
+    }
+
+    private void validateActionType(Integer actionType) {
+        if (actionType == null || actionType < 1 || actionType > 3) {
+            throw new IllegalArgumentException("动作类型只能是 1-3");
+        }
+    }
+
+    private void validateEnabled(Integer enabled) {
+        if (enabled != null && enabled != 0 && enabled != 1) {
+            throw new IllegalArgumentException("启用状态只能是 0 或 1");
+        }
+    }
+
+    private void validateLevel(Integer level) {
+        if (level != null && (level < 1 || level > 3)) {
+            throw new IllegalArgumentException("告警等级只能是 1-3");
+        }
+    }
+
+    private void validatePattern(String pattern, Integer ruleType) {
+        if(ruleType ==3) {
+            boolean flag = IPV4.pattern().matches(pattern)
+                    || IPV4_CIDR.pattern().matches(pattern)
+                    || IPV6.pattern().matches(pattern)
+                    || IPV6_CIDR.pattern().matches(pattern);
+            if (!flag) {
+                throw new IllegalArgumentException("匹配值格式不合法，必须为合法IP或者CIDR格式");
+            }
+        } else if (ruleType == 1 || ruleType == 2 || ruleType == 4) {
+            if (!DOMAIN_PATTERN.matcher(pattern).matches()) {
+                throw new IllegalArgumentException("匹配值格式不合法，不允许中文、空格或者特殊字符");
+            }
+        }
+
+    }
+
 }
