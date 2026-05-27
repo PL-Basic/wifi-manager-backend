@@ -94,9 +94,15 @@ public class AccessRuleServiceImpl implements AccessRuleService {
             throw new IllegalArgumentException("规则不存在");
         }
 
+        Integer finalEnabled = updateDTO.getEnabled() == null ? 1 : updateDTO.getEnabled();
+        Integer finalActionType = updateDTO.getActionType() == null ? 1 : updateDTO.getActionType();
+        Integer finalLevel = updateDTO.getLevel() != null ? updateDTO.getLevel() : entity.getLevel();
         Integer finalRuleType = updateDTO.getRuleType() != null ? updateDTO.getRuleType() : entity.getRuleType();
         String finalPattern = updateDTO.getPattern() != null ? cleanRequiredText(updateDTO.getPattern(), "匹配值不能为空") : entity.getPattern();
 
+        validateEnabled(finalEnabled);
+        validateActionType(finalActionType);
+        validateLevel(finalLevel);
         validateRuleType(finalRuleType);
         validatePattern(finalPattern,finalRuleType);
 
@@ -189,14 +195,14 @@ public class AccessRuleServiceImpl implements AccessRuleService {
 
 
     private String cleanRequiredText(String text,String message) {
-        if (StringUtils.hasText(text)) {
+        if (!StringUtils.hasText(text)) {
             throw new IllegalArgumentException(message);
         }
         return text.trim();
     }
 
     private String cleanOptionalText(String text) {
-        if (StringUtils.hasText(text)) {
+        if (!StringUtils.hasText(text)) {
             return null;
         }
         return text.trim();
@@ -228,10 +234,10 @@ public class AccessRuleServiceImpl implements AccessRuleService {
 
     private void validatePattern(String pattern, Integer ruleType) {
         if(ruleType ==3) {
-            boolean flag = IPV4.pattern().matches(pattern)
-                    || IPV4_CIDR.pattern().matches(pattern)
-                    || IPV6.pattern().matches(pattern)
-                    || IPV6_CIDR.pattern().matches(pattern);
+            boolean flag = IPV4.matcher(pattern).matches()
+                    || IPV4_CIDR.matcher(pattern).matches()
+                    || IPV6.matcher(pattern).matches()
+                    || IPV6_CIDR.matcher(pattern).matches();
             if (!flag) {
                 throw new IllegalArgumentException("匹配值格式不合法，必须为合法IP或者CIDR格式");
             }

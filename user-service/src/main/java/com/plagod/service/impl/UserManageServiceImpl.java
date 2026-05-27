@@ -69,10 +69,15 @@ public class UserManageServiceImpl implements UserManageService {
     public UserVO updateUser(Long userId, UserUpdateDTO updateDTO, Integer operatorRole) {
         User user = getExistingUser(userId);
 
-        updateDTO.setNickname(cleanText(user.getNickname()));
-        updateDTO.setEmail(cleanText(user.getEmail()));
-        updateDTO.setPhone(cleanText(user.getPhone()));
-        updateDTO.setAvatar(cleanText(user.getAvatar()));
+        String rawEmail = updateDTO.getEmail();
+        String rawNickname = updateDTO.getNickname();
+        String rawPhone = updateDTO.getPhone();
+        String rawAvatar = updateDTO.getAvatar();
+
+        updateDTO.setNickname(cleanText(updateDTO.getNickname()));
+        updateDTO.setEmail(cleanText(updateDTO.getEmail()));
+        updateDTO.setPhone(cleanText(updateDTO.getPhone()));
+        updateDTO.setAvatar(cleanText(updateDTO.getAvatar()));
 
         if (!Integer.valueOf(0).equals(operatorRole)) {
             if (user.getRole() != null && user.getRole() <= 1) {
@@ -80,19 +85,11 @@ public class UserManageServiceImpl implements UserManageService {
             }
             updateDTO.setRole(null);
         }
+        if (rawEmail != null) user.setEmail(updateDTO.getEmail());
+        if (rawPhone != null) user.setPhone(updateDTO.getPhone());
+        if (rawAvatar != null) user.setAvatar(updateDTO.getAvatar());
+        if (rawNickname != null) user.setNickname(updateDTO.getNickname());
 
-        if(updateDTO.getEmail() != null){
-            user.setEmail(updateDTO.getEmail());
-        }
-        if(updateDTO.getPhone() != null){
-            user.setPhone(updateDTO.getPhone());
-        }
-        if(updateDTO.getAvatar() != null){
-            user.setAvatar(updateDTO.getAvatar());
-        }
-        if(updateDTO.getNickname() != null){
-            user.setNickname(updateDTO.getNickname());
-        }
 
         userMapper.updateById(user);
         return toVO(userMapper.selectById(userId));
