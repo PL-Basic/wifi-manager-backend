@@ -1,6 +1,7 @@
 package com.plagod.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.plagod.audit.Audited;
 import com.plagod.dto.UserPageResult;
@@ -85,13 +86,18 @@ public class UserManageServiceImpl implements UserManageService {
             }
             updateDTO.setRole(null);
         }
-        if (rawEmail != null) user.setEmail(updateDTO.getEmail());
-        if (rawPhone != null) user.setPhone(updateDTO.getPhone());
-        if (rawAvatar != null) user.setAvatar(updateDTO.getAvatar());
-        if (rawNickname != null) user.setNickname(updateDTO.getNickname());
+        UpdateWrapper<User> updateWrapper = new UpdateWrapper<>();
+        updateWrapper.eq("user_id", userId);
+        if (rawEmail != null) updateWrapper.set("email", updateDTO.getEmail());
+        if (rawPhone != null) updateWrapper.set("phone", updateDTO.getPhone());
+        if (rawAvatar != null) updateWrapper.set("avatar", updateDTO.getAvatar());
+        if (rawNickname != null) updateWrapper.set("nickname", updateDTO.getNickname());
+        if (updateDTO.getRole() != null) updateWrapper.set("role", updateDTO.getRole());
+        if (updateDTO.getMaxConnections() != null) updateWrapper.set("max_connections", updateDTO.getMaxConnections());
+        if (updateDTO.getDailyQuotaMinutes() != null) updateWrapper.set("daily_quota_minutes", updateDTO.getDailyQuotaMinutes());
+        if (updateDTO.getExpireTime() != null) updateWrapper.set("expire_time", updateDTO.getExpireTime());
 
-
-        userMapper.updateById(user);
+        userMapper.update(null, updateWrapper);
         return toVO(userMapper.selectById(userId));
     }
 
