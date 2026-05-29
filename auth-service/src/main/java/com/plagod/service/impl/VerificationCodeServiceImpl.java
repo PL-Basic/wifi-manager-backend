@@ -18,7 +18,7 @@ import java.util.regex.Pattern;
 @Service
 public class VerificationCodeServiceImpl implements VerificationCodeService {
     //手机和邮箱的正则格式
-    private static final Pattern PHONE_PATTERN = Pattern.compile("^[3-9]\\d{9}]$");
+    private static final Pattern PHONE_PATTERN = Pattern.compile("^1[3-9]\\d{9}$");
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
     private static final int CODE_LENGTH = 6;
@@ -84,6 +84,7 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
         if (verifyCode.getExpireTime().isBefore(now)) {
             verifyCode.setStatus(2);
             verifyCodeMapper.updateById(verifyCode);
+            throw new IllegalArgumentException("验证码已经过期");
         }
 
         if (!verifyCode.getCode().equalsIgnoreCase(cleanCode)) {

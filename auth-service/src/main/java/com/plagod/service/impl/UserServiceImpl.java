@@ -88,7 +88,7 @@ public class UserServiceImpl implements UserService {
         //进行注册
         User user = new User();
         //直接将dto中的数据拷贝到user,并且忽略重要属性项
-        BeanUtils.copyProperties(registerDTO, user,"role","status","delFlag");
+        BeanUtils.copyProperties(registerDTO, user,"role","status","delFlag", "emailCode", "phoneCode");
         user.setRole(2);
         user.setStatus(1);
         user.setDelFlag(0);
@@ -231,7 +231,7 @@ public class UserServiceImpl implements UserService {
                 verificationCodeService.verifyCode(
                         registerDTO.getPhone(),
                         "register",
-                        registerDTO.getEmailCode(),
+                        registerDTO.getPhoneCode(),
                         verifyIp
                 );
             } catch (IllegalArgumentException e) {
