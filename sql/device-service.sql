@@ -75,44 +75,6 @@ create table t_traffic_log(
     KEY idx_dst_ip(dst_ip)
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-drop table if exists t_audit_log;
-create table t_audit_log(
-    id bigint AUTO_INCREMENT,
-    operator_id bigint,
-    operator_name varchar(64),
-    action varchar(64) NOT NULL,
-    target varchar(255),
-    detail json,
-    ip varchar(45),
-    create_time datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    PRIMARY KEY (id),
-    KEY idx_operator(operator_id),
-    KEY idx_action(action),
-    KEY idx_create_time(create_time)
-) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-drop table if exists t_alert_event;
-create table t_alert_event(
-    id bigint AUTO_INCREMENT,
-    level tinyint NOT NULL,
-    rule_code varchar(64) NOT NULL,
-    title varchar(255) NOT NULL,
-    mac varchar(17),
-    user_id bigint,
-    detail json,
-    status tinyint NOT NULL DEFAULT 0,
-    handle_user_id bigint,
-    handle_time datetime,
-    create_time datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    PRIMARY KEY (id),
-    KEY idx_level_status(level, status),
-    KEY idx_create_time(create_time),
-    KEY idx_mac(mac)
-) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
 insert into t_esp32_node(device_code, name, location, ip, firmware_version, status)
 values ('esp32-main', '客厅ESP32网关', '客厅', '192.168.4.1', null, 0);
-
 
