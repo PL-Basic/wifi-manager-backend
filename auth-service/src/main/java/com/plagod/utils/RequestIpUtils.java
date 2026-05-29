@@ -4,6 +4,10 @@ import javax.servlet.http.HttpServletRequest;
 
 public class RequestIpUtils {
 
+    private RequestIpUtils() {
+
+    }
+
     //获取客户端IP
     public static String getClientIP(HttpServletRequest request) {
         String forwardedFor = request.getHeader("X-forwarded-for");

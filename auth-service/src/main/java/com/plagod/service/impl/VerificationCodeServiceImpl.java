@@ -58,11 +58,6 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
         verifyCodeSender.send(cleanTarget,targetType,scene,code);
     }
 
-    //验证以及消费验证码
-    @Override
-    public void verifyAndConsume(String target, String scene, String code, String verifyIp) {
-        consumeCode(target, scene, code, verifyIp);
-    }
 
     //检查验证码
     @Override

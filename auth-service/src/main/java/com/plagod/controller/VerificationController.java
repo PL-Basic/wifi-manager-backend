@@ -4,6 +4,7 @@ package com.plagod.controller;
 import com.plagod.dto.ApiResponse;
 import com.plagod.dto.SendVerifyCodeDTO;
 import com.plagod.service.VerificationCodeService;
+import com.plagod.utils.RequestIpUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -23,7 +24,7 @@ public class VerificationController {
     @PostMapping("/codes")
     public ApiResponse<Void> sendCode(@Valid @RequestBody SendVerifyCodeDTO sendVerifyCodeDTO,
                                       HttpServletRequest request) {
-        String ip = getClientIP(request);
+        String ip = RequestIpUtils.getClientIP(request);
         verificationCodeService.sendCode(
                 sendVerifyCodeDTO.getTarget(),
                 sendVerifyCodeDTO.getScene(),
@@ -37,21 +38,6 @@ public class VerificationController {
 
 
 
-
-
-
-    //获取客户端IP
-    private String getClientIP(HttpServletRequest request) {
-        String forwardedFor = request.getHeader("X-forwarded-for");
-        if (forwardedFor != null && !forwardedFor.isEmpty()) {
-            return forwardedFor.split(",")[0].trim();
-        }
-        String realIp = request.getHeader("X-Real-IP");
-        if (realIp != null && !realIp.isEmpty()) {
-            return realIp;
-        }
-        return request.getRemoteAddr();
-    }
 
 
 }

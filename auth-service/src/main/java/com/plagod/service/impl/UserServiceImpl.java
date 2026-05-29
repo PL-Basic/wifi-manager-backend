@@ -16,6 +16,7 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.EnumSet;
@@ -41,6 +42,7 @@ public class UserServiceImpl implements UserService {
     private JwtUtils jwtUtils;
 
     @Override
+    @Transactional
     @Audited(action = "auth.register")
     public RegisterResult register(RegisterDTO registerDTO,String verifyIp){
         RegisterResult checkResult = checkRegisterContact(registerDTO);
@@ -101,8 +103,10 @@ public class UserServiceImpl implements UserService {
             return RegisterResult.conflict(EnumSet.noneOf(ConflictFieldEnum.class), "注册信息冲突，请稍后重试");
         }
 
-        consumeRegisterContact(registerDTO,verifyIp);
-
+        RegisterResult result = consumeRegisterContact(registerDTO,verifyIp);
+        if (result != null){
+            return result;
+        }
         return RegisterResult.success();
     }
 
@@ -144,7 +148,7 @@ public class UserServiceImpl implements UserService {
 
         try {
             //先验证验证码
-            verificationCodeService.verifyAndConsume(target,"login", loginByVerifyCodeDTO.getCode(),verifyIp);
+            verificationCodeService.consumeCode(target,"login", loginByVerifyCodeDTO.getCode(),verifyIp);
         } catch (IllegalArgumentException e) {
             return LoginResult.fail(LoginStatusEnum.PASSWORD_ERROR,e.getMessage());
         }
