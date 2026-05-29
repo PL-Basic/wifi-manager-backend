@@ -43,9 +43,9 @@ public class UserServiceImpl implements UserService {
     @Override
     @Audited(action = "auth.register")
     public RegisterResult register(RegisterDTO registerDTO,String verifyIp){
-        RegisterResult verifyResult = verifyRegisterContact(registerDTO,verifyIp);
-        if (verifyResult != null){
-            return verifyResult;
+        RegisterResult checkResult = checkRegisterContact(registerDTO);
+        if (checkResult != null){
+            return checkResult;
         }
 
         QueryWrapper<User> queryWrapper = new QueryWrapper<>();
@@ -100,6 +100,9 @@ public class UserServiceImpl implements UserService {
             log.warn("注册并发冲突，用户信息：{}", registerDTO.getUsername(), e);
             return RegisterResult.conflict(EnumSet.noneOf(ConflictFieldEnum.class), "注册信息冲突，请稍后重试");
         }
+
+        consumeRegisterContact(registerDTO,verifyIp);
+
         return RegisterResult.success();
     }
 
@@ -141,8 +144,8 @@ public class UserServiceImpl implements UserService {
 
         try {
             //先验证验证码
-            verificationCodeService.verifyCode(target,"login", loginByVerifyCodeDTO.getCode(),verifyIp);
-        } catch (Exception e) {
+            verificationCodeService.verifyAndConsume(target,"login", loginByVerifyCodeDTO.getCode(),verifyIp);
+        } catch (IllegalArgumentException e) {
             return LoginResult.fail(LoginStatusEnum.PASSWORD_ERROR,e.getMessage());
         }
 
@@ -210,11 +213,40 @@ public class UserServiceImpl implements UserService {
         return LoginResult.success(authResultDTO);
     }
 
-    private RegisterResult verifyRegisterContact(RegisterDTO registerDTO, String verifyIp) {
+    //判断是否填入邮箱和手机号，并进行验证
+    private RegisterResult checkRegisterContact(RegisterDTO registerDTO) {
         if(StringUtils.hasText(registerDTO.getEmail())){
             if (!StringUtils.hasText(registerDTO.getEmailCode())) return RegisterResult.fail("请输入邮箱验证码");
             try {
-                verificationCodeService.verifyCode(
+                verificationCodeService.checkCode(
+                        registerDTO.getEmail(),
+                        "register",
+                        registerDTO.getEmailCode()
+                );
+            } catch (IllegalArgumentException e) {
+                return RegisterResult.fail(e.getMessage());
+            }
+        }
+        if (StringUtils.hasText(registerDTO.getPhone())){
+            if (!StringUtils.hasText(registerDTO.getPhoneCode())) return RegisterResult.fail("请输入手机验证码");
+
+            try {
+                verificationCodeService.checkCode(
+                        registerDTO.getPhone(),
+                        "register",
+                        registerDTO.getPhoneCode()
+                );
+            } catch (IllegalArgumentException e) {
+                return RegisterResult.fail(e.getMessage());
+            }
+        }
+        return null;
+    }
+
+    private RegisterResult consumeRegisterContact(RegisterDTO registerDTO, String verifyIp) {
+        if(StringUtils.hasText(registerDTO.getEmail())){
+            try {
+                verificationCodeService.consumeCode(
                         registerDTO.getEmail(),
                         "register",
                         registerDTO.getEmailCode(),
@@ -225,10 +257,8 @@ public class UserServiceImpl implements UserService {
             }
         }
         if (StringUtils.hasText(registerDTO.getPhone())){
-            if (!StringUtils.hasText(registerDTO.getPhoneCode())) return RegisterResult.fail("请输入手机验证码");
-
             try {
-                verificationCodeService.verifyCode(
+                verificationCodeService.consumeCode(
                         registerDTO.getPhone(),
                         "register",
                         registerDTO.getPhoneCode(),
@@ -238,6 +268,7 @@ public class UserServiceImpl implements UserService {
                 return RegisterResult.fail(e.getMessage());
             }
         }
+
         return null;
     }
 

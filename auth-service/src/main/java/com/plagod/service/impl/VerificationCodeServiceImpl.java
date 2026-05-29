@@ -35,6 +35,8 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
     @Autowired
     private VerifyCodeSender verifyCodeSender;
 
+
+    //发送code给请求IP
     @Override
     public void sendCode(String target, String scene, String sendIp) {
         String cleanTarget = cleanTarget(target);
@@ -56,40 +58,23 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
         verifyCodeSender.send(cleanTarget,targetType,scene,code);
     }
 
+    //验证以及消费验证码
     @Override
-    public void verifyCode(String target, String scene, String code, String verifyIp) {
-        String cleanTarget = cleanTarget(target);
-        //判断输入的形式是否是手机号或者邮箱
-        resolveTarget(cleanTarget);
+    public void verifyAndConsume(String target, String scene, String code, String verifyIp) {
+        consumeCode(target, scene, code, verifyIp);
+    }
 
-        if (!StringUtils.hasText(code)) {
-            throw new IllegalArgumentException("验证码不能为空");
-        }
+    //检查验证码
+    @Override
+    public void checkCode(String target, String scene, String code) {
+        findValidCode(target, scene, code);
+    }
 
-        String cleanCode = code.trim().toUpperCase(Locale.ROOT);
-
-        QueryWrapper<VerifyCode> queryWrapper = new QueryWrapper<>();
-        queryWrapper.eq("target", cleanTarget);
-        queryWrapper.eq("scene", scene);
-        queryWrapper.eq("status", 0);
-        queryWrapper.orderByDesc("id");
-        queryWrapper.last("limit 1");
-
-        VerifyCode verifyCode = verifyCodeMapper.selectOne(queryWrapper);
-        if (verifyCode == null) {
-            throw new IllegalArgumentException("验证码不存在或已过期");
-        }
-
+    //消费验证码
+    @Override
+    public void consumeCode(String target, String scene, String code, String verifyIp) {
+        VerifyCode verifyCode =  findValidCode(target, scene, code);
         LocalDateTime now = LocalDateTime.now();
-        if (verifyCode.getExpireTime().isBefore(now)) {
-            verifyCode.setStatus(2);
-            verifyCodeMapper.updateById(verifyCode);
-            throw new IllegalArgumentException("验证码已经过期");
-        }
-
-        if (!verifyCode.getCode().equalsIgnoreCase(cleanCode)) {
-            throw new IllegalArgumentException("验证码错误");
-        }
 
         verifyCode.setStatus(1);
         verifyCode.setVerifyIp(verifyIp);
@@ -126,6 +111,44 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
             builder.append(CODE_CHARS.charAt(index));
         }
         return builder.toString();
+    }
+
+    //获取验证码
+    private VerifyCode findValidCode(String target, String scene, String code) {
+        String cleanTarget = cleanTarget(target);
+        //判断输入的形式是否是手机号或者邮箱
+        resolveTarget(cleanTarget);
+
+        if (!StringUtils.hasText(code)) {
+            throw new IllegalArgumentException("验证码不能为空");
+        }
+
+        String cleanCode = code.trim().toUpperCase(Locale.ROOT);
+
+        QueryWrapper<VerifyCode> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("target", cleanTarget);
+        queryWrapper.eq("scene", scene);
+        queryWrapper.eq("status", 0);
+        queryWrapper.orderByDesc("id");
+        queryWrapper.last("limit 1");
+
+        VerifyCode verifyCode = verifyCodeMapper.selectOne(queryWrapper);
+        if (verifyCode == null) {
+            throw new IllegalArgumentException("验证码不存在或已过期");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        if (verifyCode.getExpireTime().isBefore(now)) {
+            verifyCode.setStatus(2);
+            verifyCodeMapper.updateById(verifyCode);
+            throw new IllegalArgumentException("验证码已经过期");
+        }
+
+        if (!verifyCode.getCode().equalsIgnoreCase(cleanCode)) {
+            throw new IllegalArgumentException("验证码错误");
+        }
+
+        return verifyCode;
     }
 
 }

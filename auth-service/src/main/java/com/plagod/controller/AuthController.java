@@ -5,6 +5,7 @@ import com.plagod.dto.*;
 import com.plagod.enums.LoginStatusEnum;
 import com.plagod.enums.RegisterStatusEnum;
 import com.plagod.service.UserService;
+import com.plagod.utils.RequestIpUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -21,7 +22,7 @@ public class AuthController {
     @PostMapping("/register")
     public ApiResponse<RegisterResult> register(@Valid @RequestBody RegisterDTO registerDTO,
                                                 HttpServletRequest request) {
-        RegisterResult registerResult = userService.register(registerDTO,getClientIP(request));
+        RegisterResult registerResult = userService.register(registerDTO,RequestIpUtils.getClientIP(request));
         if (registerResult.getStatus() == RegisterStatusEnum.SUCCESS) {
             return ApiResponse.success(registerResult.getMessage(), registerResult);
         }else{
@@ -43,7 +44,7 @@ public class AuthController {
     @PostMapping("/code-login")
     public ApiResponse<AuthResultDTO> codeLogin(@Valid @RequestBody LoginByVerifyCodeDTO loginByVerifyCodeDTO,
                                                 HttpServletRequest request) {
-        LoginResult loginResult = userService.loginByVerifyCode(loginByVerifyCodeDTO,getClientIP(request));
+        LoginResult loginResult = userService.loginByVerifyCode(loginByVerifyCodeDTO, RequestIpUtils.getClientIP(request));
         if (loginResult.getStatus() == LoginStatusEnum.SUCCESS) {
             return ApiResponse.success(loginResult.getMessage(), loginResult.getData());
         }else {
@@ -53,18 +54,7 @@ public class AuthController {
 
 
 
-    //获取客户端IP
-    private String getClientIP(HttpServletRequest request) {
-        String forwardedFor = request.getHeader("X-forwarded-for");
-        if (forwardedFor != null && !forwardedFor.isEmpty()) {
-            return forwardedFor.split(",")[0].trim();
-        }
-        String realIp = request.getHeader("X-Real-IP");
-        if (realIp != null && !realIp.isEmpty()) {
-            return realIp;
-        }
-        return request.getRemoteAddr();
-    }
+
 
 
 
