@@ -8,6 +8,7 @@ import com.plagod.enums.ConflictFieldEnum;
 import com.plagod.enums.LoginStatusEnum;
 import com.plagod.mapper.UserMapper;
 import com.plagod.service.UserService;
+import com.plagod.service.VerificationCodeService;
 import com.plagod.utils.JwtUtils;
 import com.plagod.utils.PasswordUtils;
 import lombok.extern.slf4j.Slf4j;
@@ -34,11 +35,19 @@ public class UserServiceImpl implements UserService {
     private UserMapper userMapper;
 
     @Autowired
+    private VerificationCodeService verificationCodeService;
+
+    @Autowired
     private JwtUtils jwtUtils;
 
     @Override
     @Audited(action = "auth.register")
-    public RegisterResult register(RegisterDTO registerDTO){
+    public RegisterResult register(RegisterDTO registerDTO,String verifyIp){
+        RegisterResult verifyResult = verifyRegisterContact(registerDTO,verifyIp);
+        if (verifyResult != null){
+            return verifyResult;
+        }
+
         QueryWrapper<User> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("del_flag", 0);
 
@@ -121,18 +130,32 @@ public class UserServiceImpl implements UserService {
             return LoginResult.fail(LoginStatusEnum.PASSWORD_ERROR,"密码错误");
         }
 
-        //获取token，判断用的参数
-        String token = jwtUtils.generateToken(user.getUserId(),user.getUsername(),user.getRole());
 
-        //将该用户的信息取出并返回到controller
-        AuthResultDTO authResultDTO = new AuthResultDTO();
-        authResultDTO.setToken(token);
-        authResultDTO.setUsername(user.getUsername());
-        authResultDTO.setRole(user.getRole());
-        authResultDTO.setNickname(user.getNickname());
-        authResultDTO.setAvatar(user.getAvatar());
+        return buildLoginResult(user);
+    }
 
-        return LoginResult.success(authResultDTO);
+    //验证码登录
+    @Override
+    public LoginResult loginByVerifyCode(LoginByVerifyCodeDTO loginByVerifyCodeDTO, String verifyIp) {
+        String target = loginByVerifyCodeDTO.getTarget();
+
+        try {
+            //先验证验证码
+            verificationCodeService.verifyCode(target,"login", loginByVerifyCodeDTO.getCode(),verifyIp);
+        } catch (Exception e) {
+            return LoginResult.fail(LoginStatusEnum.PASSWORD_ERROR,e.getMessage());
+        }
+
+        //再判断账号是否存在，避免泄露账号信息
+        User user = findContactLoginUser(target);
+        if (user == null) {
+            return LoginResult.fail(LoginStatusEnum.ACCOUNT_NOT_FOUND,"账号不存在");
+        }
+        if (!Integer.valueOf(1).equals(user.getStatus())){
+            return LoginResult.fail(LoginStatusEnum.ACCOUNT_DISABLED,"账号被禁用");
+        }
+
+        return buildLoginResult(user);
     }
 
     private boolean isPhone(String value) {
@@ -172,5 +195,50 @@ public class UserServiceImpl implements UserService {
         return null;
     }
 
+    private LoginResult buildLoginResult(User user) {
+        //获取token，判断用的参数
+        String token = jwtUtils.generateToken(user.getUserId(),user.getUsername(),user.getRole());
+
+        //将该用户的信息取出并返回到controller
+        AuthResultDTO authResultDTO = new AuthResultDTO();
+        authResultDTO.setToken(token);
+        authResultDTO.setUsername(user.getUsername());
+        authResultDTO.setRole(user.getRole());
+        authResultDTO.setNickname(user.getNickname());
+        authResultDTO.setAvatar(user.getAvatar());
+
+        return LoginResult.success(authResultDTO);
+    }
+
+    private RegisterResult verifyRegisterContact(RegisterDTO registerDTO, String verifyIp) {
+        if(StringUtils.hasText(registerDTO.getEmail())){
+            if (!StringUtils.hasText(registerDTO.getEmailCode())) return RegisterResult.fail("请输入邮箱验证码");
+            try {
+                verificationCodeService.verifyCode(
+                        registerDTO.getEmail(),
+                        "register",
+                        registerDTO.getEmailCode(),
+                        verifyIp
+                );
+            } catch (IllegalArgumentException e) {
+                return RegisterResult.fail(e.getMessage());
+            }
+        }
+        if (StringUtils.hasText(registerDTO.getPhone())){
+            if (!StringUtils.hasText(registerDTO.getPhoneCode())) return RegisterResult.fail("请输入手机验证码");
+
+            try {
+                verificationCodeService.verifyCode(
+                        registerDTO.getPhone(),
+                        "register",
+                        registerDTO.getEmailCode(),
+                        verifyIp
+                );
+            } catch (IllegalArgumentException e) {
+                return RegisterResult.fail(e.getMessage());
+            }
+        }
+        return null;
+    }
 
 }

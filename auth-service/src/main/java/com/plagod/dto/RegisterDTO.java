@@ -23,4 +23,8 @@ public class RegisterDTO{
     private String email;
     @Pattern(regexp = "^1[3-9]\\d{9}$", message = "手机号格式不正确")
     private String phone;
+    @Pattern(regexp = "^[A-Za-z0-9]{6}$",message = "邮箱验证码格式不正确")
+    private String emailCode;
+    @Pattern(regexp = "^[A-Za-z0-9]{6}$",message = "手机验证码格式不正确")
+    private String phoneCode;
 }

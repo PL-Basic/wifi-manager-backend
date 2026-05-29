@@ -17,8 +17,18 @@ public class RegisterResult {
     private Set<ConflictFieldEnum> conflictFields;
 
     public static RegisterResult success() {
-        return new RegisterResult(RegisterStatusEnum.SUCCESS,"注册成功",null);
+        RegisterResult result = new RegisterResult();
+        result.setStatus(RegisterStatusEnum.SUCCESS);
+        result.setMessage("注册成功");
+        return result;
     }
+    public static RegisterResult fail(String message) {
+        RegisterResult result = new RegisterResult();
+        result.setStatus(RegisterStatusEnum.FAIL);
+        result.setMessage(message);
+        return result;
+    }
+
     public static RegisterResult conflict(Set<ConflictFieldEnum> fields){
         return new RegisterResult(RegisterStatusEnum.CONFLICT,"部分信息已被占用",fields);
     }
