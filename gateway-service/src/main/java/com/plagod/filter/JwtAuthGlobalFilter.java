@@ -26,7 +26,9 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
 
     private static final List<String> WHITE_PATHS = Arrays.asList(
             "/auth/login",
-            "/auth/register"
+            "/auth/register",
+            "/auth/codes",
+            "/auth/code-login"
     );
     private static final Pattern USER_SELF_PATH = Pattern.compile("^/users/(\\d+)(/avatar)?$");
     private static final int SUPER_ADMIN_ROLE = 0;

@@ -103,10 +103,8 @@ public class UserServiceImpl implements UserService {
             return RegisterResult.conflict(EnumSet.noneOf(ConflictFieldEnum.class), "注册信息冲突，请稍后重试");
         }
 
-        RegisterResult result = consumeRegisterContact(registerDTO,verifyIp);
-        if (result != null){
-            return result;
-        }
+        consumeRegisterContact(registerDTO,verifyIp);
+
         return RegisterResult.success();
     }
 
@@ -247,33 +245,23 @@ public class UserServiceImpl implements UserService {
         return null;
     }
 
-    private RegisterResult consumeRegisterContact(RegisterDTO registerDTO, String verifyIp) {
+    private void consumeRegisterContact(RegisterDTO registerDTO, String verifyIp) {
         if(StringUtils.hasText(registerDTO.getEmail())){
-            try {
-                verificationCodeService.consumeCode(
-                        registerDTO.getEmail(),
-                        "register",
-                        registerDTO.getEmailCode(),
-                        verifyIp
-                );
-            } catch (IllegalArgumentException e) {
-                return RegisterResult.fail(e.getMessage());
-            }
+            verificationCodeService.consumeCode(
+                    registerDTO.getEmail(),
+                    "register",
+                    registerDTO.getEmailCode(),
+                    verifyIp
+            );
         }
         if (StringUtils.hasText(registerDTO.getPhone())){
-            try {
-                verificationCodeService.consumeCode(
+            verificationCodeService.consumeCode(
                         registerDTO.getPhone(),
                         "register",
                         registerDTO.getPhoneCode(),
                         verifyIp
-                );
-            } catch (IllegalArgumentException e) {
-                return RegisterResult.fail(e.getMessage());
-            }
+            );
         }
-
-        return null;
     }
 
 }
