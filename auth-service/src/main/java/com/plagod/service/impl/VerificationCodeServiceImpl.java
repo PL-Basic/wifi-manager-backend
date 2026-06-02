@@ -21,6 +21,16 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
     private static final Pattern PHONE_PATTERN = Pattern.compile("^1[3-9]\\d{9}$");
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
+
+    //每个Target每60秒可以请求一次
+    private static final int TARGET_INTERVAL_SECONDS = 60;
+    //每个Target每天可以请求20次
+    private static final int TARGET_DAILY_LIMIT = 20;
+    //每个IP每分钟只能请求10次
+    private static final int IP_MINUTE_LIMIT = 10;
+    //每个IP每天只能请求100次
+    private static final int IP_DAILY_LIMIT = 100;
+
     private static final int CODE_LENGTH = 6;
     //过期时间5分钟
     private static final int EXPIRE_MINUTES = 5;
@@ -42,8 +52,13 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
         String cleanTarget = cleanTarget(target);
         String targetType = resolveTarget(cleanTarget);
 
-        String code = generateCode();
+        //获取当地现在时间
         LocalDateTime now = LocalDateTime.now();
+        //检测是否发送验证码功能被限制
+        checkSendLimit(cleanTarget,scene,sendIp,now);
+
+        //生成验证码
+        String code = generateCode();
 
         VerifyCode verifyCode = new VerifyCode();
         verifyCode.setTarget(cleanTarget);
@@ -95,6 +110,74 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
             return "email";
         }
         throw new IllegalArgumentException("手机号或邮箱格式不正确");
+    }
+
+    //检测限流验证码发送
+    private void checkSendLimit(String target, String scene, String sendIp,LocalDateTime now) {
+
+        //限流窗口开始时间
+        LocalDateTime targetIntervalStart = now.minusSeconds(TARGET_INTERVAL_SECONDS);
+        LocalDateTime todayStart = now.toLocalDate().atStartOfDay();
+        LocalDateTime ipMinuteStart = now.minusMinutes(1);
+
+        //获取近期请求的总数
+        Long recentTargetCount = verifyCodeMapper.selectCount(
+                new QueryWrapper<VerifyCode>()
+                        .eq("target",target)
+                        .eq("scene",scene)
+                        .ge("create_time",targetIntervalStart)
+        );
+
+        if (recentTargetCount != null && recentTargetCount > 0){
+            throw new IllegalArgumentException("验证码发送太频繁，请稍后再试");
+        }
+
+        //获取今天请求的总数
+        Long targetCount = verifyCodeMapper.selectCount(
+                new QueryWrapper<VerifyCode>()
+                        .eq("target",target)
+                        .eq("scene",scene)
+                        .ge("create_time",todayStart)
+        );
+
+        if (targetCount != null && targetCount >= TARGET_DAILY_LIMIT){
+            throw new IllegalArgumentException("今日验证码发送次数已上限");
+        }
+
+
+
+        if (StringUtils.hasText(sendIp)){
+            //同一个IP、同一个scene的请求，在一分钟内不能超过IP_MINUTER_LIMIT
+            Long ipMinuteCount = verifyCodeMapper.selectCount(
+                    new QueryWrapper<VerifyCode>()
+                            .eq("send_ip",sendIp)
+                            .eq("scene",scene)
+                            .ge("create_time",ipMinuteStart)
+            );
+
+            if (ipMinuteCount != null && ipMinuteCount >= IP_MINUTE_LIMIT){
+                throw new IllegalArgumentException("验证码发送太频繁，请稍后再试");
+            }
+            //同一个IP、同一个scene的请求，在一天之内不能超过IP_DAILY_LIMIT
+            Long ipTodayCount = verifyCodeMapper.selectCount(
+                    new QueryWrapper<VerifyCode>()
+                            .eq("send_ip",sendIp)
+                            .eq("scene",scene)
+                            .ge("create_time",todayStart)
+            );
+
+            if (ipTodayCount != null && ipTodayCount >= IP_DAILY_LIMIT){
+                throw new IllegalArgumentException("当前网络验证码请求次数已经达到上限");
+            }
+
+        }
+
+
+
+
+
+
+
     }
 
 
