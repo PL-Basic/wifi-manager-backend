@@ -16,6 +16,8 @@ create table t_verify_code(
 
     primary key (id),
     key idx_target_scene_status (target, scene, status),
+    key idx_target_scene_create_time (target, scene, create_time),
+    key idx_send_ip_scene_create_time (send_ip, scene, create_time),
     key idx_expire_time (expire_time),
     key idx_create_time (create_time)
 ) default charset=utf8mb4 collate=utf8mb4_unicode_ci comment='验证码记录表';

@@ -21,3 +21,12 @@ jwt:
   secret: YourSecretKey-AtLeast256Bits-ChangeInProduction!
   # token 过期时长，毫秒；默认 24 小时。
   expiration-millis: 86400000
+
+verification-code:
+  target-interval-seconds: 60
+  target-daily-limit: 20
+  ip-minute-limit: 10
+  ip-daily-limit: 100
+  code-length: 6
+  expire-minutes: 5
+  code-chars: ABCDEFGHJKLMNPQRSTUVWXYZ23456789
