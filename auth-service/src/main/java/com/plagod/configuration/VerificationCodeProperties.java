@@ -18,7 +18,7 @@ public class VerificationCodeProperties {
     private int ipDailyLimit = 100;
     private int codeLength = 6;
     //过期时间5分钟
-    private int expiryMinutes = 5;
+    private int expireMinutes = 5;
     //生成验证码的字符集
     private String codeChars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 

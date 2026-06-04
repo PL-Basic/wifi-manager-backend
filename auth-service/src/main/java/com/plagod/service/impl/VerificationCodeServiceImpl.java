@@ -57,7 +57,7 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
         verifyCode.setScene(scene);
         verifyCode.setCode(code);
         verifyCode.setStatus(0);
-        verifyCode.setExpireTime(now.plusMinutes(verificationCodeProperties.getExpiryMinutes()));
+        verifyCode.setExpireTime(now.plusMinutes(verificationCodeProperties.getExpireMinutes()));
         verifyCode.setSendIp(sendIp);
 
         verifyCodeMapper.insert(verifyCode);
