@@ -163,6 +163,37 @@ public class UserServiceImpl implements UserService {
         return buildLoginResult(user);
     }
 
+
+
+    @Override
+    @Transactional
+    @Audited(action = "auth.reset_password")
+    public void resetPassword(ResetPasswordDTO resetPasswordDTO, String verifyIp) {
+
+        verificationCodeService.checkCode(resetPasswordDTO.getTarget(),"reset_password",resetPasswordDTO.getCode());
+
+        User user = findContactLoginUser(resetPasswordDTO.getTarget());
+
+        if (user == null) {
+            throw new IllegalArgumentException("账号不存在");
+        }
+        if (!Integer.valueOf(1).equals(user.getStatus())){
+            throw new IllegalArgumentException("账号已被禁用");
+        }
+
+        user.setPassword(PasswordUtils.encode(resetPasswordDTO.getNewPassword()));
+        userMapper.updateById(user);
+
+        verificationCodeService.consumeCode(
+                resetPasswordDTO.getTarget(),
+                "reset_password",
+                resetPasswordDTO.getCode(),
+                verifyIp
+        );
+
+
+    }
+
     private boolean isPhone(String value) {
         return value != null && PHONE_PATTERN.matcher(value).matches();
     }

@@ -52,7 +52,16 @@ public class AuthController {
         }
     }
 
-
+    @PostMapping("/reset-password")
+    public ApiResponse<Void> resetPassword(@Valid @RequestBody ResetPasswordDTO resetPasswordDTO,
+                                                       HttpServletRequest request) {
+        try {
+            userService.resetPassword(resetPasswordDTO,RequestIpUtils.getClientIP(request));
+            return ApiResponse.success("重置密码成功",null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.fail(400,e.getMessage(),null);
+        }
+    }
 
 
 
