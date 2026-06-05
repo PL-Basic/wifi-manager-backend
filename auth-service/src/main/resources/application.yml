@@ -30,3 +30,5 @@ verification-code:
   code-length: 6
   expire-minutes: 5
   code-chars: ABCDEFGHJKLMNPQRSTUVWXYZ23456789
+  cleanup-retention-days: 7
+  cleanup-cron: 0 0 3 * * ?

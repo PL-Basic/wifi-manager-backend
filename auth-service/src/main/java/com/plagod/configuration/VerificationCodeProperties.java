@@ -21,5 +21,8 @@ public class VerificationCodeProperties {
     private int expireMinutes = 5;
     //生成验证码的字符集
     private String codeChars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-
+    //定时清理七天清理一次
+    private int cleanupRetentionDays = 7;
+    //表示清理时间
+    private String cleanupCron = "0 0 3 * * ?";
 }
