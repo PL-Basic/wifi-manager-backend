@@ -15,8 +15,6 @@ public class EmailVerifyCodeSender {
     @Value("${spring.mail.username:}")
     private String from;
 
-    @Value("${spring.mail.password:}")
-    private String mailPassword;
 
     public void send(String target, String scene, String code){
         SimpleMailMessage message = new SimpleMailMessage();
@@ -24,12 +22,6 @@ public class EmailVerifyCodeSender {
         message.setTo(target);
         message.setSubject(buildSubject(scene));
         message.setText(buildContent(scene, code));
-
-        System.out.println("mail username = " + from);
-        System.out.println("mail password configured = "
-                + org.springframework.util.StringUtils.hasText(mailPassword));
-        System.out.println("mail password length = " + mailPassword.length());
-        System.out.println("mail password trim changed = " + !mailPassword.equals(mailPassword.trim()));
 
         javaMailSender.send(message);
     }
