@@ -8,7 +8,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import java.time.LocalDate;
+
+import java.time.LocalDateTime;
 
 @Component
 public class VerifyCodeCleanupJob {
@@ -25,7 +26,7 @@ public class VerifyCodeCleanupJob {
         if (retentionDays <= 0) {
             return;
         }
-        LocalDate before = LocalDate.now().minusDays(retentionDays);
+        LocalDateTime before = LocalDateTime.now().minusDays(retentionDays);
 
         verifyCodeMapper.delete(
                 new QueryWrapper<VerifyCode>()
