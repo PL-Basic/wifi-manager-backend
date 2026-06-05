@@ -6,8 +6,8 @@ import com.plagod.entity.VerifyCode;
 import com.plagod.mapper.VerifyCodeMapper;
 import com.plagod.sender.VerifyCodeSender;
 import com.plagod.service.VerificationCodeService;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -16,7 +16,7 @@ import java.time.LocalDateTime;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
-
+@Slf4j
 @Service
 public class VerificationCodeServiceImpl implements VerificationCodeService {
 
@@ -63,7 +63,14 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
         verifyCode.setSendIp(sendIp);
 
         verifyCodeMapper.insert(verifyCode);
-        verifyCodeSender.send(cleanTarget,targetType,scene,code);
+        try {
+            log.info("开始发送验证码 target={}, targetType={}, scene={}", cleanTarget, targetType, scene);
+            verifyCodeSender.send(cleanTarget, targetType, scene, code);
+            log.info("验证码发送完成 target={}, targetType={}, scene={}", cleanTarget, targetType, scene);
+        } catch (Exception e) {
+            log.error("验证码发送失败 target={}, targetType={}, scene={}", cleanTarget, targetType, scene, e);
+            throw e;
+        }
     }
 
 
