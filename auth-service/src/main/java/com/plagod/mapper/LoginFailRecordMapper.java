@@ -1,10 +1,10 @@
 package com.plagod.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.plagod.entity.VerifyCode;
+import com.plagod.entity.LoginFailRecord;
 import org.apache.ibatis.annotations.Mapper;
 
 
 @Mapper
-public interface VerifyCodeMapper extends BaseMapper<VerifyCode> {
+public interface LoginFailRecordMapper extends BaseMapper<LoginFailRecord> {
 }

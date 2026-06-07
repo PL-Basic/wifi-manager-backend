@@ -7,6 +7,7 @@ import com.plagod.entity.User;
 import com.plagod.enums.ConflictFieldEnum;
 import com.plagod.enums.LoginStatusEnum;
 import com.plagod.mapper.UserMapper;
+import com.plagod.service.LoginFailProtectionService;
 import com.plagod.service.UserService;
 import com.plagod.service.VerificationCodeService;
 import com.plagod.utils.JwtUtils;
@@ -37,6 +38,9 @@ public class UserServiceImpl implements UserService {
 
     @Autowired
     private VerificationCodeService verificationCodeService;
+
+    @Autowired
+    private LoginFailProtectionService loginFailProtectionService;
 
     @Autowired
     private JwtUtils jwtUtils;
@@ -110,7 +114,7 @@ public class UserServiceImpl implements UserService {
 
 
     @Override
-    public LoginResult login(LoginDTO loginDTO){
+    public LoginResult login(LoginDTO loginDTO,String requestIp){
         //判断使用的是什么登录
         String account = loginDTO.getAccount();
         String loginType = loginDTO.getLoginType();
@@ -123,7 +127,6 @@ public class UserServiceImpl implements UserService {
             throw new RuntimeException("登录类型错误");
         }
 
-
         //判断输入的内容是否是正确的，存在的
         if (user == null) {
             return LoginResult.fail(LoginStatusEnum.ACCOUNT_NOT_FOUND,"账号不存在");
@@ -131,10 +134,21 @@ public class UserServiceImpl implements UserService {
         if (!Integer.valueOf(1).equals(user.getStatus())) {
             return LoginResult.fail(LoginStatusEnum.ACCOUNT_DISABLED,"账号被禁用");
         }
-        if(!PasswordUtils.matches(loginDTO.getPassword(),user.getPassword())){
-            return LoginResult.fail(LoginStatusEnum.PASSWORD_ERROR,"密码错误");
+
+        //判断账号是否被锁
+        try {
+            loginFailProtectionService.checkLocked(account,loginType,requestIp);
+        } catch (IllegalArgumentException e) {
+            return LoginResult.fail(LoginStatusEnum.ACCOUNT_LOCKED,e.getMessage());
         }
 
+        if(!PasswordUtils.matches(loginDTO.getPassword(),user.getPassword())){
+            //记录密码错误的失败次数
+            loginFailProtectionService.recordFailure(account,loginType,requestIp);
+            return LoginResult.fail(LoginStatusEnum.PASSWORD_ERROR,"密码错误");
+        }
+        //清空密码错误的失败次数
+        loginFailProtectionService.clearFailure(account,loginType,requestIp);
 
         return buildLoginResult(user);
     }

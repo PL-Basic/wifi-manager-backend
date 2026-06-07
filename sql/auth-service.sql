@@ -24,3 +24,24 @@ create table t_verify_code(
     key idx_expire_time (expire_time),
     key idx_create_time (create_time)
 ) default charset=utf8mb4 collate=utf8mb4_unicode_ci comment='验证码记录表';
+
+
+drop table if exists t_login_fail_record;
+create table t_login_fail_record (
+    id bigint auto_increment primary key,
+
+    account varchar(128) not null comment '登录账号：用户名/手机号/邮箱',
+    login_type varchar(16) not null comment '登录类型：username/contact',
+    request_ip varchar(45) not null comment '请求IP',
+
+    fail_count int not null default 0 comment '连续失败次数',
+    lock_until datetime default null comment '锁定截止时间',
+    last_fail_time datetime default null comment '最近失败时间',
+
+    create_time datetime not null default current_timestamp comment '创建时间',
+    update_time datetime not null default current_timestamp on update current_timestamp comment '更新时间',
+
+    unique key uk_account_type_ip (account, login_type, request_ip),
+    key idx_lock_until (lock_until),
+    key idx_update_time (update_time)
+) default charset = utf8mb4 collate = utf8mb4_unicode_ci comment = '登录失败记录表';

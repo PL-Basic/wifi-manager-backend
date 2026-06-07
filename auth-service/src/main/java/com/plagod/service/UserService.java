@@ -9,7 +9,7 @@ public interface UserService {
     public RegisterResult register(RegisterDTO registerDTO,String verifyIp);
 
     //登录业务
-    public LoginResult login(LoginDTO loginDTO);
+    public LoginResult login(LoginDTO loginDTO,String requestIp);
 
     //验证码登录业务
     public LoginResult loginByVerifyCode(LoginByVerifyCodeDTO loginByVerifyCodeDTO, String verifyIp);

@@ -4,5 +4,6 @@ public enum LoginStatusEnum {
     SUCCESS,
     ACCOUNT_NOT_FOUND,
     PASSWORD_ERROR,
-    ACCOUNT_DISABLED
+    ACCOUNT_DISABLED,
+    ACCOUNT_LOCKED
 }

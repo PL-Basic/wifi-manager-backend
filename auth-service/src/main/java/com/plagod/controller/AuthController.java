@@ -31,8 +31,9 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ApiResponse<AuthResultDTO> login(@Valid @RequestBody LoginDTO loginDTO) {
-        LoginResult loginResult = userService.login(loginDTO);
+    public ApiResponse<AuthResultDTO> login(@Valid @RequestBody LoginDTO loginDTO,
+                                            HttpServletRequest request) {
+        LoginResult loginResult = userService.login(loginDTO,RequestIpUtils.getClientIP(request));
         if (loginResult.getStatus() == LoginStatusEnum.SUCCESS) {
             return ApiResponse.success(loginResult.getMessage(), loginResult.getData());
         }else {
