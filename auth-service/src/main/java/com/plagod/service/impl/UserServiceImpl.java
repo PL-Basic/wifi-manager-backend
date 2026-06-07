@@ -248,8 +248,17 @@ public class UserServiceImpl implements UserService {
 
     //判断是否填入邮箱和手机号，并进行验证
     private RegisterResult checkRegisterContact(RegisterDTO registerDTO) {
-        if(StringUtils.hasText(registerDTO.getEmail())){
-            if (!StringUtils.hasText(registerDTO.getEmailCode())) return RegisterResult.fail("请输入邮箱验证码");
+        boolean hasPhone = StringUtils.hasText(registerDTO.getPhone());
+        boolean hasEmail = StringUtils.hasText(registerDTO.getEmail());
+
+        if (!hasPhone && !hasEmail) {
+            return RegisterResult.fail("请至少绑定手机号或邮箱");
+        }
+
+        if (hasEmail) {
+            if (!StringUtils.hasText(registerDTO.getEmailCode())) {
+                return RegisterResult.fail("请输入邮箱验证码");
+            }
             try {
                 verificationCodeService.checkCode(
                         registerDTO.getEmail(),
@@ -260,14 +269,16 @@ public class UserServiceImpl implements UserService {
                 return RegisterResult.fail(e.getMessage());
             }
         }
-        if (StringUtils.hasText(registerDTO.getPhone())){
-            if (!StringUtils.hasText(registerDTO.getPhoneCode())) return RegisterResult.fail("请输入手机验证码");
 
+        if (hasPhone) {
+            if (!StringUtils.hasText(registerDTO.getPhoneCode())) {
+                return RegisterResult.fail("请输入手机号验证码");
+            }
             try {
                 verificationCodeService.checkCode(
-                        registerDTO.getPhone(),
-                        "register",
-                        registerDTO.getPhoneCode()
+                  registerDTO.getPhone(),
+                  "register",
+                  registerDTO.getPhoneCode()
                 );
             } catch (IllegalArgumentException e) {
                 return RegisterResult.fail(e.getMessage());
