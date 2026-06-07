@@ -22,5 +22,8 @@ public class VerifyCode {
     private LocalDateTime verifyTime;
     private String sendIp;
     private String verifyIp;
+    private Integer sendStatus;
+    private LocalDateTime sendTime;
+    private String sendError;
     private LocalDateTime createTime;
 }

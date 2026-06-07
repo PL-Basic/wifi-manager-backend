@@ -12,6 +12,9 @@ create table t_verify_code(
     verify_time datetime default null comment '验证通过时间',
     send_ip varchar(45) default null comment '发送请求IP',
     verify_ip varchar(45) default null comment '验证请求IP',
+    send_status tinyint not null default 0 comment '发送状态：0待发送，1发送成功，2发送失败',
+    send_time datetime default null comment '发送完成时间',
+    send_error varchar(512) default null comment '发送失败原因',
     create_time datetime not null default current_timestamp comment '创建时间',
 
     primary key (id),

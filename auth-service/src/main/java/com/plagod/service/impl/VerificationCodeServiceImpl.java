@@ -61,13 +61,30 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
         verifyCode.setStatus(0);
         verifyCode.setExpireTime(now.plusMinutes(verificationCodeProperties.getExpireMinutes()));
         verifyCode.setSendIp(sendIp);
+        verifyCode.setSendStatus(0);
+        verifyCode.setSendTime(null);
+        verifyCode.setSendError(null);
 
         verifyCodeMapper.insert(verifyCode);
+
         try {
             log.info("开始发送验证码 target={}, targetType={}, scene={}", cleanTarget, targetType, scene);
             verifyCodeSender.send(cleanTarget, targetType, scene, code);
+
+            verifyCode.setSendStatus(1);
+            verifyCode.setSendTime(LocalDateTime.now());
+            verifyCode.setSendError(null);
+
+            verifyCodeMapper.updateById(verifyCode);
+
             log.info("验证码发送完成 target={}, targetType={}, scene={}", cleanTarget, targetType, scene);
+
         } catch (Exception e) {
+            verifyCode.setSendStatus(2);
+            verifyCode.setSendTime(LocalDateTime.now());
+            verifyCode.setSendError(limitErrorMessage(e));
+            verifyCodeMapper.updateById(verifyCode);
+
             log.error("验证码发送失败 target={}, targetType={}, scene={}", cleanTarget, targetType, scene, e);
             throw e;
         }
@@ -219,6 +236,16 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
         }
 
         return verifyCode;
+    }
+
+    //限制错误信息长度
+    private String limitErrorMessage(Exception e){
+        String message = e.getMessage();
+        if (!StringUtils.hasText(message)) {
+            message = e.getClass().getSimpleName();
+        }
+
+        return message.length() > 512 ? message.substring(0, 512) : message ;
     }
 
 }
