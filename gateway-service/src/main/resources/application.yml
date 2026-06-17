@@ -29,4 +29,4 @@ spring:
 
 jwt:
   # 必须与 auth-service 的 jwt.secret 保持一致；签发与解析使用同一密钥。
-  secret: ${JWT_SECRET:change-me-in-local-development-only}
+  secret: ${JWT_SECRET:local-dev-secret-at-least-32-bytes-long-change-me}
