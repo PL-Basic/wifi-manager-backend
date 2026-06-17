@@ -5,8 +5,8 @@ spring:
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://localhost:3306/wifi?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&useSSL=false
-    username: root
-    password: 20040903
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD:}
 
 mybatis-plus:
   configuration:

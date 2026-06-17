@@ -2,8 +2,8 @@ spring:
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://localhost:3306/wifi?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&useSSL=false
-    username: root
-    password: 20040903
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD:}
   mail:
     host: ${MAIL_HOST:smtp.qq.com}
     port: ${MAIL_PORT:587}
@@ -31,7 +31,7 @@ mybatis-plus:
 
 jwt:
   # 至少 256 位的密钥。生产环境放到 Nacos 配置中心覆盖此值。
-  secret: YourSecretKey-AtLeast256Bits-ChangeInProduction!
+  secret: ${JWT_SECRET:change-me-in-local-development-only}
   # token 过期时长，毫秒；默认 24 小时。
   expiration-millis: 86400000
 

@@ -31,25 +31,25 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ApiResponse<AuthResultDTO> login(@Valid @RequestBody LoginDTO loginDTO,
+    public ApiResponse<?> login(@Valid @RequestBody LoginDTO loginDTO,
                                             HttpServletRequest request) {
         LoginResult loginResult = userService.login(loginDTO,RequestIpUtils.getClientIP(request));
         if (loginResult.getStatus() == LoginStatusEnum.SUCCESS) {
             return ApiResponse.success(loginResult.getMessage(), loginResult.getData());
         }else {
-            return ApiResponse.fail(400,loginResult.getMessage(),loginResult.getData());
+            return ApiResponse.fail(400,loginResult.getMessage(),loginResult);
         }
 
     }
 
     @PostMapping("/code-login")
-    public ApiResponse<AuthResultDTO> codeLogin(@Valid @RequestBody LoginByVerifyCodeDTO loginByVerifyCodeDTO,
+    public ApiResponse<?> codeLogin(@Valid @RequestBody LoginByVerifyCodeDTO loginByVerifyCodeDTO,
                                                 HttpServletRequest request) {
         LoginResult loginResult = userService.loginByVerifyCode(loginByVerifyCodeDTO, RequestIpUtils.getClientIP(request));
         if (loginResult.getStatus() == LoginStatusEnum.SUCCESS) {
             return ApiResponse.success(loginResult.getMessage(), loginResult.getData());
         }else {
-            return ApiResponse.fail(400,loginResult.getMessage(),loginResult.getData());
+            return ApiResponse.fail(400,loginResult.getMessage(),loginResult);
         }
     }
 
