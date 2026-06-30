@@ -1,12 +1,9 @@
 package com.plagod.service;
 
-import com.plagod.dto.DeviceCommandResult;
-import com.plagod.dto.DeviceNodeVO;
-import com.plagod.dto.DevicePageResult;
-import com.plagod.dto.DeviceStatsVO;
-import com.plagod.dto.KickDeviceDTO;
-import com.plagod.dto.MacBlacklistCreateDTO;
-import com.plagod.dto.MacBlacklistPageResult;
+import com.plagod.dto.*;
+import com.plagod.vo.DeviceNodeVO;
+import com.plagod.vo.DevicePageResult;
+import com.plagod.vo.MacBlacklistPageResult;
 
 public interface DeviceCommandService {
     DeviceNodeVO getDevice(Long nodeId);
@@ -24,4 +21,10 @@ public interface DeviceCommandService {
     DevicePageResult pageDevices(long current, long size, String keyword);
 
     MacBlacklistPageResult pageBlacklist(long current, long size, String keyword);
+
+    DeviceNodeVO createDevice(DeviceNodeCreateDTO createDTO);
+
+    DeviceNodeVO updateDevice(Long nodeId, DeviceNodeUpdateDTO updateDTO);
+
+    void deleteDevice(Long nodeId);
 }

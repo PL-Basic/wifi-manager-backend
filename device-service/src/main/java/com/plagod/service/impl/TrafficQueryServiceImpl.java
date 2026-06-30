@@ -1,8 +1,8 @@
 package com.plagod.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.plagod.dto.TrafficLogVO;
-import com.plagod.dto.TrafficPageResult;
+import com.plagod.vo.TrafficLogVO;
+import com.plagod.vo.TrafficPageResult;
 import com.plagod.entity.TrafficLog;
 import com.plagod.mapper.TrafficLogMapper;
 import com.plagod.service.TrafficQueryService;

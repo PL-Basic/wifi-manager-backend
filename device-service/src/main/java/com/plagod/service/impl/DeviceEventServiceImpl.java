@@ -23,9 +23,7 @@ public class DeviceEventServiceImpl implements DeviceEventService {
             throw new IllegalArgumentException("设备状态事件缺少 deviceCode");
         }
 
-        QueryWrapper<Esp32Node> queryWrapper = new QueryWrapper<>();
-        queryWrapper.eq("device_code", event.getDeviceCode());
-        Esp32Node node = esp32NodeMapper.selectOne(queryWrapper);
+        Esp32Node node = esp32NodeMapper.selectByDeviceCodeIncludeDeleted(event.getDeviceCode());
         if (node == null) {
             node = new Esp32Node();
             node.setDeviceCode(event.getDeviceCode());
@@ -34,6 +32,10 @@ public class DeviceEventServiceImpl implements DeviceEventService {
             node.setCurrentClients(0);
             node.setStatus(0);
             node.setDelFlag(0);
+        }
+
+        if (Integer.valueOf(1).equals(node.getDelFlag())) {
+            throw new IllegalArgumentException("设备已退役，忽略状态上报");
         }
 
         if (StringUtils.hasText(event.getIp())) {
