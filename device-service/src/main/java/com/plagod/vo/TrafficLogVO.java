@@ -1,4 +1,4 @@
-package com.plagod.dto;
+package com.plagod.vo;
 
 import lombok.Data;
 

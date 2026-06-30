@@ -1,6 +1,6 @@
 package com.plagod.mqtt;
 
-import com.plagod.config.MqttProperties;
+import com.plagod.configuration.MqttProperties;
 import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttMessage;

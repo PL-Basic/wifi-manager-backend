@@ -1,7 +1,7 @@
 package com.plagod.mqtt;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.plagod.config.MqttProperties;
+import com.plagod.configuration.MqttProperties;
 import com.plagod.dto.DeviceTrafficEvent;
 import com.plagod.dto.DeviceStatusEvent;
 import com.plagod.service.DeviceEventService;

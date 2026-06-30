@@ -1,4 +1,4 @@
-package com.plagod.config;
+package com.plagod.configuration;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;

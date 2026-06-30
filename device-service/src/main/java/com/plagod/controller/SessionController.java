@@ -1,7 +1,7 @@
 package com.plagod.controller;
 
 import com.plagod.dto.ApiResponse;
-import com.plagod.dto.SessionPageResult;
+import com.plagod.vo.SessionPageResult;
 import com.plagod.service.SessionQueryService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;

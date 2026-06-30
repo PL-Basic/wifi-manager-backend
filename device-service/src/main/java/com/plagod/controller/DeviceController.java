@@ -1,20 +1,13 @@
 package com.plagod.controller;
 
-import com.plagod.dto.ApiResponse;
-import com.plagod.dto.DeviceCommandResult;
-import com.plagod.dto.DeviceNodeVO;
-import com.plagod.dto.DevicePageResult;
-import com.plagod.dto.DeviceStatsVO;
-import com.plagod.dto.KickDeviceDTO;
+import com.plagod.dto.*;
+import com.plagod.vo.DeviceNodeVO;
+import com.plagod.vo.DevicePageResult;
 import com.plagod.service.DeviceCommandService;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+
+import javax.validation.Valid;
 
 @RestController
 @RequestMapping("/devices")
@@ -22,6 +15,26 @@ public class DeviceController {
 
     @Autowired
     private DeviceCommandService deviceCommandService;
+
+    @PostMapping
+    public ApiResponse<DeviceNodeVO> addDevice(@Valid @RequestBody DeviceNodeCreateDTO deviceNodeCreateDTO) {
+        DeviceNodeVO deviceNodeVO = deviceCommandService.createDevice(deviceNodeCreateDTO);
+        return ApiResponse.success(deviceNodeVO);
+    }
+
+    @PutMapping("/{nodeId}")
+    public ApiResponse<DeviceNodeVO> updateDevice(@PathVariable Long nodeId,
+                                                  @Valid @RequestBody DeviceNodeUpdateDTO deviceNodeUpdateDTO) {
+        DeviceNodeVO deviceNodeVO = deviceCommandService.updateDevice(nodeId, deviceNodeUpdateDTO);
+        return ApiResponse.success(deviceNodeVO);
+    }
+
+    @DeleteMapping("/{nodeId}")
+    public ApiResponse<Boolean> deleteDevice(@PathVariable Long nodeId) {
+        deviceCommandService.deleteDevice(nodeId);
+        return ApiResponse.success(true);
+    }
+
 
     @GetMapping("/stats")
     public ApiResponse<DeviceStatsVO> getDeviceStats() {

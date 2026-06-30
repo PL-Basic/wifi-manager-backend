@@ -3,14 +3,11 @@ package com.plagod.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.plagod.audit.Audited;
 import com.plagod.constant.MqttTopics;
-import com.plagod.dto.DeviceCommandResult;
-import com.plagod.dto.DeviceNodeVO;
-import com.plagod.dto.DevicePageResult;
-import com.plagod.dto.DeviceStatsVO;
-import com.plagod.dto.KickDeviceDTO;
-import com.plagod.dto.MacBlacklistCreateDTO;
-import com.plagod.dto.MacBlacklistPageResult;
-import com.plagod.dto.MacBlacklistVO;
+import com.plagod.dto.*;
+import com.plagod.vo.DeviceNodeVO;
+import com.plagod.vo.DevicePageResult;
+import com.plagod.vo.MacBlacklistPageResult;
+import com.plagod.vo.MacBlacklistVO;
 import com.plagod.entity.Esp32Node;
 import com.plagod.entity.MacBlacklist;
 import com.plagod.entity.SessionRecord;
@@ -41,6 +38,128 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
 
     @Autowired
     private MqttCommandPublisher mqttCommandPublisher;
+
+    @Override
+    @Audited(action = "device.create")
+    public DeviceNodeVO createDevice(DeviceNodeCreateDTO createDTO) {
+        //清洗数据
+        String cleanDeviceCode = createDTO.getDeviceCode().trim();
+        createDTO.setName(createDTO.getName().trim());
+        if (!StringUtils.hasText(createDTO.getIp())) {
+            createDTO.setIp(null);
+        }else {
+            createDTO.setIp(createDTO.getIp().trim());
+        }
+        if (!StringUtils.hasText(createDTO.getLocation())){
+            createDTO.setLocation(null);
+        }else {
+            createDTO.setLocation(createDTO.getLocation().trim());
+        }
+        if (!StringUtils.hasText(createDTO.getFirmwareVersion())){
+            createDTO.setFirmwareVersion(null);
+        }else {
+            createDTO.setFirmwareVersion(createDTO.getFirmwareVersion().trim());
+        }
+        createDTO.setMaxClients(createDTO.getMaxClients() == null ? 4 : createDTO.getMaxClients());
+
+
+
+        Esp32Node esp32Node = esp32NodeMapper.selectByDeviceCodeIncludeDeleted(cleanDeviceCode);
+
+        //判断设备是否存在
+        if (esp32Node != null){
+            if (Integer.valueOf(0).equals(esp32Node.getDelFlag())) {
+                throw new IllegalArgumentException("设备已存在！");
+            }else {
+                throw new IllegalArgumentException("设备已退役，请恢复后使用");
+            }
+        }
+
+        //赋值
+        esp32Node = new Esp32Node();
+        esp32Node.setDeviceCode(cleanDeviceCode);
+        esp32Node.setName(createDTO.getName());
+        esp32Node.setIp(createDTO.getIp());
+        esp32Node.setLocation(createDTO.getLocation());
+        esp32Node.setFirmwareVersion(createDTO.getFirmwareVersion());
+        esp32Node.setMaxClients(createDTO.getMaxClients());
+
+        esp32Node.setDelFlag(0);
+        esp32Node.setCurrentClients(0);
+        esp32Node.setStatus(0);
+
+        //插入进数据库
+        esp32NodeMapper.insert(esp32Node);
+
+        //转换VO传出
+        DeviceNodeVO deviceNodeVO = new DeviceNodeVO();
+        BeanUtils.copyProperties(esp32Node, deviceNodeVO);
+
+        return deviceNodeVO;
+    }
+
+    @Override
+    @Audited(action = "device.update")
+    public DeviceNodeVO updateDevice(Long nodeId, DeviceNodeUpdateDTO updateDTO) {
+        Esp32Node oldEsp32Node = esp32NodeMapper.selectById(nodeId);
+        if (oldEsp32Node == null){
+            throw new IllegalArgumentException("设备不存在");
+        }
+
+        if (updateDTO.getName() != null){
+            updateDTO.setName(updateDTO.getName().trim());
+            if (!StringUtils.hasText(updateDTO.getName())){
+                throw new IllegalArgumentException("设备名不能为空");
+            }
+            oldEsp32Node.setName(updateDTO.getName());
+        }
+        if (updateDTO.getIp() != null){
+            oldEsp32Node.setIp(cleanNullableText(updateDTO.getIp()));
+        }
+        if (updateDTO.getLocation() != null){
+            oldEsp32Node.setLocation(cleanNullableText(updateDTO.getLocation()));
+        }
+        oldEsp32Node.setMaxClients(updateDTO.getMaxClients() == null ? oldEsp32Node.getMaxClients() : updateDTO.getMaxClients());
+
+        esp32NodeMapper.updateById(oldEsp32Node);
+        DeviceNodeVO deviceNodeVO = new DeviceNodeVO();
+        BeanUtils.copyProperties(oldEsp32Node, deviceNodeVO);
+
+        return deviceNodeVO;
+
+    }
+
+
+    @Override
+    @Audited(action = "device.delete")
+    public void deleteDevice(Long nodeId) {
+        Esp32Node esp32Node = esp32NodeMapper.selectById(nodeId);
+        Long activeSessionCount = sessionRecordMapper.selectCount(
+                new QueryWrapper<SessionRecord>()
+                        .eq("node_id", nodeId)
+                        .eq("status",1)
+                );
+
+        if (esp32Node == null) {
+            throw new IllegalArgumentException("该设备节点不存在");
+        }
+        if (Integer.valueOf(1).equals(esp32Node.getStatus())) {
+            throw new IllegalArgumentException("当前设备在线，不能退役");
+        }
+        if (esp32Node.getCurrentClients() != null && esp32Node.getCurrentClients() > 0) {
+            throw new IllegalArgumentException("设备存在在线客户，不能退役");
+        }
+        if (activeSessionCount != null && activeSessionCount > 0) {
+            throw new IllegalArgumentException("设备存在活跃会话，不能退役");
+        }
+
+        int count = esp32NodeMapper.deleteById(nodeId);
+
+        if (count == 0) {
+            throw new IllegalArgumentException("设备节点删除失败");
+        }
+
+    }
 
     @Override
     public DeviceNodeVO getDevice(Long nodeId) {
@@ -186,4 +305,15 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         result.setRecords(records);
         return result;
     }
+
+
+
+    private String cleanNullableText(String text) {
+        if (!StringUtils.hasText(text)) {
+            return null;
+        }
+
+        return text.trim();
+    }
+
 }
