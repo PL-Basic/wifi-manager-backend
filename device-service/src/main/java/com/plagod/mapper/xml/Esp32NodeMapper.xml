@@ -6,4 +6,12 @@
         select * from t_esp32_node where device_code = #{deviceCode} limit 1
     </select>
 
+    <select id="selectByNodeIdIncludeDeleted" resultType="com.plagod.entity.Esp32Node">
+        select * from t_esp32_node where node_id = #{nodeId}
+    </select>
+
+    <update id="restoreRetiredById" >
+        update t_esp32_node set del_flag = 0,status = 0,current_clients = 0,last_heartbeat = null where node_id = #{nodeId} and del_flag = 1;
+    </update>
+
 </mapper>
