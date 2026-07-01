@@ -22,6 +22,12 @@ public class DeviceController {
         return ApiResponse.success(deviceNodeVO);
     }
 
+    @PostMapping("/{nodeId}/restore")
+    public ApiResponse<DeviceNodeVO> restoreDevice(@PathVariable Long nodeId) {
+        DeviceNodeVO deviceNodeVO = deviceCommandService.restoreDevice(nodeId);
+        return ApiResponse.success(deviceNodeVO);
+    }
+
     @PutMapping("/{nodeId}")
     public ApiResponse<DeviceNodeVO> updateDevice(@PathVariable Long nodeId,
                                                   @Valid @RequestBody DeviceNodeUpdateDTO deviceNodeUpdateDTO) {

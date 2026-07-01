@@ -39,6 +39,34 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     @Autowired
     private MqttCommandPublisher mqttCommandPublisher;
 
+
+    @Override
+    @Audited(action = "device.restore")
+    public DeviceNodeVO restoreDevice(Long nodeId) {
+        if (nodeId == null) {
+            throw new IllegalArgumentException("设备号不能为空");
+        }
+        Esp32Node esp32Node = esp32NodeMapper.selectByNodeIdIncludeDeleted(nodeId);
+        if (esp32Node == null) {
+            throw new IllegalArgumentException("该退役设备不存在");
+        }
+        if (!Integer.valueOf(1).equals(esp32Node.getDelFlag())) {
+            throw new IllegalArgumentException("设备恢复失败，该设备未退役");
+        }
+
+        int rows = esp32NodeMapper.restoreRetiredById(nodeId);
+
+        if (rows != 1) {
+            throw new IllegalArgumentException("设备恢复失败，请刷新后再试");
+        }
+
+        esp32Node = esp32NodeMapper.selectById(nodeId);
+        DeviceNodeVO deviceNodeVO = new DeviceNodeVO();
+        BeanUtils.copyProperties(esp32Node, deviceNodeVO);
+
+        return deviceNodeVO;
+    }
+
     @Override
     @Audited(action = "device.create")
     public DeviceNodeVO createDevice(DeviceNodeCreateDTO createDTO) {

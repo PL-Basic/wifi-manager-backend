@@ -27,4 +27,6 @@ public interface DeviceCommandService {
     DeviceNodeVO updateDevice(Long nodeId, DeviceNodeUpdateDTO updateDTO);
 
     void deleteDevice(Long nodeId);
+
+    DeviceNodeVO restoreDevice(Long nodeId);
 }

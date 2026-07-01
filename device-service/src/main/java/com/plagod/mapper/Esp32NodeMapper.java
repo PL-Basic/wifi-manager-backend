@@ -9,4 +9,8 @@ import org.apache.ibatis.annotations.Param;
 public interface Esp32NodeMapper extends BaseMapper<Esp32Node> {
 
     Esp32Node selectByDeviceCodeIncludeDeleted(@Param("deviceCode") String deviceCode);
+
+    Esp32Node selectByNodeIdIncludeDeleted(@Param("nodeId") Long nodeId);
+
+    int restoreRetiredById(@Param("nodeId") Long nodeId);
 }
