@@ -1,9 +1,9 @@
 package com.plagod.service;
 
-import com.plagod.dto.AccessRuleCreateDTO;
-import com.plagod.dto.AccessRulePageResult;
-import com.plagod.dto.AccessRuleUpdateDTO;
-import com.plagod.dto.AccessRuleVO;
+import com.plagod.dto.monitor.AccessRuleCreateDTO;
+import com.plagod.vo.monitor.AccessRulePageResult;
+import com.plagod.dto.monitor.AccessRuleUpdateDTO;
+import com.plagod.vo.monitor.AccessRuleVO;
 
 public interface AccessRuleService {
 

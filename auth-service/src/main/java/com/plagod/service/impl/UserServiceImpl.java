@@ -3,6 +3,8 @@ package com.plagod.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.plagod.audit.Audited;
 import com.plagod.dto.*;
+import com.plagod.dto.auth.AuthResultDTO;
+import com.plagod.dto.auth.LoginDTO;
 import com.plagod.entity.User;
 import com.plagod.enums.ConflictFieldEnum;
 import com.plagod.enums.LoginStatusEnum;
@@ -114,7 +116,7 @@ public class UserServiceImpl implements UserService {
 
 
     @Override
-    public LoginResult login(LoginDTO loginDTO,String requestIp){
+    public LoginResult login(LoginDTO loginDTO, String requestIp){
         //判断使用的是什么登录
         String account = loginDTO.getAccount();
         String loginType = loginDTO.getLoginType();

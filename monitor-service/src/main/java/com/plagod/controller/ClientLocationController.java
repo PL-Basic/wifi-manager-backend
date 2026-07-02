@@ -1,7 +1,7 @@
 package com.plagod.controller;
 
 import com.plagod.dto.ApiResponse;
-import com.plagod.dto.ClientLocationPageResult;
+import com.plagod.vo.monitor.ClientLocationPageResult;
 import com.plagod.dto.ClientLocationReportDTO;
 import com.plagod.service.ClientLocationService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,7 +27,7 @@ public class ClientLocationController {
     @PostMapping("/report")
     public ApiResponse<Long> report(@Valid @RequestBody ClientLocationReportDTO dto,
                                     @RequestHeader(value = "X-User-Id", required = false) Long userId) {
-        return ApiResponse.success("浣嶇疆涓婃姤鎴愬姛", clientLocationService.report(dto, userId));
+        return ApiResponse.success("位置上报成功", clientLocationService.report(dto, userId));
     }
 
     @GetMapping

@@ -2,9 +2,9 @@ package com.plagod.service.impl;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.plagod.dto.RuleHitVO;
-import com.plagod.dto.TrafficEvaluationRequest;
-import com.plagod.dto.TrafficEvaluationResult;
+import com.plagod.vo.RuleHitVO;
+import com.plagod.dto.device.TrafficEvaluationRequest;
+import com.plagod.vo.device.TrafficEvaluationResult;
 import com.plagod.entity.AccessRule;
 import com.plagod.entity.AlertEvent;
 import com.plagod.mapper.AlertEventMapper;

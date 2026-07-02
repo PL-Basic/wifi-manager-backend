@@ -2,11 +2,13 @@ package com.plagod.controller;
 
 import com.plagod.client.DeviceServiceClient;
 import com.plagod.client.UserServiceClient;
-import com.plagod.dto.AdminDashboardVO;
-import com.plagod.dto.AdminOverviewVO;
+import com.plagod.vo.AdminDashboardVO;
+import com.plagod.vo.AdminOverviewVO;
 import com.plagod.dto.ApiResponse;
-import com.plagod.dto.DeviceStatsVO;
-import com.plagod.dto.UserStatsVO;
+import com.plagod.vo.device.DeviceStatsVO;
+import com.plagod.vo.user.UserPageResult;
+import com.plagod.vo.user.UserStatsVO;
+import com.plagod.vo.device.DevicePageResult;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -65,18 +67,18 @@ public class AdminOverviewController {
         }
     }
 
-    private Object safeRecentUsers() {
+    private UserPageResult safeRecentUsers() {
         try {
-            ApiResponse<Object> response = userServiceClient.pageUsers(1L, 5L, null);
+            ApiResponse<UserPageResult> response = userServiceClient.pageUsers(1L, 5L, null);
             return response == null ? null : response.getData();
         } catch (Exception ex) {
             return null;
         }
     }
 
-    private Object safeRecentDevices() {
+    private DevicePageResult safeRecentDevices() {
         try {
-            ApiResponse<Object> response = deviceServiceClient.pageDevices(1L, 5L, null);
+            ApiResponse<DevicePageResult> response = deviceServiceClient.pageDevices(1L, 5L, null);
             return response == null ? null : response.getData();
         } catch (Exception ex) {
             return null;

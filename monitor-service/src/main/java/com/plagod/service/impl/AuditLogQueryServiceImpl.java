@@ -1,8 +1,8 @@
 package com.plagod.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.plagod.dto.AuditLogPageResult;
-import com.plagod.dto.AuditLogVO;
+import com.plagod.vo.monitor.AuditLogPageResult;
+import com.plagod.vo.monitor.AuditLogVO;
 import com.plagod.entity.AuditLog;
 import com.plagod.mapper.AuditLogMapper;
 import com.plagod.service.AuditLogQueryService;

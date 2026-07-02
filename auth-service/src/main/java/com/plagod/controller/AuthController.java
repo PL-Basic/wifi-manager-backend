@@ -2,6 +2,7 @@ package com.plagod.controller;
 
 
 import com.plagod.dto.*;
+import com.plagod.dto.auth.LoginDTO;
 import com.plagod.enums.LoginStatusEnum;
 import com.plagod.enums.RegisterStatusEnum;
 import com.plagod.service.UserService;

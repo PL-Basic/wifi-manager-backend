@@ -1,8 +1,8 @@
 package com.plagod.controller;
 
 import com.plagod.dto.ApiResponse;
-import com.plagod.dto.AuditLogPageResult;
-import com.plagod.dto.AuditLogVO;
+import com.plagod.vo.monitor.AuditLogPageResult;
+import com.plagod.vo.monitor.AuditLogVO;
 import com.plagod.service.AuditLogQueryService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;

@@ -1,8 +1,8 @@
 package com.plagod.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.plagod.vo.SessionPageResult;
-import com.plagod.vo.SessionRecordVO;
+import com.plagod.vo.device.SessionPageResult;
+import com.plagod.vo.device.SessionRecordVO;
 import com.plagod.entity.SessionRecord;
 import com.plagod.mapper.SessionRecordMapper;
 import com.plagod.service.SessionQueryService;

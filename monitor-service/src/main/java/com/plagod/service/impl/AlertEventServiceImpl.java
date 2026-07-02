@@ -2,8 +2,8 @@ package com.plagod.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.plagod.audit.Audited;
-import com.plagod.dto.AlertEventPageResult;
-import com.plagod.dto.AlertEventVO;
+import com.plagod.vo.monitor.AlertEventPageResult;
+import com.plagod.vo.monitor.AlertEventVO;
 import com.plagod.entity.AlertEvent;
 import com.plagod.mapper.AlertEventMapper;
 import com.plagod.service.AlertEventService;

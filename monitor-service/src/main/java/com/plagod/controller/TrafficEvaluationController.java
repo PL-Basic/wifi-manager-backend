@@ -1,8 +1,8 @@
 package com.plagod.controller;
 
 import com.plagod.dto.ApiResponse;
-import com.plagod.dto.TrafficEvaluationRequest;
-import com.plagod.dto.TrafficEvaluationResult;
+import com.plagod.dto.device.TrafficEvaluationRequest;
+import com.plagod.vo.device.TrafficEvaluationResult;
 import com.plagod.service.TrafficEvaluationService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PostMapping;

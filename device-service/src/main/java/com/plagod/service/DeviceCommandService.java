@@ -1,9 +1,7 @@
 package com.plagod.service;
 
-import com.plagod.dto.*;
-import com.plagod.vo.DeviceNodeVO;
-import com.plagod.vo.DevicePageResult;
-import com.plagod.vo.MacBlacklistPageResult;
+import com.plagod.dto.device.*;
+import com.plagod.vo.device.*;
 
 public interface DeviceCommandService {
     DeviceNodeVO getDevice(Long nodeId);

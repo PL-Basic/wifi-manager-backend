@@ -2,14 +2,14 @@ package com.plagod.controller;
 
 import com.plagod.dto.ApiResponse;
 import com.plagod.dto.AvatarUploadResult;
-import com.plagod.dto.UserPageResult;
-import com.plagod.dto.UserOperationRequestPageResult;
-import com.plagod.dto.UserOperationReviewDTO;
-import com.plagod.dto.UserStatsVO;
-import com.plagod.dto.UserStatusDTO;
-import com.plagod.dto.UserUpdateDTO;
-import com.plagod.dto.UserVO;
-import com.plagod.entity.UserOperationRequest;
+import com.plagod.dto.user.UserPurgeRequestDTO;
+import com.plagod.vo.user.UserPageResult;
+import com.plagod.vo.user.UserOperationRequestPageResult;
+import com.plagod.dto.user.UserOperationReviewDTO;
+import com.plagod.vo.user.UserStatsVO;
+import com.plagod.dto.user.UserStatusDTO;
+import com.plagod.dto.user.UserUpdateDTO;
+import com.plagod.vo.user.UserVO;
 import com.plagod.service.AvatarStorageService;
 import com.plagod.service.UserManageService;
 import com.plagod.service.UserOperationRequestService;
@@ -148,8 +148,8 @@ public class UserController {
     public ApiResponse<Long> requestPurgeUser(@PathVariable Long userId,
                                               @RequestHeader(value = "X-User-Id", required = false) Long requesterId,
                                               @RequestHeader(value = "X-User-Name", required = false) String requesterName,
-                                              @RequestBody(required = false) UserOperationRequest body) {
-        String reason = body == null ? null : body.getReason();
+                                              @RequestBody(required = false) UserPurgeRequestDTO userPurgeRequestDTO) {
+        String reason = userPurgeRequestDTO == null ? null : userPurgeRequestDTO.getReason();
         Long requestId = userOperationRequestService.requestPurge(userId, requesterId, requesterName, reason);
         return ApiResponse.success("物理删除申请已提交", requestId);
     }

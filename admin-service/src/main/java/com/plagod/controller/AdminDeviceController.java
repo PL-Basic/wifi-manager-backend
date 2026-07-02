@@ -2,19 +2,12 @@ package com.plagod.controller;
 
 import com.plagod.client.DeviceServiceClient;
 import com.plagod.dto.ApiResponse;
-import com.plagod.dto.DeviceStatsVO;
+import com.plagod.dto.device.*;
+import com.plagod.vo.device.*;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
-import java.util.Collections;
-import java.util.Map;
+import javax.validation.Valid;
 
 @RestController
 @RequestMapping("/admin/devices")
@@ -23,10 +16,30 @@ public class AdminDeviceController {
     @Autowired
     private DeviceServiceClient deviceServiceClient;
 
+    @PostMapping
+    public ApiResponse<DeviceNodeVO> addDevice(@Valid @RequestBody DeviceNodeCreateDTO deviceNodeCreateDTO) {
+        return deviceServiceClient.addDevice(deviceNodeCreateDTO);
+    }
+
+    @PostMapping("/{nodeId}/restore")
+    public ApiResponse<DeviceNodeVO> restoreDevice(@PathVariable Long nodeId) {
+        return deviceServiceClient.restoreDevice(nodeId);
+    }
+
+    @PutMapping("/{nodeId}")
+    public ApiResponse<DeviceNodeVO> updateDevice(@PathVariable Long nodeId,@Valid @RequestBody DeviceNodeUpdateDTO deviceNodeUpdateDTO) {
+        return deviceServiceClient.updateDevice(nodeId, deviceNodeUpdateDTO);
+    }
+
+    @DeleteMapping("/{nodeId}")
+    public ApiResponse<Boolean> deleteDevice(@PathVariable Long nodeId) {
+        return deviceServiceClient.deleteDevice(nodeId);
+    }
+
     @GetMapping
-    public ApiResponse<Object> pageDevices(@RequestParam(defaultValue = "1") Long current,
-                                           @RequestParam(defaultValue = "10") Long size,
-                                           @RequestParam(required = false) String keyword) {
+    public ApiResponse<DevicePageResult> pageDevices(@RequestParam(defaultValue = "1") Long current,
+                                                     @RequestParam(defaultValue = "10") Long size,
+                                                     @RequestParam(required = false) String keyword) {
         return deviceServiceClient.pageDevices(current, size, keyword);
     }
 
@@ -36,31 +49,31 @@ public class AdminDeviceController {
     }
 
     @GetMapping("/{nodeId}")
-    public ApiResponse<Object> getDevice(@PathVariable Long nodeId) {
+    public ApiResponse<DeviceNodeVO> getDevice(@PathVariable Long nodeId) {
         return deviceServiceClient.getDevice(nodeId);
     }
 
     @PostMapping("/{deviceCode}/allow")
-    public ApiResponse<Object> allowDevice(@PathVariable String deviceCode) {
+    public ApiResponse<DeviceCommandResult> allowDevice(@PathVariable String deviceCode) {
         return deviceServiceClient.allowDevice(deviceCode);
     }
 
     @PostMapping("/{deviceCode}/kick")
-    public ApiResponse<Object> kickDevice(@PathVariable String deviceCode,
-                                          @RequestBody(required = false) Map<String, Object> body) {
-        return deviceServiceClient.kickDevice(deviceCode, body == null ? Collections.emptyMap() : body);
+    public ApiResponse<DeviceCommandResult> kickDevice(@PathVariable String deviceCode,
+                                                       @RequestBody(required = false)KickDeviceDTO kickDeviceDTO) {
+        return deviceServiceClient.kickDevice(deviceCode, kickDeviceDTO);
     }
 
     @GetMapping("/blacklist")
-    public ApiResponse<Object> pageBlacklist(@RequestParam(defaultValue = "1") Long current,
-                                             @RequestParam(defaultValue = "10") Long size,
-                                             @RequestParam(required = false) String keyword) {
+    public ApiResponse<MacBlacklistPageResult> pageBlacklist(@RequestParam(defaultValue = "1") Long current,
+                                                             @RequestParam(defaultValue = "10") Long size,
+                                                             @RequestParam(required = false) String keyword) {
         return deviceServiceClient.pageBlacklist(current, size, keyword);
     }
 
     @PostMapping("/blacklist")
-    public ApiResponse<Void> addBlacklist(@RequestBody Map<String, Object> body) {
-        return deviceServiceClient.addBlacklist(body);
+    public ApiResponse<Void> addBlacklist(@RequestBody MacBlacklistCreateDTO macBlacklistCreateDTO) {
+        return deviceServiceClient.addBlacklist(macBlacklistCreateDTO);
     }
 
     @DeleteMapping("/blacklist/{mac}")

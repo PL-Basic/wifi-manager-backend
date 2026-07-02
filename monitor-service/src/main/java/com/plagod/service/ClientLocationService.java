@@ -1,6 +1,6 @@
 package com.plagod.service;
 
-import com.plagod.dto.ClientLocationPageResult;
+import com.plagod.vo.monitor.ClientLocationPageResult;
 import com.plagod.dto.ClientLocationReportDTO;
 
 import java.time.LocalDateTime;

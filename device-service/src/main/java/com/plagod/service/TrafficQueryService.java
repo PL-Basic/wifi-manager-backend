@@ -1,6 +1,6 @@
 package com.plagod.service;
 
-import com.plagod.vo.TrafficPageResult;
+import com.plagod.vo.device.TrafficPageResult;
 
 import java.time.LocalDateTime;
 

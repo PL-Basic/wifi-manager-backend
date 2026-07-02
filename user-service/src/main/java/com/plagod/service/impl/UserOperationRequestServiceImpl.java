@@ -2,18 +2,22 @@ package com.plagod.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.plagod.dto.UserOperationRequestPageResult;
-import com.plagod.dto.UserOperationReviewDTO;
+import com.plagod.vo.user.UserOperationRequestPageResult;
+import com.plagod.dto.user.UserOperationReviewDTO;
 import com.plagod.entity.User;
 import com.plagod.entity.UserOperationRequest;
 import com.plagod.mapper.UserMapper;
 import com.plagod.mapper.UserOperationRequestMapper;
 import com.plagod.service.UserOperationRequestService;
+import com.plagod.vo.user.UserOperationRequestVO;
+import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Service
 public class UserOperationRequestServiceImpl implements UserOperationRequestService {
@@ -43,11 +47,18 @@ public class UserOperationRequestServiceImpl implements UserOperationRequestServ
         wrapper.orderByDesc("create_time");
 
         Page<UserOperationRequest> page = requestMapper.selectPage(new Page<>(pageCurrent, pageSize), wrapper);
+        List<UserOperationRequestVO> records = new ArrayList<>();
+        for (UserOperationRequest item : page.getRecords()) {
+            UserOperationRequestVO vo = new UserOperationRequestVO();
+            BeanUtils.copyProperties(item, vo);
+            records.add(vo);
+        }
+
         UserOperationRequestPageResult result = new UserOperationRequestPageResult();
         result.setCurrent(page.getCurrent());
         result.setSize(page.getSize());
         result.setTotal(page.getTotal());
-        result.setRecords(page.getRecords());
+        result.setRecords(records);
         return result;
     }
 

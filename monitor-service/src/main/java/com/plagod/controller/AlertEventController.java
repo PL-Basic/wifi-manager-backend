@@ -1,7 +1,7 @@
 package com.plagod.controller;
 
-import com.plagod.dto.AlertEventPageResult;
-import com.plagod.dto.AlertEventVO;
+import com.plagod.vo.monitor.AlertEventPageResult;
+import com.plagod.vo.monitor.AlertEventVO;
 import com.plagod.dto.ApiResponse;
 import com.plagod.service.AlertEventService;
 import org.springframework.beans.factory.annotation.Autowired;
