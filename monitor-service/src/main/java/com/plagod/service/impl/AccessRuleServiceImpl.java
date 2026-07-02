@@ -2,10 +2,10 @@ package com.plagod.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.plagod.audit.Audited;
-import com.plagod.dto.AccessRuleCreateDTO;
-import com.plagod.dto.AccessRulePageResult;
-import com.plagod.dto.AccessRuleUpdateDTO;
-import com.plagod.dto.AccessRuleVO;
+import com.plagod.dto.monitor.AccessRuleCreateDTO;
+import com.plagod.vo.monitor.AccessRulePageResult;
+import com.plagod.dto.monitor.AccessRuleUpdateDTO;
+import com.plagod.vo.monitor.AccessRuleVO;
 import com.plagod.entity.AccessRule;
 import com.plagod.mapper.AccessRuleMapper;
 import com.plagod.service.AccessRuleCache;

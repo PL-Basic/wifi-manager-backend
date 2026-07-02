@@ -1,9 +1,14 @@
 package com.plagod.controller;
 
 import com.plagod.dto.*;
-import com.plagod.vo.DeviceNodeVO;
-import com.plagod.vo.DevicePageResult;
+import com.plagod.vo.device.DeviceCommandResult;
+import com.plagod.dto.device.DeviceNodeCreateDTO;
+import com.plagod.dto.device.DeviceNodeUpdateDTO;
+import com.plagod.dto.device.KickDeviceDTO;
+import com.plagod.vo.device.DeviceNodeVO;
+import com.plagod.vo.device.DevicePageResult;
 import com.plagod.service.DeviceCommandService;
+import com.plagod.vo.device.DeviceStatsVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 

@@ -2,6 +2,7 @@ package com.plagod.controller;
 
 import com.plagod.client.DeviceServiceClient;
 import com.plagod.dto.ApiResponse;
+import com.plagod.vo.device.TrafficPageResult;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -16,13 +17,13 @@ public class AdminTrafficController {
     private DeviceServiceClient deviceServiceClient;
 
     @GetMapping
-    public ApiResponse<Object> pageTraffic(@RequestParam(defaultValue = "1") Long current,
-                                           @RequestParam(defaultValue = "10") Long size,
-                                           @RequestParam(required = false) String mac,
-                                           @RequestParam(required = false) Long sessionId,
-                                           @RequestParam(required = false) String dstIp,
-                                           @RequestParam(required = false) String startTime,
-                                           @RequestParam(required = false) String endTime) {
+    public ApiResponse<TrafficPageResult> pageTraffic(@RequestParam(defaultValue = "1") Long current,
+                                                      @RequestParam(defaultValue = "10") Long size,
+                                                      @RequestParam(required = false) String mac,
+                                                      @RequestParam(required = false) Long sessionId,
+                                                      @RequestParam(required = false) String dstIp,
+                                                      @RequestParam(required = false) String startTime,
+                                                      @RequestParam(required = false) String endTime) {
         return deviceServiceClient.pageTraffic(current, size, mac, sessionId, dstIp, startTime, endTime);
     }
 }

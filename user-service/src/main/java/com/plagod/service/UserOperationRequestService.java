@@ -1,8 +1,7 @@
 package com.plagod.service;
 
-import com.plagod.dto.UserOperationRequestPageResult;
-import com.plagod.dto.UserOperationReviewDTO;
-import com.plagod.entity.UserOperationRequest;
+import com.plagod.vo.user.UserOperationRequestPageResult;
+import com.plagod.dto.user.UserOperationReviewDTO;
 
 public interface UserOperationRequestService {
     UserOperationRequestPageResult pageRequests(long current, long size, Integer status);

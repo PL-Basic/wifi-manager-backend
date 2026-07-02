@@ -2,6 +2,8 @@ package com.plagod.controller;
 
 import com.plagod.client.MonitorServiceClient;
 import com.plagod.dto.ApiResponse;
+import com.plagod.vo.monitor.AlertEventPageResult;
+import com.plagod.vo.monitor.AlertEventVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -18,18 +20,18 @@ public class AdminAlertController {
     private MonitorServiceClient monitorServiceClient;
 
     @GetMapping
-    public ApiResponse<Object> pageAlerts(@RequestParam(defaultValue = "1") Long current,
-                                          @RequestParam(defaultValue = "10") Long size,
-                                          @RequestParam(required = false) Integer level,
-                                          @RequestParam(required = false) Integer status,
-                                          @RequestParam(required = false) String mac,
-                                          @RequestParam(required = false) String startTime,
-                                          @RequestParam(required = false) String endTime) {
+    public ApiResponse<AlertEventPageResult> pageAlerts(@RequestParam(defaultValue = "1") Long current,
+                                                        @RequestParam(defaultValue = "10") Long size,
+                                                        @RequestParam(required = false) Integer level,
+                                                        @RequestParam(required = false) Integer status,
+                                                        @RequestParam(required = false) String mac,
+                                                        @RequestParam(required = false) String startTime,
+                                                        @RequestParam(required = false) String endTime) {
         return monitorServiceClient.pageAlerts(current, size, level, status, mac, startTime, endTime);
     }
 
     @GetMapping("/{id}")
-    public ApiResponse<Object> getAlert(@PathVariable Long id) {
+    public ApiResponse<AlertEventVO> getAlert(@PathVariable Long id) {
         return monitorServiceClient.getAlert(id);
     }
 

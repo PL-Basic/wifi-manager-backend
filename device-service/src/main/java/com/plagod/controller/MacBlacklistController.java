@@ -1,8 +1,8 @@
 package com.plagod.controller;
 
 import com.plagod.dto.ApiResponse;
-import com.plagod.dto.MacBlacklistCreateDTO;
-import com.plagod.vo.MacBlacklistPageResult;
+import com.plagod.dto.device.MacBlacklistCreateDTO;
+import com.plagod.vo.device.MacBlacklistPageResult;
 import com.plagod.service.DeviceCommandService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.DeleteMapping;

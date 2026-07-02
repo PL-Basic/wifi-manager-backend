@@ -1,10 +1,10 @@
 package com.plagod.service;
 
-import com.plagod.dto.UserPageResult;
-import com.plagod.dto.UserStatsVO;
-import com.plagod.dto.UserStatusDTO;
-import com.plagod.dto.UserUpdateDTO;
-import com.plagod.dto.UserVO;
+import com.plagod.vo.user.UserPageResult;
+import com.plagod.vo.user.UserStatsVO;
+import com.plagod.dto.user.UserStatusDTO;
+import com.plagod.dto.user.UserUpdateDTO;
+import com.plagod.vo.user.UserVO;
 
 public interface UserManageService {
     UserPageResult pageUsers(long current, long size, String keyword);

@@ -2,6 +2,7 @@ package com.plagod.controller;
 
 import com.plagod.client.DeviceServiceClient;
 import com.plagod.dto.ApiResponse;
+import com.plagod.vo.device.SessionPageResult;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -16,12 +17,12 @@ public class AdminSessionController {
     private DeviceServiceClient deviceServiceClient;
 
     @GetMapping
-    public ApiResponse<Object> pageSessions(@RequestParam(defaultValue = "1") Long current,
-                                            @RequestParam(defaultValue = "10") Long size,
-                                            @RequestParam(required = false) String mac,
-                                            @RequestParam(required = false) Long nodeId,
-                                            @RequestParam(required = false) Long userId,
-                                            @RequestParam(required = false) Integer status) {
+    public ApiResponse<SessionPageResult> pageSessions(@RequestParam(defaultValue = "1") Long current,
+                                                       @RequestParam(defaultValue = "10") Long size,
+                                                       @RequestParam(required = false) String mac,
+                                                       @RequestParam(required = false) Long nodeId,
+                                                       @RequestParam(required = false) Long userId,
+                                                       @RequestParam(required = false) Integer status) {
         return deviceServiceClient.pageSessions(current, size, mac, nodeId, userId, status);
     }
 }

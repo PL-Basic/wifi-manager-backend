@@ -2,6 +2,8 @@ package com.plagod.controller;
 
 import com.plagod.client.MonitorServiceClient;
 import com.plagod.dto.ApiResponse;
+import com.plagod.vo.monitor.AuditLogPageResult;
+import com.plagod.vo.monitor.AuditLogVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -17,18 +19,18 @@ public class AdminAuditController {
     private MonitorServiceClient monitorServiceClient;
 
     @GetMapping
-    public ApiResponse<Object> pageAudits(@RequestParam(defaultValue = "1") Long current,
-                                          @RequestParam(defaultValue = "10") Long size,
-                                          @RequestParam(required = false) String action,
-                                          @RequestParam(required = false) String operatorName,
-                                          @RequestParam(required = false) String target,
-                                          @RequestParam(required = false) String startTime,
-                                          @RequestParam(required = false) String endTime) {
+    public ApiResponse<AuditLogPageResult> pageAudits(@RequestParam(defaultValue = "1") Long current,
+                                                      @RequestParam(defaultValue = "10") Long size,
+                                                      @RequestParam(required = false) String action,
+                                                      @RequestParam(required = false) String operatorName,
+                                                      @RequestParam(required = false) String target,
+                                                      @RequestParam(required = false) String startTime,
+                                                      @RequestParam(required = false) String endTime) {
         return monitorServiceClient.pageAudits(current, size, action, operatorName, target, startTime, endTime);
     }
 
     @GetMapping("/{id}")
-    public ApiResponse<Object> getAudit(@PathVariable Long id) {
+    public ApiResponse<AuditLogVO> getAudit(@PathVariable Long id) {
         return monitorServiceClient.getAudit(id);
     }
 }

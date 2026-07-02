@@ -1,5 +1,6 @@
 package com.plagod.dto;
 
+import com.plagod.dto.auth.AuthResultDTO;
 import com.plagod.enums.LoginStatusEnum;
 import lombok.AllArgsConstructor;
 import lombok.Getter;

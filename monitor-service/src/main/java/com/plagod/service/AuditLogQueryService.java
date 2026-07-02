@@ -1,7 +1,7 @@
 package com.plagod.service;
 
-import com.plagod.dto.AuditLogPageResult;
-import com.plagod.dto.AuditLogVO;
+import com.plagod.vo.monitor.AuditLogPageResult;
+import com.plagod.vo.monitor.AuditLogVO;
 
 import java.time.LocalDateTime;
 

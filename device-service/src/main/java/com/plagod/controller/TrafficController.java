@@ -1,7 +1,7 @@
 package com.plagod.controller;
 
 import com.plagod.dto.ApiResponse;
-import com.plagod.vo.TrafficPageResult;
+import com.plagod.vo.device.TrafficPageResult;
 import com.plagod.service.TrafficQueryService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;

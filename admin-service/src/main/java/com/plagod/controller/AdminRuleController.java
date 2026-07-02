@@ -2,6 +2,10 @@ package com.plagod.controller;
 
 import com.plagod.client.MonitorServiceClient;
 import com.plagod.dto.ApiResponse;
+import com.plagod.dto.monitor.AccessRuleCreateDTO;
+import com.plagod.dto.monitor.AccessRuleUpdateDTO;
+import com.plagod.vo.monitor.AccessRulePageResult;
+import com.plagod.vo.monitor.AccessRuleVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -14,7 +18,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Map;
+import javax.validation.Valid;
 
 @RestController
 @RequestMapping("/admin/rules")
@@ -24,27 +28,27 @@ public class AdminRuleController {
     private MonitorServiceClient monitorServiceClient;
 
     @GetMapping
-    public ApiResponse<Object> pageRules(@RequestParam(defaultValue = "1") Long current,
-                                         @RequestParam(defaultValue = "10") Long size,
-                                         @RequestParam(required = false) Integer ruleType,
-                                         @RequestParam(required = false) Integer enabled,
-                                         @RequestParam(required = false) String keyword) {
+    public ApiResponse<AccessRulePageResult> pageRules(@RequestParam(defaultValue = "1") Long current,
+                                                       @RequestParam(defaultValue = "10") Long size,
+                                                       @RequestParam(required = false) Integer ruleType,
+                                                       @RequestParam(required = false) Integer enabled,
+                                                       @RequestParam(required = false) String keyword) {
         return monitorServiceClient.pageRules(current, size, ruleType, enabled, keyword);
     }
 
     @GetMapping("/{id}")
-    public ApiResponse<Object> getRule(@PathVariable Long id) {
+    public ApiResponse<AccessRuleVO> getRule(@PathVariable Long id) {
         return monitorServiceClient.getRule(id);
     }
 
     @PostMapping
-    public ApiResponse<Object> createRule(@RequestBody Map<String, Object> body) {
-        return monitorServiceClient.createRule(body);
+    public ApiResponse<AccessRuleVO> createRule(@Valid @RequestBody AccessRuleCreateDTO accessRuleCreateDTO) {
+        return monitorServiceClient.createRule(accessRuleCreateDTO);
     }
 
     @PutMapping("/{id}")
-    public ApiResponse<Object> updateRule(@PathVariable Long id, @RequestBody Map<String, Object> body) {
-        return monitorServiceClient.updateRule(id, body);
+    public ApiResponse<AccessRuleVO> updateRule(@PathVariable Long id, @Valid @RequestBody AccessRuleUpdateDTO accessRuleUpdateDTO) {
+        return monitorServiceClient.updateRule(id, accessRuleUpdateDTO);
     }
 
     @DeleteMapping("/{id}")

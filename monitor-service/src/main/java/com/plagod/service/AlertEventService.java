@@ -1,7 +1,7 @@
 package com.plagod.service;
 
-import com.plagod.dto.AlertEventPageResult;
-import com.plagod.dto.AlertEventVO;
+import com.plagod.vo.monitor.AlertEventPageResult;
+import com.plagod.vo.monitor.AlertEventVO;
 
 import java.time.LocalDateTime;
 
