@@ -31,6 +31,8 @@ public class Esp32Node implements Serializable {
 
     private String firmwareVersion;
 
+    private String wifiStatus;
+
     private Integer status;
 
     @TableField("max_clients")

@@ -44,6 +44,9 @@ public class DeviceEventServiceImpl implements DeviceEventService {
         if (StringUtils.hasText(event.getFirmwareVersion())) {
             node.setFirmwareVersion(event.getFirmwareVersion());
         }
+        if (StringUtils.hasText(event.getWifiStatus())) {
+            node.setWifiStatus(event.getWifiStatus());
+        }
         if (event.getCurrentClients() != null) {
             node.setCurrentClients(event.getCurrentClients());
         }

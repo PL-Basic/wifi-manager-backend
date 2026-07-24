@@ -70,9 +70,9 @@ public interface MonitorServiceClient {
 
     @GetMapping("/locations")
     ApiResponse<ClientLocationPageResult> pageLocations(@RequestParam("current") Long current,
-                                      @RequestParam("size") Long size,
-                                      @RequestParam(value = "mac", required = false) String mac,
-                                      @RequestParam(value = "userId", required = false) Long userId,
-                                      @RequestParam(value = "startTime", required = false) String startTime,
-                                      @RequestParam(value = "endTime", required = false) String endTime);
+                                                        @RequestParam("size") Long size,
+                                                        @RequestParam(value = "mac", required = false) String mac,
+                                                        @RequestParam(value = "userId", required = false) Long userId,
+                                                        @RequestParam(value = "startTime", required = false) String startTime,
+                                                        @RequestParam(value = "endTime", required = false) String endTime);
 }

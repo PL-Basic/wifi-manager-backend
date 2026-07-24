@@ -27,3 +27,5 @@ mqtt:
   qos: 1
   status-topic: wifi/device/+/event/status
   traffic-topic: wifi/device/+/event/traffic
+  command-result-topic: wifi/device/+/event/command-result
+  client-signal-topic: wifi/device/+/event/client-signal
