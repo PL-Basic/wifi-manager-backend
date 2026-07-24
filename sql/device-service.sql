@@ -8,6 +8,7 @@ create table t_esp32_node(
     location varchar(128),
     ip varchar(45),
     firmware_version varchar(32),
+    wifi_status varchar(32) DEFAULT NULL,
     status tinyint NOT NULL DEFAULT 0,
     max_clients int NOT NULL DEFAULT 4,
     current_clients int NOT NULL DEFAULT 0,
@@ -75,6 +76,23 @@ create table t_traffic_log(
     KEY idx_dst_ip(dst_ip)
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+create table if not exists t_client_signal(
+    id bigint auto_increment,
+    node_id bigint not null,
+    device_code varchar(64) not null,
+    mac varchar(17) not null,
+    session_id bigint not null default 0,
+    rssi tinyint not null,
+    state varchar(32) not null,
+    report_time datetime not null default current_timestamp,
+
+    primary key (id),
+    key idx_device_mac_time(device_code, mac, report_time),
+    key idx_node_time(node_id, report_time),
+    key idx_session_time(session_id, report_time),
+    key idx_report_time(report_time)
+) default charset=utf8mb4 collate=utf8mb4_unicode_ci;
+
+
 insert into t_esp32_node(device_code, name, location, ip, firmware_version, status)
 values ('esp32-main', '客厅ESP32网关', '客厅', '192.168.4.1', null, 0);
-

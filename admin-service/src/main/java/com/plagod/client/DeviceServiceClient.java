@@ -62,10 +62,22 @@ public interface DeviceServiceClient {
 
     @GetMapping("/traffic")
     ApiResponse<TrafficPageResult> pageTraffic(@RequestParam("current") Long current,
-                                    @RequestParam("size") Long size,
-                                    @RequestParam(value = "mac", required = false) String mac,
-                                    @RequestParam(value = "sessionId", required = false) Long sessionId,
-                                    @RequestParam(value = "dstIp", required = false) String dstIp,
-                                    @RequestParam(value = "startTime", required = false) String startTime,
-                                    @RequestParam(value = "endTime", required = false) String endTime);
+                                               @RequestParam("size") Long size,
+                                               @RequestParam(value = "mac", required = false) String mac,
+                                               @RequestParam(value = "sessionId", required = false) Long sessionId,
+                                               @RequestParam(value = "dstIp", required = false) String dstIp,
+                                               @RequestParam(value = "startTime", required = false) String startTime,
+                                               @RequestParam(value = "endTime", required = false) String endTime);
+
+
+    @GetMapping("/client-signals")
+    ApiResponse<ClientSignalPageResult> pageClientSignals(@RequestParam("current") Long current,
+                                                          @RequestParam("size") Long size,
+                                                          @RequestParam(value = "deviceCode", required = false) String deviceCode,
+                                                          @RequestParam(value = "nodeId", required = false) Long nodeId,
+                                                          @RequestParam(value = "mac", required = false) String mac,
+                                                          @RequestParam(value = "sessionId", required = false) Long sessionId,
+                                                          @RequestParam(value = "state", required = false) String state,
+                                                          @RequestParam(value = "startTime", required = false) String startTime,
+                                                          @RequestParam(value = "endTime", required = false) String endTime);
 }

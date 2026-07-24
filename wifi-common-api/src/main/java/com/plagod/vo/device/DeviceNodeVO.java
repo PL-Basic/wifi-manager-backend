@@ -13,6 +13,7 @@ public class DeviceNodeVO {
     private String ip;
     private Integer status;
     private String firmwareVersion;
+    private String wifiStatus;
     private Integer maxClients;
     private Integer currentClients;
     private LocalDateTime lastHeartbeat;

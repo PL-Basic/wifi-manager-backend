@@ -15,4 +15,6 @@ public class MqttProperties {
     private Integer qos = 1;
     private String statusTopic;
     private String trafficTopic;
+    private String commandResultTopic;
+    private String clientSignalTopic;
 }

@@ -2,8 +2,11 @@ package com.plagod.mqtt;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.plagod.configuration.MqttProperties;
+import com.plagod.dto.ClientSignalEvent;
+import com.plagod.dto.CommandResultEvent;
 import com.plagod.dto.DeviceTrafficEvent;
 import com.plagod.dto.DeviceStatusEvent;
+import com.plagod.service.ClientSignalEventService;
 import com.plagod.service.DeviceEventService;
 import com.plagod.service.TrafficEventService;
 import lombok.extern.slf4j.Slf4j;
@@ -35,6 +38,9 @@ public class MqttEventSubscriber implements InitializingBean, DisposableBean {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private ClientSignalEventService clientSignalEventService;
+
     private MqttClient client;
 
     @Override
@@ -59,9 +65,12 @@ public class MqttEventSubscriber implements InitializingBean, DisposableBean {
 
         client.connect(buildOptions());
         client.subscribe(mqttProperties.getStatusTopic(), mqttProperties.getQos());
+        client.subscribe(mqttProperties.getCommandResultTopic(), mqttProperties.getQos());
         client.subscribe(mqttProperties.getTrafficTopic(), mqttProperties.getQos());
+        client.subscribe(mqttProperties.getClientSignalTopic(), mqttProperties.getQos());
         log.info("MQTT 设备状态订阅已启动，topic={}", mqttProperties.getStatusTopic());
         log.info("MQTT 设备流量订阅已启动，topic={}", mqttProperties.getTrafficTopic());
+        log.info("MQTT 客户端 RSSI 订阅已启动，topic={}", mqttProperties.getClientSignalTopic());
     }
 
     @Override
@@ -91,7 +100,37 @@ public class MqttEventSubscriber implements InitializingBean, DisposableBean {
                 }
                 trafficEventService.handleTrafficEvent(event);
                 log.info("设备流量事件处理成功，topic={}, payload={}", topic, payload);
+                return;
             }
+            if (topic.endsWith("/event/client-signal")) {
+
+                ClientSignalEvent event = objectMapper.readValue(payload, ClientSignalEvent.class);
+
+                // MQTT topic 是设备身份的可信来源。
+                String topicDeviceCode = parseDeviceCode(topic);
+                if (!StringUtils.hasText(topicDeviceCode)) {
+                    throw new IllegalArgumentException("无法从 MQTT topic 中解析 deviceCode");
+                }
+
+                // payload 携带 deviceCode 时，必须与 topic 保持一致。
+                if (StringUtils.hasText(event.getDeviceCode()) && !topicDeviceCode.equals(event.getDeviceCode().trim())) {
+                    throw new IllegalArgumentException("MQTT topic 与 payload 的 deviceCode 不一致");
+                }
+
+                // 统一使用 topic 中解析出的设备编码。
+                event.setDeviceCode(topicDeviceCode);
+                clientSignalEventService.handleClientSignalEvent(event);
+                log.info("客户端 RSSI 事件处理成功，topic={}, clientCount={}", topic, event.getClients() == null ? 0 : event.getClients().size());
+                return;
+            }
+            if (topic.endsWith("/event/command-result")) {
+                CommandResultEvent event = objectMapper.readValue(payload, CommandResultEvent.class);
+                if (!StringUtils.hasText(event.getDeviceCode())) {
+                    event.setDeviceCode(parseDeviceCode(topic));
+                }
+                log.info("收到命令执行结果 payload={}", payload);
+            }
+
         } catch (Exception e) {
             log.warn("MQTT 事件处理失败，topic={}", topic, e);
         }
