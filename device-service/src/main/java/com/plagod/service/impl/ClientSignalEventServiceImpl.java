@@ -8,6 +8,7 @@ import com.plagod.mapper.ClientSignalMapper;
 import com.plagod.mapper.Esp32NodeMapper;
 import com.plagod.mapper.SessionRecordMapper;
 import com.plagod.service.ClientSignalEventService;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -64,6 +65,7 @@ public class ClientSignalEventServiceImpl implements ClientSignalEventService {
 
         int savedCount = 0;
         int ignoredCount = 0;
+        int lastSeenUpdatedCount = 0;
 
         for (ClientSignalEvent.ClientSignalItem item : clients) {
             if (!isBasicDataValid(item)) {
@@ -74,7 +76,8 @@ public class ClientSignalEventServiceImpl implements ClientSignalEventService {
             String mac = normalizeMac(item.getMac());
             long sessionId = item.getSessionId();
 
-            if (sessionId > 0 && !isSessionRelationshipValid(sessionId, node.getNodeId(), mac)) {
+            // 已认证 RSSI 必须属于当前节点上的活跃 Session。
+            if (sessionId > 0 && !isActiveSessionRelationshipValid(sessionId, node.getNodeId(), mac)) {
                 log.warn("忽略会话关系不匹配的 RSSI，device={},mac={},sessionId={}", deviceCode, mac, sessionId);
                 ignoredCount++;
                 continue;
@@ -91,9 +94,14 @@ public class ClientSignalEventServiceImpl implements ClientSignalEventService {
 
             clientSignalMapper.insert(record);
             savedCount++;
+
+            // sessionId=0 是认证前观测，只保存 RSSI，不关联任何 Session。
+            if (sessionId > 0 && updateSessionLastSeenTime(sessionId, node.getNodeId(), mac, reportTime)) {
+                lastSeenUpdatedCount++;
+            }
         }
 
-        log.info("客户端 RSSI 批次处理完成，deviceCode={}, saved={}, ignored={}", deviceCode, savedCount, ignoredCount);
+        log.info("客户端 RSSI 批次处理完成，deviceCode={}, saved={}, ignored={}, lastSeenUpdated={}", deviceCode, savedCount, ignoredCount, lastSeenUpdatedCount);
     }
 
 
@@ -135,11 +143,11 @@ public class ClientSignalEventServiceImpl implements ClientSignalEventService {
         return true;
     }
 
-    private boolean isSessionRelationshipValid(Long sessionId, Long nodeId, String mac) {
-
+    // 校验 RSSI 携带的 Session 是否仍然活跃，并属于当前节点和 MAC。
+    private boolean isActiveSessionRelationshipValid(Long sessionId, Long nodeId, String mac) {
         SessionRecord session = sessionRecordMapper.selectById(sessionId);
 
-        if (session == null) {
+        if (session == null || !Integer.valueOf(1).equals(session.getStatus())) {
             return false;
         }
 
@@ -148,6 +156,26 @@ public class ClientSignalEventServiceImpl implements ClientSignalEventService {
         }
 
         return mac.equals(normalizeMac(session.getMac()));
+    }
+
+    // 只更新在线观测时间，避免覆盖 Session 的续租、计费等并发字段。
+    private boolean updateSessionLastSeenTime(Long sessionId, Long nodeId, String mac, LocalDateTime reportTime) {
+        UpdateWrapper<SessionRecord> update = new UpdateWrapper<>();
+        update.eq("session_id", sessionId)
+                .eq("node_id", nodeId)
+                .eq("mac", mac)
+                .eq("status", 1)
+                .set("last_seen_time", reportTime);
+
+        int affectedRows = sessionRecordMapper.update(null, update);
+
+        if (affectedRows != 1) {
+            log.warn("RSSI 已保存但活跃 Session 在线时间未更新，sessionId={},nodeId={},mac={}",
+                    sessionId, nodeId, mac);
+            return false;
+        }
+
+        return true;
     }
 
 

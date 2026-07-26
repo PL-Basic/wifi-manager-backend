@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.plagod.audit.Audited;
+import com.plagod.vo.user.UserConnectionPolicyVO;
 import com.plagod.vo.user.UserPageResult;
 import com.plagod.vo.user.UserStatsVO;
 import com.plagod.dto.user.UserStatusDTO;
@@ -120,6 +121,28 @@ public class UserManageServiceImpl implements UserManageService {
     @Audited(action = "user.purge")
     public void purgeUser(Long userId) {
         jdbcTemplate.update("DELETE FROM sys_user WHERE user_id = ?", userId);
+    }
+
+    @Override
+    public UserConnectionPolicyVO getConnectionPolicy(Long userId) {
+        if (userId == null || userId <= 0) {
+            throw new IllegalArgumentException("用户 ID 无效");
+        }
+        User user = getExistingUser(userId);
+        // 被禁用的用户不能继续创建新的 Portal Session。
+        if (!Integer.valueOf(1).equals(user.getStatus())) {
+            throw new IllegalArgumentException("用户当前不可用");
+        }
+
+        Integer configuredLimit = user.getMaxConnections();
+
+        // 历史用户没有配置时，按照设计约定使用默认值 1。
+        int effectiveLimit = configuredLimit == null || configuredLimit < 1 ? 1 : configuredLimit;
+
+        UserConnectionPolicyVO policy = new UserConnectionPolicyVO();
+        policy.setUserId(user.getUserId());
+        policy.setMaxConnections(effectiveLimit);
+        return policy;
     }
 
     @Override

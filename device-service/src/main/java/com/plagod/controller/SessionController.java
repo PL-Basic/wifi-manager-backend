@@ -1,13 +1,15 @@
 package com.plagod.controller;
 
 import com.plagod.dto.ApiResponse;
+import com.plagod.dto.device.PortalAuthorizeDTO;
+import com.plagod.service.PortalSessionService;
 import com.plagod.vo.device.SessionPageResult;
 import com.plagod.service.SessionQueryService;
+import com.plagod.vo.device.SessionRecordVO;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+
+import javax.validation.Valid;
 
 @RestController
 @RequestMapping("/sessions")
@@ -15,6 +17,17 @@ public class SessionController {
 
     @Autowired
     private SessionQueryService sessionQueryService;
+
+    @Autowired
+    private PortalSessionService portalSessionService;
+
+    // X-User-Id 类似于快递单号
+    @PostMapping("/portal-authorize")
+    public ApiResponse<SessionRecordVO> portalAuthorize(@Valid @RequestBody PortalAuthorizeDTO portalAuthorizeDTO,
+                                                        @RequestHeader("X-User-Id") Long userId) {
+        SessionRecordVO session = portalSessionService.authorize(portalAuthorizeDTO, userId);
+        return ApiResponse.success("Portal 认证成功", session);
+    }
 
     @GetMapping
     public ApiResponse<SessionPageResult> pageSessions(@RequestParam(defaultValue = "1") Long current,

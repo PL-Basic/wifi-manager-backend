@@ -21,6 +21,10 @@ public class SessionRecord implements Serializable {
 
     private Long userId;
 
+    private Long entitlementId;
+
+    private String authorizationMode;
+
     private Long nodeId;
 
     private String mac;
@@ -32,6 +36,16 @@ public class SessionRecord implements Serializable {
     private LocalDateTime loginTime;
 
     private LocalDateTime expireTime;
+
+    private LocalDateTime lastSeenTime;
+
+    private LocalDateTime lastRenewTime;
+
+    private LocalDateTime lastBilledTime;
+
+    private Long consumedSeconds;
+
+    private String endReason;
 
     private LocalDateTime logoutTime;
 
