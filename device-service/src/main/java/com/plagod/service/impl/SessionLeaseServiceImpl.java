@@ -108,12 +108,12 @@ public class SessionLeaseServiceImpl implements SessionLeaseService {
             return;
         }
 
-        // 发布失败会回滚本地 Session；远程扣费通过 requestId 幂等重试。
-        deviceCommandService.refreshClientLease(node.getDeviceCode(), session.getMac(), session.getSessionId(), ttlSeconds);
-
         session.setLastRenewTime(now);
         session.setExpireTime(now.plusSeconds(ttlSeconds));
         saveSession(session);
+
+        // Session 更新和续租命令入队共享当前事务。
+        deviceCommandService.refreshClientLease(session.getNodeId(), node.getDeviceCode(), session.getMac(), session.getSessionId(), ttlSeconds);
     }
 
     private void validateConfiguration() {

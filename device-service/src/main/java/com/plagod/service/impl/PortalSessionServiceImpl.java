@@ -119,7 +119,7 @@ public class PortalSessionServiceImpl implements PortalSessionService {
             }
 
             applyLease(reusableSession, lease, now);
-            return saveAndPublish(deviceCode, reusableSession, lease.getTtlSeconds());
+            return saveAndEnqueue(deviceCode, reusableSession, lease.getTtlSeconds());
         }
 
         // 获取 user-service 统一解释后的有效连接上限。
@@ -157,7 +157,7 @@ public class PortalSessionServiceImpl implements PortalSessionService {
         validateLease(lease);
 
         applyLease(sessionRecord, lease, now);
-        return saveAndPublish(deviceCode, sessionRecord, lease.getTtlSeconds());
+        return saveAndEnqueue(deviceCode, sessionRecord, lease.getTtlSeconds());
     }
 
     private String cleanRequired(String value, String message) {
@@ -270,12 +270,12 @@ public class PortalSessionServiceImpl implements PortalSessionService {
     }
 
     // 保存 Session，然后使用同一个 sessionId 刷新 ESP32 的短 TTL。
-    private SessionRecordVO saveAndPublish(String deviceCode, SessionRecord session, Integer ttlSeconds) {
+    private SessionRecordVO saveAndEnqueue(String deviceCode, SessionRecord session, Integer ttlSeconds) {
         if (sessionRecordMapper.updateById(session) != 1) {
             throw new IllegalStateException("Portal 会话状态更新失败");
         }
 
-        deviceCommandService.allowClient(deviceCode, session.getMac(), session.getSessionId(), ttlSeconds);
+        deviceCommandService.allowClient(session.getNodeId(), deviceCode, session.getMac(), session.getSessionId(), ttlSeconds);
         SessionRecordVO result = new SessionRecordVO();
         BeanUtils.copyProperties(session, result);
         return result;

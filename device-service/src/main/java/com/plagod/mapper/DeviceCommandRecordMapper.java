@@ -6,10 +6,34 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+import java.time.LocalDateTime;
+import java.util.List;
+
 @Mapper
 public interface DeviceCommandRecordMapper extends BaseMapper<DeviceCommandRecord> {
 
     // 处理 command-result 时锁定命令，防止重复 MQTT 消息并发修改。
     @Select("select * from t_device_command where request_id = #{requestId} limit 1 for update")
     DeviceCommandRecord selectByRequestIdForUpdate(@Param("requestId") String requestId);
+
+    // Dispatcher 发布时锁住命令。
+    // 快速 command-result 会等待本事务把状态改成 PUBLISHED。
+    @Select("select * from t_device_command where command_id = #{commandId} limit 1 for update")
+    DeviceCommandRecord selectByCommandIdForUpdate(@Param("commandId") Long commandId);
+
+    // 只扫描当前到期、可以尝试发布的 PENDING 命令。
+    @Select("select command_id from t_device_command " +
+            "where status = #{status} " +
+            "and (next_retry_time is null or next_retry_time <= #{now}) " +
+            "order by command_id asc limit #{limit}")
+    List<Long> selectDispatchableCommandIds(@Param("status") Integer status, @Param("now") LocalDateTime now, @Param("limit") Integer limit);
+
+    // 扫描已经超过 command-result 截止时间的 PUBLISHED 命令。
+    @Select("select command_id from t_device_command " +
+            "where status = #{status} " +
+            "and deadline_time is not null " +
+            "and deadline_time <= #{now} " +
+            "order by command_id asc limit #{limit}")
+    List<Long> selectTimedOutCommandIds(@Param("status") Integer status, @Param("now") LocalDateTime now, @Param("limit") Integer limit);
+
 }
