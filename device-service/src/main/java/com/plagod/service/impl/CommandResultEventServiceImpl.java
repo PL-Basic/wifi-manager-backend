@@ -5,6 +5,7 @@ import com.plagod.dto.CommandResultEvent;
 import com.plagod.entity.DeviceCommandRecord;
 import com.plagod.mapper.DeviceCommandRecordMapper;
 import com.plagod.service.CommandResultEventService;
+import com.plagod.service.SessionCommandLifecycleService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -36,6 +37,9 @@ public class CommandResultEventServiceImpl implements CommandResultEventService 
     @Autowired
     private DeviceCommandRecordMapper commandRecordMapper;
 
+    @Autowired
+    private SessionCommandLifecycleService sessionCommandLifecycleService;
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void handleCommandResult(CommandResultEvent event) {
@@ -43,12 +47,8 @@ public class CommandResultEventServiceImpl implements CommandResultEventService 
             throw new IllegalArgumentException("命令结果不能为空");
         }
 
-        String deviceCode = cleanRequired(
-                event.getDeviceCode(), 64, "命令结果缺少 deviceCode"
-        );
-        String requestId = cleanRequired(
-                event.getRequestId(), 64, "命令结果缺少 requestId"
-        );
+        String deviceCode = cleanRequired(event.getDeviceCode(), 64, "命令结果缺少 deviceCode");
+        String requestId = cleanRequired(event.getRequestId(), 64, "命令结果缺少 requestId");
         String commandType = normalizeCommandType(event.getType());
         String message = cleanNullable(event.getMessage(), 255);
 
@@ -100,19 +100,17 @@ public class CommandResultEventServiceImpl implements CommandResultEventService 
         if (commandRecordMapper.updateById(command) != 1) {
             throw new IllegalStateException("命令结果保存失败");
         }
-
+        // 命令状态和 Session 状态必须在同一事务中提交。
+        sessionCommandLifecycleService.handleTerminalCommand(command);
         log.info("命令结果保存成功，requestId={}, type={}, success={}", requestId, commandType, event.getSuccess());
     }
 
 
     private String normalizeCommandType(String value) {
-        String type = cleanRequired(value, 32, "命令结果缺少 type")
-                .toUpperCase(Locale.ROOT);
+        String type = cleanRequired(value, 32, "命令结果缺少 type").toUpperCase(Locale.ROOT);
 
         if (!SUPPORTED_TYPES.contains(type)) {
-            throw new IllegalArgumentException(
-                    "未知的 command-result 类型：" + type
-            );
+            throw new IllegalArgumentException("未知的 command-result 类型：" + type);
         }
 
         return type;

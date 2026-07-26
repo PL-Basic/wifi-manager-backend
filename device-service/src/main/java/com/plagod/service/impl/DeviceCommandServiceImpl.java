@@ -4,7 +4,9 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.plagod.audit.Audited;
+import com.plagod.constant.DeviceCommandPurpose;
 import com.plagod.constant.MqttTopics;
+import com.plagod.constant.SessionStatus;
 import com.plagod.dto.AllowClientCommand;
 import com.plagod.dto.device.*;
 import com.plagod.entity.DeviceCommandRecord;
@@ -33,9 +35,7 @@ import java.util.regex.Pattern;
 public class DeviceCommandServiceImpl implements DeviceCommandService {
 
     private static final Pattern MAC_PATTERN = Pattern.compile("(?i)^[0-9a-f]{2}(:[0-9a-f]{2}){5}$");
-    // PURPOSE 后端发布目的
-    private static final String PURPOSE_PORTAL_AUTHORIZE = "PORTAL_AUTHORIZE";
-    private static final String PURPOSE_LEASE_RENEW = "LEASE_RENEW";
+
 
     @Autowired
     private Esp32NodeMapper esp32NodeMapper;
@@ -178,11 +178,11 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     @Audited(action = "device.delete")
     public void deleteDevice(Long nodeId) {
         Esp32Node esp32Node = esp32NodeMapper.selectById(nodeId);
-        Long activeSessionCount = sessionRecordMapper.selectCount(
+        Long openSessionCount = sessionRecordMapper.selectCount(
                 new QueryWrapper<SessionRecord>()
                         .eq("node_id", nodeId)
-                        .eq("status",1)
-                );
+                        .in("status", SessionStatus.ACTIVE, SessionStatus.PENDING)
+        );
 
         if (esp32Node == null) {
             throw new IllegalArgumentException("该设备节点不存在");
@@ -193,8 +193,8 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         if (esp32Node.getCurrentClients() != null && esp32Node.getCurrentClients() > 0) {
             throw new IllegalArgumentException("设备存在在线客户，不能退役");
         }
-        if (activeSessionCount != null && activeSessionCount > 0) {
-            throw new IllegalArgumentException("设备存在活跃会话，不能退役");
+        if (openSessionCount != null && openSessionCount > 0) {
+            throw new IllegalArgumentException("设备存在尚未关闭的会话，不能退役");
         }
 
         int count = esp32NodeMapper.deleteById(nodeId);
@@ -238,12 +238,12 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     @Override
     @Audited(action = "device.allow-client")
     public DeviceCommandResult allowClient(Long nodeId, String deviceCode, String mac, Long sessionId, Integer ttlSeconds) {
-        return enqueueClientLease(nodeId, deviceCode, mac, sessionId, ttlSeconds, PURPOSE_PORTAL_AUTHORIZE);
+        return enqueueClientLease(nodeId, deviceCode, mac, sessionId, ttlSeconds, DeviceCommandPurpose.PORTAL_AUTHORIZE);
     }
 
     @Override
     public DeviceCommandResult refreshClientLease(Long nodeId, String deviceCode, String mac, Long sessionId, Integer ttlSeconds) {
-        return enqueueClientLease(nodeId, deviceCode, mac, sessionId, ttlSeconds, PURPOSE_LEASE_RENEW);
+        return enqueueClientLease(nodeId, deviceCode, mac, sessionId, ttlSeconds, DeviceCommandPurpose.LEASE_RENEW);
     }
 
     @Override
@@ -282,7 +282,7 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
                 : clientSummary.getCurrentClients().longValue();
 
         QueryWrapper<SessionRecord> sessionWrapper = new QueryWrapper<>();
-        sessionWrapper.eq("status", 1);
+        sessionWrapper.eq("status", SessionStatus.ACTIVE);
         long onlineSessions = sessionRecordMapper.selectCount(sessionWrapper);
 
         long blacklistCount = macBlacklistMapper.selectCount(new QueryWrapper<MacBlacklist>());

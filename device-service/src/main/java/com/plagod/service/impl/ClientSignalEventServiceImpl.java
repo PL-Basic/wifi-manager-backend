@@ -1,5 +1,6 @@
 package com.plagod.service.impl;
 
+import com.plagod.constant.SessionStatus;
 import com.plagod.dto.ClientSignalEvent;
 import com.plagod.entity.ClientSignalRecord;
 import com.plagod.entity.Esp32Node;
@@ -76,8 +77,8 @@ public class ClientSignalEventServiceImpl implements ClientSignalEventService {
             String mac = normalizeMac(item.getMac());
             long sessionId = item.getSessionId();
 
-            // 已认证 RSSI 必须属于当前节点上的活跃 Session。
-            if (sessionId > 0 && !isActiveSessionRelationshipValid(sessionId, node.getNodeId(), mac)) {
+            // 已分配 sessionId 的 RSSI 必须属于当前节点上的开放 Session。
+            if (sessionId > 0 && !isOpenSessionRelationshipValid(sessionId, node.getNodeId(), mac)) {
                 log.warn("忽略会话关系不匹配的 RSSI，device={},mac={},sessionId={}", deviceCode, mac, sessionId);
                 ignoredCount++;
                 continue;
@@ -143,11 +144,11 @@ public class ClientSignalEventServiceImpl implements ClientSignalEventService {
         return true;
     }
 
-    // 校验 RSSI 携带的 Session 是否仍然活跃，并属于当前节点和 MAC。
-    private boolean isActiveSessionRelationshipValid(Long sessionId, Long nodeId, String mac) {
+    // 校验 RSSI 携带的 Session 是否仍然开放，并属于当前节点和 MAC。
+    private boolean isOpenSessionRelationshipValid(Long sessionId, Long nodeId, String mac) {
         SessionRecord session = sessionRecordMapper.selectById(sessionId);
 
-        if (session == null || !Integer.valueOf(1).equals(session.getStatus())) {
+        if (session == null || !SessionStatus.isOpen(session.getStatus())) {
             return false;
         }
 
@@ -164,7 +165,7 @@ public class ClientSignalEventServiceImpl implements ClientSignalEventService {
         update.eq("session_id", sessionId)
                 .eq("node_id", nodeId)
                 .eq("mac", mac)
-                .eq("status", 1)
+                .in("status", SessionStatus.ACTIVE, SessionStatus.PENDING)
                 .set("last_seen_time", reportTime);
 
         int affectedRows = sessionRecordMapper.update(null, update);

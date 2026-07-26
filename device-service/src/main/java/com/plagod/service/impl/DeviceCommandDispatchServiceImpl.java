@@ -6,6 +6,7 @@ import com.plagod.entity.DeviceCommandRecord;
 import com.plagod.mapper.DeviceCommandRecordMapper;
 import com.plagod.mqtt.MqttCommandPublisher;
 import com.plagod.service.DeviceCommandDispatchService;
+import com.plagod.service.SessionCommandLifecycleService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -24,6 +25,9 @@ public class DeviceCommandDispatchServiceImpl implements DeviceCommandDispatchSe
 
     @Autowired
     private MqttCommandPublisher mqttCommandPublisher;
+
+    @Autowired
+    private SessionCommandLifecycleService sessionCommandLifecycleService;
 
     // 包含首次发布在内的最大发布次数。
     @Value("${wifi.command.publish-max-attempts:3}")
@@ -73,7 +77,6 @@ public class DeviceCommandDispatchServiceImpl implements DeviceCommandDispatchSe
         command.setUpdateTime(publishedAt);
 
         save(command);
-
         log.info("设备命令发布成功，commandId={}, requestId={}", commandId, command.getRequestId());
     }
 
@@ -100,12 +103,15 @@ public class DeviceCommandDispatchServiceImpl implements DeviceCommandDispatchSe
         command.setResultMessage("等待 ESP32 command-result 超时");
         command.setUpdateTime(now);
 
+        // 先持久化命令终态。
         save(command);
+        // TIMED_OUT 命令和 Session 关闭处于同一事务。
+        sessionCommandLifecycleService.handleTerminalCommand(command);
+
         log.warn("设备命令结果超时，commandId={}, requestId={}", commandId, command.getRequestId());
     }
 
-    private void handlePublishFailure(
-            DeviceCommandRecord command, Exception exception) {
+    private void handlePublishFailure(DeviceCommandRecord command, Exception exception) {
 
         LocalDateTime failedAt = LocalDateTime.now();
         int failedAttempts = command.getRetryCount() == null ? 1 : command.getRetryCount() + 1;
@@ -122,13 +128,17 @@ public class DeviceCommandDispatchServiceImpl implements DeviceCommandDispatchSe
             command.setResultTime(failedAt);
         } else {
             command.setStatus(DeviceCommandStatus.PENDING);
-            command.setNextRetryTime(
-                    failedAt.plusSeconds(publishRetryDelaySeconds));
+            command.setNextRetryTime(failedAt.plusSeconds(publishRetryDelaySeconds));
             command.setResultTime(null);
         }
 
         save(command);
 
+        // 普通重试仍为 PENDING，不能关闭 Session。
+        // 只有最终发布失败才驱动 Session 关闭。
+        if (Integer.valueOf(DeviceCommandStatus.PUBLISH_FAILED).equals(command.getStatus())) {
+            sessionCommandLifecycleService.handleTerminalCommand(command);
+        }
         log.warn("设备命令发布失败，commandId={}, requestId={}, attempts={}", command.getCommandId(), command.getRequestId(), failedAttempts, exception);
     }
 
