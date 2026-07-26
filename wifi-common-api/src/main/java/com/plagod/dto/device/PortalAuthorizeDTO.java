@@ -3,27 +3,25 @@ package com.plagod.dto.device;
 import lombok.Data;
 
 import javax.validation.constraints.NotBlank;
+import javax.validation.constraints.Pattern;
+import javax.validation.constraints.Size;
 
-/**
- * Portal 认证请求 DTO。
- * 手机连上 ESP32 开放热点后，Portal 页面提交此表单到后端。
- * 放在 common-api 是因为 admin-service（Feign）和 device-service（Controller）都需要这个类型。
- */
 @Data
 public class PortalAuthorizeDTO {
 
-    /** 用户所连接的 ESP32 设备编码，必填 */
     @NotBlank(message = "设备编码不能为空")
+    @Size(max = 64, message = "设备编码长度不能超过 64")
     private String deviceCode;
 
-    /** 用户手机 WiFi MAC 地址，必填，格式如 AA:BB:CC:DD:EE:FF */
+
     @NotBlank(message = "MAC 地址不能为空")
+    @Pattern(regexp = "(?i)^[0-9a-f]{2}(:[0-9a-f]{2}){5}$", message = "MAC 地址格式不正确")
     private String mac;
 
-    /** 用户手机获取的 IP 地址，必填，用于关联会话 */
     @NotBlank(message = "IP 地址不能为空")
+    @Size(max = 45, message = "IP地址不能超过45")
     private String ip;
 
-    /** 可选的设备描述信息，例如浏览器的 User-Agent */
+    @Size(max = 255, message = "设备信息长度不能超过255")
     private String deviceInfo;
 }

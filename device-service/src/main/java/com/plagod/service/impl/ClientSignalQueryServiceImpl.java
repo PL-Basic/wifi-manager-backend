@@ -83,4 +83,21 @@ public class ClientSignalQueryServiceImpl implements ClientSignalQueryService {
 
         return result;
     }
+
+    @Override
+    public boolean wasRecentlyObserved(Long nodeId, String deviceCode, String mac, LocalDateTime sinceTime) {
+        // 参数不完整时不能把未知客户端误判成已观察客户端。
+        if (nodeId == null || nodeId <= 0 || !StringUtils.hasText(deviceCode) || !StringUtils.hasText(mac) || sinceTime == null) {
+            return false;
+        }
+
+        Number count = clientSignalMapper.selectCount(
+                new QueryWrapper<ClientSignalRecord>()
+                        .eq("node_id", nodeId)
+                        .eq("device_code", deviceCode.trim())
+                        .eq("mac", mac.trim().toUpperCase(Locale.ROOT))
+                        .ge("report_time", sinceTime)
+        );
+        return count != null && count.longValue() > 0;
+    }
 }

@@ -26,12 +26,19 @@ drop table if exists t_session;
 create table t_session(
     session_id bigint AUTO_INCREMENT,
     user_id bigint NOT NULL,
+    entitlement_id bigint DEFAULT NULL,
+    authorization_mode varchar(16) DEFAULT NULL,
     node_id bigint NOT NULL,
     mac varchar(17) NOT NULL,
     ip varchar(45),
     device_info varchar(255),
     login_time datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
     expire_time datetime NOT NULL,
+    last_seen_time datetime DEFAULT NULL,
+    last_renew_time datetime DEFAULT NULL,
+    last_billed_time datetime DEFAULT NULL,
+    consumed_seconds bigint NOT NULL DEFAULT 0,
+    end_reason varchar(32) DEFAULT NULL,
     logout_time datetime DEFAULT NULL,
     status tinyint NOT NULL DEFAULT 1,
     bytes_up bigint NOT NULL DEFAULT 0,
@@ -41,7 +48,9 @@ create table t_session(
     KEY idx_user(user_id),
     KEY idx_mac_status(mac, status),
     KEY idx_node(node_id),
-    KEY idx_login_time(login_time)
+    KEY idx_login_time(login_time),
+    KEY idx_session_entitlement_status (entitlement_id, status),
+    KEY idx_session_status_seen (status, last_seen_time)
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 drop table if exists t_mac_blacklist;
@@ -93,6 +102,12 @@ create table if not exists t_client_signal(
     key idx_report_time(report_time)
 ) default charset=utf8mb4 collate=utf8mb4_unicode_ci;
 
+create table if not exists t_session_user_guard (
+    user_id bigint not null comment '需要串行分配 Session 名额的用户ID',
+    create_time datetime not null default current_timestamp,
+
+    primary key (user_id)
+) default charset=utf8mb4 collate=utf8mb4_unicode_ci comment='用户Session并发控制锁行';
 
 insert into t_esp32_node(device_code, name, location, ip, firmware_version, status)
 values ('esp32-main', '客厅ESP32网关', '客厅', '192.168.4.1', null, 0);

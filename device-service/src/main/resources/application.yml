@@ -29,3 +29,15 @@ mqtt:
   traffic-topic: wifi/device/+/event/traffic
   command-result-topic: wifi/device/+/event/command-result
   client-signal-topic: wifi/device/+/event/client-signal
+
+wifi:
+  internal:
+    token: ${WIFI_INTERNAL_TOKEN:local-internal-token-change-me}
+  portal:
+    # 固件约10秒上报一次RSSI，30秒窗口允许偶发丢失两次上报。
+    client-signal-max-age-seconds: ${WIFI_PORTAL_CLIENT_SIGNAL_MAX_AGE_SECONDS:30}
+    lease-ttl-seconds: ${WIFI_PORTAL_LEASE_TTL_SECONDS:20}
+    session-offline-timeout-seconds: ${WIFI_PORTAL_SESSION_OFFLINE_TIMEOUT_SECONDS:30}
+    lease-scheduler-enabled: ${WIFI_PORTAL_LEASE_SCHEDULER_ENABLED:true}
+    lease-scan-interval-ms: ${WIFI_PORTAL_LEASE_SCAN_INTERVAL_MS:10000}
+    lease-initial-delay-ms: ${WIFI_PORTAL_LEASE_INITIAL_DELAY_MS:60000}

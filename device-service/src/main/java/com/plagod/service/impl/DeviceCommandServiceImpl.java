@@ -1,8 +1,11 @@
 package com.plagod.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.plagod.audit.Audited;
 import com.plagod.constant.MqttTopics;
+import com.plagod.dto.AllowClientCommand;
 import com.plagod.dto.device.*;
 import com.plagod.vo.device.*;
 import com.plagod.entity.Esp32Node;
@@ -20,9 +23,14 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.UUID;
+import java.util.regex.Pattern;
 
 @Service
 public class DeviceCommandServiceImpl implements DeviceCommandService {
+
+    private static final Pattern MAC_PATTERN = Pattern.compile("(?i)^[0-9a-f]{2}(:[0-9a-f]{2}){5}$");
 
     @Autowired
     private Esp32NodeMapper esp32NodeMapper;
@@ -35,6 +43,9 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
 
     @Autowired
     private MqttCommandPublisher mqttCommandPublisher;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
 
     @Override
@@ -217,6 +228,17 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     }
 
     @Override
+    @Audited(action = "device.allow-client")
+    public DeviceCommandResult allowClient(String deviceCode, String mac, Long sessionId, Integer ttlSeconds) {
+        return publishClientLease(deviceCode, mac, sessionId, ttlSeconds);
+    }
+
+    @Override
+    public DeviceCommandResult refreshClientLease(String deviceCode, String mac, Long sessionId, Integer ttlSeconds) {
+        return publishClientLease(deviceCode, mac, sessionId, ttlSeconds);
+    }
+
+    @Override
     @Audited(action = "blacklist.add")
     public void addBlacklist(MacBlacklistCreateDTO createDTO) {
         MacBlacklist blacklist = new MacBlacklist();
@@ -331,14 +353,50 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         return result;
     }
 
-
-
     private String cleanNullableText(String text) {
         if (!StringUtils.hasText(text)) {
             return null;
         }
-
         return text.trim();
     }
 
+    private String normalizeMac(String mac) {
+        if (!StringUtils.hasText(mac)) {
+            return null;
+        }
+        String normalized = mac.trim().toUpperCase(Locale.ROOT);
+        return MAC_PATTERN.matcher(normalized).matches() ? normalized : null;
+    }
+
+    // Portal 首次授权和后台续租共用同一套参数校验与 MQTT 序列化逻辑。
+    private DeviceCommandResult publishClientLease(String deviceCode, String mac, Long sessionId, Integer ttlSeconds) {
+        if (!StringUtils.hasText(deviceCode)) {
+            throw new IllegalArgumentException("设备编码 deviceCode 不能为空");
+        }
+
+        String normalizedDeviceCode = deviceCode.trim();
+        String normalizedMac = normalizeMac(mac);
+
+        if (normalizedMac == null) {
+            throw new IllegalArgumentException("客户端 MAC 格式不正确");
+        }
+        if (sessionId == null || sessionId <= 0) {
+            throw new IllegalArgumentException("sessionId 必须是有效值");
+        }
+        if (ttlSeconds == null || ttlSeconds < 1 || ttlSeconds > 86400) {
+            throw new IllegalArgumentException("ttlSeconds 必须在 1 到 86400 之间");
+        }
+
+        String requestId = UUID.randomUUID().toString();
+        String topic = MqttTopics.deviceAllow(normalizedDeviceCode);
+        AllowClientCommand command = new AllowClientCommand(requestId, normalizedMac, sessionId, ttlSeconds);
+
+        try {
+            String payload = objectMapper.writeValueAsString(command);
+            mqttCommandPublisher.publish(topic, payload);
+            return new DeviceCommandResult(requestId, topic, payload);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("ALLOW 命令序列化失败", e);
+        }
+    }
 }
