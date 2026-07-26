@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.plagod.audit.Audited;
 import com.plagod.client.UserEntitlementClient;
 import com.plagod.client.UserPolicyClient;
+import com.plagod.constant.SessionStatus;
 import com.plagod.dto.ApiResponse;
 import com.plagod.dto.device.PortalAuthorizeDTO;
 import com.plagod.dto.user.EntitlementLeaseRequest;
@@ -100,12 +101,11 @@ public class PortalSessionServiceImpl implements PortalSessionService {
 
         validateRecentClientSignal(node, deviceCode, mac, now);
 
-        SessionRecord reusableSession = findReusableActiveSession(userId, node.getNodeId(), mac);
+        SessionRecord reusableSession = findReusableOpenSession(userId, node.getNodeId(), mac);
 
         if (reusableSession != null) {
             // 重复认证只重新检查权益并刷新固件 TTL，不创建新 Session。
-            EntitlementLeaseResult lease =
-                    acquireInitialLease(userId, reusableSession.getSessionId());
+            EntitlementLeaseResult lease = acquireInitialLease(userId, reusableSession.getSessionId());
             validateLease(lease);
 
             // 清理同一 MAC 意外残留的其他活跃记录，保留本次复用的 Session。
@@ -144,7 +144,8 @@ public class PortalSessionServiceImpl implements PortalSessionService {
         sessionRecord.setDeviceInfo(cleanNullable(dto.getDeviceInfo()));
         sessionRecord.setLoginTime(now);
         sessionRecord.setExpireTime(now);
-        sessionRecord.setStatus(0);
+        // 新 Session 只有在 ESP32 返回成功后才能进入 ACTIVE。
+        sessionRecord.setStatus(SessionStatus.PENDING);
         sessionRecord.setBytesUp(0L);
         sessionRecord.setBytesDown(0L);
         sessionRecord.setConsumedSeconds(0L);
@@ -204,32 +205,34 @@ public class PortalSessionServiceImpl implements PortalSessionService {
         return response.getData();
     }
 
-    // 查询可以被当前请求复用的活跃 Session。
-    // for update 防止续租任务同时修改同一条 Session。
-    private SessionRecord findReusableActiveSession(Long userId, Long nodeId, String mac) {
+    // ACTIVE 或 PENDING Session 都可以被相同认证请求复用。
+    private SessionRecord findReusableOpenSession(Long userId, Long nodeId, String mac) {
+
         QueryWrapper<SessionRecord> query = new QueryWrapper<>();
+
         query.eq("user_id", userId)
                 .eq("node_id", nodeId)
                 .eq("mac", mac)
-                .eq("status", 1)
+                .in("status", SessionStatus.ACTIVE, SessionStatus.PENDING)
                 .orderByDesc("session_id")
                 .last("limit 1 for update");
 
         return sessionRecordMapper.selectOne(query);
     }
 
-    // 结束同一 MAC 的其他活跃 Session。
-    // keepSessionId 不为空时保留正在复用的 Session。
+    // 关闭同一 MAC 的其他 ACTIVE 或 PENDING Session。
     private void closeConflictingSessions(String mac, Long keepSessionId, LocalDateTime now) {
+
         UpdateWrapper<SessionRecord> update = new UpdateWrapper<>();
+
         update.eq("mac", mac)
-                .eq("status", 1);
+                .in("status", SessionStatus.ACTIVE, SessionStatus.PENDING);
 
         if (keepSessionId != null) {
             update.ne("session_id", keepSessionId);
         }
 
-        update.set("status", 0)
+        update.set("status", SessionStatus.CLOSED)
                 .set("logout_time", now)
                 .set("end_reason", "PORTAL_REPLACED");
 
@@ -259,7 +262,11 @@ public class PortalSessionServiceImpl implements PortalSessionService {
         session.setAuthorizationMode(lease.getMode());
         session.setExpireTime(now.plusSeconds(lease.getTtlSeconds()));
         session.setLastRenewTime(now);
-        session.setStatus(1);
+        // 已经确认过的 ACTIVE Session 在重复认证期间继续保持 ACTIVE。
+        // 新建或仍待确认的 Session 保持 PENDING，等待 command-result。
+        if (!SessionStatus.isActive(session.getStatus())) {
+            session.setStatus(SessionStatus.PENDING);
+        }
         session.setLogoutTime(null);
         session.setEndReason(null);
 
@@ -328,9 +335,9 @@ public class PortalSessionServiceImpl implements PortalSessionService {
 
     // 检查当前用户是否还有新的 Session 名额。
     private void validateConnectionLimit(Long userId, String currentMac, Integer maxConnections) {
-        long activeCount = sessionRecordMapper.countActiveSessionsExcludingMac(userId, currentMac);
+        long openCount = sessionRecordMapper.countOpenSessionsExcludingMac(userId, currentMac);
 
-        if (activeCount >= maxConnections) {
+        if (openCount >= maxConnections) {
             throw new IllegalArgumentException("当前账号同时在线设备数已达到上限：" + maxConnections);
         }
     }

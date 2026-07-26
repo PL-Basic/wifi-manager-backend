@@ -36,4 +36,12 @@ public interface DeviceCommandRecordMapper extends BaseMapper<DeviceCommandRecor
             "order by command_id asc limit #{limit}")
     List<Long> selectTimedOutCommandIds(@Param("status") Integer status, @Param("now") LocalDateTime now, @Param("limit") Integer limit);
 
+    // 查询该 Session 最新的 Portal 或续租 ALLOW。
+    // command_id 自增，因此最大 command_id 代表最后入队的命令。
+    @Select("select command_id from t_device_command " +
+            "where session_id = #{sessionId} " +
+            "and command_type = 'ALLOW' " +
+            "and purpose in ('PORTAL_AUTHORIZE', 'LEASE_RENEW') " +
+            "order by command_id desc limit 1")
+    Long selectLatestSessionAllowCommandId(@Param("sessionId") Long sessionId);
 }

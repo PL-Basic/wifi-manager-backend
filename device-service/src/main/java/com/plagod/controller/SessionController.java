@@ -26,7 +26,7 @@ public class SessionController {
     public ApiResponse<SessionRecordVO> portalAuthorize(@Valid @RequestBody PortalAuthorizeDTO portalAuthorizeDTO,
                                                         @RequestHeader("X-User-Id") Long userId) {
         SessionRecordVO session = portalSessionService.authorize(portalAuthorizeDTO, userId);
-        return ApiResponse.success("Portal 认证成功", session);
+        return ApiResponse.success("Portal 认证请求已受理", session);
     }
 
     @GetMapping

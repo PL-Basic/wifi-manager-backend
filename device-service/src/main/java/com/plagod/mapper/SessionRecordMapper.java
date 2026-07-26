@@ -10,11 +10,10 @@ import org.apache.ibatis.annotations.Select;
 public interface SessionRecordMapper extends BaseMapper<SessionRecord> {
 
     @Select("select * from t_session where session_id = #{sessionId} limit 1 for update")
-    SessionRecord selectByIdForUpdate(@Param("sessionId")Long sessionId);
+    SessionRecord selectByIdForUpdate(@Param("sessionId") Long sessionId);
 
-
-    // 统计该用户除当前 MAC 外的活跃 Session。
-    // 排除当前 MAC，是为了允许同一客户端更换 ESP32 节点，旧 Session 随后会被 PORTAL_REPLACED 关闭。
-    @Select("select count(*) from t_session where user_id = #{userId} and status = 1 and mac <> #{excludedMac}")
-    long countActiveSessionsExcludingMac(@Param("userId") Long userId, @Param("excludedMac") String excludedMac);
+    // PENDING 也必须占用名额，否则连续认证可以绕过 maxConnections。
+    // 排除当前 MAC，是为了允许同一客户端更换 ESP32 节点。
+    @Select("select count(*) from t_session where user_id = #{userId} and status in (1, 2) and mac <> #{excludedMac}")
+    long countOpenSessionsExcludingMac(@Param("userId") Long userId, @Param("excludedMac") String excludedMac);
 }
