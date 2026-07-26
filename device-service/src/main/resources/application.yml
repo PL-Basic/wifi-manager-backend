@@ -41,3 +41,12 @@ wifi:
     lease-scheduler-enabled: ${WIFI_PORTAL_LEASE_SCHEDULER_ENABLED:true}
     lease-scan-interval-ms: ${WIFI_PORTAL_LEASE_SCAN_INTERVAL_MS:10000}
     lease-initial-delay-ms: ${WIFI_PORTAL_LEASE_INITIAL_DELAY_MS:60000}
+  command:
+    publish-max-attempts: ${WIFI_COMMAND_PUBLISH_MAX_ATTEMPTS:3}
+    publish-retry-delay-seconds: ${WIFI_COMMAND_PUBLISH_RETRY_DELAY_SECONDS:3}
+    result-timeout-seconds: ${WIFI_COMMAND_RESULT_TIMEOUT_SECONDS:15}
+    scheduler-enabled: ${WIFI_COMMAND_SCHEDULER_ENABLED:true}
+    scan-batch-size: ${WIFI_COMMAND_SCAN_BATCH_SIZE:50}
+    dispatch-scan-interval-ms: ${WIFI_COMMAND_DISPATCH_SCAN_INTERVAL_MS:1000}
+    timeout-scan-interval-ms: ${WIFI_COMMAND_TIMEOUT_SCAN_INTERVAL_MS:1000}
+    scheduler-initial-delay-ms: ${WIFI_COMMAND_SCHEDULER_INITIAL_DELAY_MS:5000}

@@ -28,7 +28,7 @@ public interface DeviceCommandService {
 
     DeviceNodeVO restoreDevice(Long nodeId);
 
-    DeviceCommandResult allowClient(String deviceCode, String mac, Long sessionId, Integer ttlSeconds);
-    // 定时续租专用，不产生普通业务审计记录。
-    DeviceCommandResult refreshClientLease(String deviceCode, String mac, Long sessionId, Integer ttlSeconds);
+    DeviceCommandResult allowClient(Long nodeId, String deviceCode, String mac, Long sessionId, Integer ttlSeconds);
+
+    DeviceCommandResult refreshClientLease(Long nodeId, String deviceCode, String mac, Long sessionId, Integer ttlSeconds);
 }

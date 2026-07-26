@@ -7,6 +7,8 @@ import com.plagod.audit.Audited;
 import com.plagod.constant.MqttTopics;
 import com.plagod.dto.AllowClientCommand;
 import com.plagod.dto.device.*;
+import com.plagod.entity.DeviceCommandRecord;
+import com.plagod.service.DeviceCommandOutboxService;
 import com.plagod.vo.device.*;
 import com.plagod.entity.Esp32Node;
 import com.plagod.entity.MacBlacklist;
@@ -31,6 +33,9 @@ import java.util.regex.Pattern;
 public class DeviceCommandServiceImpl implements DeviceCommandService {
 
     private static final Pattern MAC_PATTERN = Pattern.compile("(?i)^[0-9a-f]{2}(:[0-9a-f]{2}){5}$");
+    // PURPOSE 后端发布目的
+    private static final String PURPOSE_PORTAL_AUTHORIZE = "PORTAL_AUTHORIZE";
+    private static final String PURPOSE_LEASE_RENEW = "LEASE_RENEW";
 
     @Autowired
     private Esp32NodeMapper esp32NodeMapper;
@@ -46,6 +51,9 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private DeviceCommandOutboxService commandOutboxService;
 
 
     @Override
@@ -229,13 +237,13 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
 
     @Override
     @Audited(action = "device.allow-client")
-    public DeviceCommandResult allowClient(String deviceCode, String mac, Long sessionId, Integer ttlSeconds) {
-        return publishClientLease(deviceCode, mac, sessionId, ttlSeconds);
+    public DeviceCommandResult allowClient(Long nodeId, String deviceCode, String mac, Long sessionId, Integer ttlSeconds) {
+        return enqueueClientLease(nodeId, deviceCode, mac, sessionId, ttlSeconds, PURPOSE_PORTAL_AUTHORIZE);
     }
 
     @Override
-    public DeviceCommandResult refreshClientLease(String deviceCode, String mac, Long sessionId, Integer ttlSeconds) {
-        return publishClientLease(deviceCode, mac, sessionId, ttlSeconds);
+    public DeviceCommandResult refreshClientLease(Long nodeId, String deviceCode, String mac, Long sessionId, Integer ttlSeconds) {
+        return enqueueClientLease(nodeId, deviceCode, mac, sessionId, ttlSeconds, PURPOSE_LEASE_RENEW);
     }
 
     @Override
@@ -369,9 +377,13 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     }
 
     // Portal 首次授权和后台续租共用同一套参数校验与 MQTT 序列化逻辑。
-    private DeviceCommandResult publishClientLease(String deviceCode, String mac, Long sessionId, Integer ttlSeconds) {
+    private DeviceCommandResult enqueueClientLease(Long nodeId, String deviceCode, String mac, Long sessionId, Integer ttlSeconds, String purpose) {
+
+        if (nodeId == null || nodeId <= 0) {
+            throw new IllegalArgumentException("nodeId 必须是有效值");
+        }
         if (!StringUtils.hasText(deviceCode)) {
-            throw new IllegalArgumentException("设备编码 deviceCode 不能为空");
+            throw new IllegalArgumentException("deviceCode 不能为空");
         }
 
         String normalizedDeviceCode = deviceCode.trim();
@@ -389,14 +401,27 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
 
         String requestId = UUID.randomUUID().toString();
         String topic = MqttTopics.deviceAllow(normalizedDeviceCode);
-        AllowClientCommand command = new AllowClientCommand(requestId, normalizedMac, sessionId, ttlSeconds);
+        AllowClientCommand body = new AllowClientCommand(requestId, normalizedMac, sessionId, ttlSeconds);
 
         try {
-            String payload = objectMapper.writeValueAsString(command);
-            mqttCommandPublisher.publish(topic, payload);
+            String payload = objectMapper.writeValueAsString(body);
+
+            DeviceCommandRecord command = new DeviceCommandRecord();
+            command.setRequestId(requestId);
+            command.setNodeId(nodeId);
+            command.setDeviceCode(normalizedDeviceCode);
+            command.setCommandType("ALLOW");
+            command.setPurpose(purpose);
+            command.setSessionId(sessionId);
+            command.setMac(normalizedMac);
+            command.setTtlSeconds(ttlSeconds);
+            command.setTopic(topic);
+            command.setPayload(payload);
+
+            commandOutboxService.enqueue(command);
             return new DeviceCommandResult(requestId, topic, payload);
-        } catch (JsonProcessingException e) {
-            throw new IllegalStateException("ALLOW 命令序列化失败", e);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("ALLOW 命令序列化失败", exception);
         }
     }
 }
