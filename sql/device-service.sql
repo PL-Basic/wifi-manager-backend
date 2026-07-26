@@ -109,5 +109,38 @@ create table if not exists t_session_user_guard (
     primary key (user_id)
 ) default charset=utf8mb4 collate=utf8mb4_unicode_ci comment='用户Session并发控制锁行';
 
+create table if not exists t_device_command (
+    command_id bigint auto_increment,
+    request_id varchar(64) not null,
+    node_id bigint default null,
+    device_code varchar(64) not null,
+    command_type varchar(32) not null,
+    purpose varchar(32) not null,
+    session_id bigint default null,
+    mac varchar(17) default null,
+    alert_id bigint default null,
+    ttl_seconds int default null,
+    topic varchar(191) not null,
+    payload text not null,
+
+    status tinyint not null default 0 comment '0-待发布，1-已发布待结果，2-执行成功，3-执行失败，4-发布失败，5-结果超时',
+    retry_count int not null default 0,
+    next_retry_time datetime default null,
+    publish_time datetime default null,
+    deadline_time datetime default null,
+    result_time datetime default null,
+    result_message varchar(255) default null,
+
+    create_time datetime not null default current_timestamp,
+    update_time datetime not null default current_timestamp on update current_timestamp,
+
+    primary key (command_id),
+    unique key uk_device_command_request (request_id),
+    key idx_command_dispatch (status, next_retry_time),
+    key idx_command_timeout (status, deadline_time),
+    key idx_command_session_status (session_id, status),
+    key idx_command_device_time (device_code, create_time)
+) default charset=utf8mb4 collate=utf8mb4_unicode_ci comment='ESP32 MQTT 命令记录与 Outbox';
+
 insert into t_esp32_node(device_code, name, location, ip, firmware_version, status)
 values ('esp32-main', '客厅ESP32网关', '客厅', '192.168.4.1', null, 0);

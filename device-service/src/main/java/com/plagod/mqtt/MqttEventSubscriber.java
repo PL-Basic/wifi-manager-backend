@@ -7,6 +7,7 @@ import com.plagod.dto.CommandResultEvent;
 import com.plagod.dto.DeviceTrafficEvent;
 import com.plagod.dto.DeviceStatusEvent;
 import com.plagod.service.ClientSignalEventService;
+import com.plagod.service.CommandResultEventService;
 import com.plagod.service.DeviceEventService;
 import com.plagod.service.TrafficEventService;
 import lombok.extern.slf4j.Slf4j;
@@ -21,6 +22,8 @@ import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+
+import java.nio.charset.StandardCharsets;
 
 @Slf4j
 @Component
@@ -40,6 +43,9 @@ public class MqttEventSubscriber implements InitializingBean, DisposableBean {
 
     @Autowired
     private ClientSignalEventService clientSignalEventService;
+
+    @Autowired
+    private CommandResultEventService commandResultEventService;
 
     private MqttClient client;
 
@@ -83,7 +89,7 @@ public class MqttEventSubscriber implements InitializingBean, DisposableBean {
 
     private void handleMessage(String topic, MqttMessage message) {
         try {
-            String payload = new String(message.getPayload());
+            String payload = new String(message.getPayload(), StandardCharsets.UTF_8);
             if (topic.endsWith("/event/status")) {
                 DeviceStatusEvent event = objectMapper.readValue(payload, DeviceStatusEvent.class);
                 if (!StringUtils.hasText(event.getDeviceCode())) {
@@ -125,12 +131,25 @@ public class MqttEventSubscriber implements InitializingBean, DisposableBean {
             }
             if (topic.endsWith("/event/command-result")) {
                 CommandResultEvent event = objectMapper.readValue(payload, CommandResultEvent.class);
-                if (!StringUtils.hasText(event.getDeviceCode())) {
-                    event.setDeviceCode(parseDeviceCode(topic));
-                }
-                log.info("收到命令执行结果 payload={}", payload);
-            }
 
+                // topic 是设备身份的主要来源。
+                String topicDeviceCode = parseDeviceCode(topic);
+
+                if (!StringUtils.hasText(topicDeviceCode)) {
+                    throw new IllegalArgumentException("无法从 command-result topic 解析 deviceCode");
+                }
+
+                // payload 如果提供 deviceCode，必须与 topic 完全一致。
+                if (StringUtils.hasText(event.getDeviceCode()) && !topicDeviceCode.equals(event.getDeviceCode().trim())) {
+                    throw new IllegalArgumentException("command-result topic 与 payload 的 deviceCode 不一致");
+                }
+
+                event.setDeviceCode(topicDeviceCode);
+                commandResultEventService.handleCommandResult(event);
+
+                log.info("命令执行结果处理完成，topic={}, requestId={}, success={}", topic, event.getRequestId(), event.getSuccess());
+                return;
+            }
         } catch (Exception e) {
             log.warn("MQTT 事件处理失败，topic={}", topic, e);
         }
