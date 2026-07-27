@@ -31,4 +31,6 @@ public interface DeviceCommandService {
     DeviceCommandResult allowClient(Long nodeId, String deviceCode, String mac, Long sessionId, Integer ttlSeconds);
 
     DeviceCommandResult refreshClientLease(Long nodeId, String deviceCode, String mac, Long sessionId, Integer ttlSeconds);
+
+    DeviceCommandResult revokeClientAccess(Long nodeId, String deviceCode, String mac, Long sessionId, String purpose);
 }

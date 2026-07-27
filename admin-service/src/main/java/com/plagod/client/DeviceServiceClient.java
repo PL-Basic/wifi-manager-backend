@@ -80,4 +80,10 @@ public interface DeviceServiceClient {
                                                           @RequestParam(value = "state", required = false) String state,
                                                           @RequestParam(value = "startTime", required = false) String startTime,
                                                           @RequestParam(value = "endTime", required = false) String endTime);
+
+    @PostMapping("/sessions/{sessionId}/admin-revoke")
+    ApiResponse<SessionRecordVO> adminRevokeSession(@PathVariable("sessionId") Long sessionId,
+                                                    @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
+                                                    @RequestHeader(value = "X-User-Name", required = false) String operatorName,
+                                                    @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole);
 }

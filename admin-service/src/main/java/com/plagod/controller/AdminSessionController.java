@@ -3,11 +3,9 @@ package com.plagod.controller;
 import com.plagod.client.DeviceServiceClient;
 import com.plagod.dto.ApiResponse;
 import com.plagod.vo.device.SessionPageResult;
+import com.plagod.vo.device.SessionRecordVO;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/admin/sessions")
@@ -24,5 +22,13 @@ public class AdminSessionController {
                                                        @RequestParam(required = false) Long userId,
                                                        @RequestParam(required = false) Integer status) {
         return deviceServiceClient.pageSessions(current, size, mac, nodeId, userId, status);
+    }
+
+    @PostMapping("/{sessionId}/revoke")
+    public ApiResponse<SessionRecordVO> revokeSession(@PathVariable Long sessionId,
+                                                      @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
+                                                      @RequestHeader(value = "X-User-Name", required = false) String operatorName,
+                                                      @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole) {
+        return deviceServiceClient.adminRevokeSession(sessionId, operatorId, operatorName, operatorRole);
     }
 }

@@ -1,6 +1,7 @@
 package com.plagod.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
+import com.plagod.constant.DeviceCommandPurpose;
 import com.plagod.constant.DeviceCommandStatus;
 import com.plagod.entity.DeviceCommandRecord;
 import com.plagod.mapper.DeviceCommandRecordMapper;
@@ -56,6 +57,12 @@ public class DeviceCommandDispatchServiceImpl implements DeviceCommandDispatchSe
 
         LocalDateTime now = LocalDateTime.now();
         if (command.getNextRetryTime() != null && command.getNextRetryTime().isAfter(now)) {
+            return;
+        }
+
+        // 同一 Session 的旧 ALLOW 尚未发布时，REVOKE 必须等待。
+        // 否则多实例调度可能让撤销命令先到 Broker，随后旧 ALLOW 又重新授权客户端。
+        if (shouldWaitForEarlierSessionAllow(command)) {
             return;
         }
 
@@ -185,5 +192,14 @@ public class DeviceCommandDispatchServiceImpl implements DeviceCommandDispatchSe
         if (resultTimeoutSeconds < 1) {
             throw new IllegalStateException("command-result 超时时间必须大于 0");
         }
+    }
+
+    private boolean shouldWaitForEarlierSessionAllow(DeviceCommandRecord command) {
+        if (!"REVOKE_ACCESS".equals(command.getCommandType()) || !DeviceCommandPurpose.isSessionRevokePurpose(command.getPurpose()) || command.getSessionId() == null || command.getSessionId() <= 0) {
+            return false;
+        }
+        long pendingAllowCount = commandRecordMapper.countEarlierPendingSessionAllowCommands(command.getSessionId(), command.getCommandId(), DeviceCommandStatus.PENDING);
+
+        return pendingAllowCount > 0;
     }
 }
