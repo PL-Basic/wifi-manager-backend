@@ -44,4 +44,14 @@ public interface DeviceCommandRecordMapper extends BaseMapper<DeviceCommandRecor
             "and purpose in ('PORTAL_AUTHORIZE', 'LEASE_RENEW') " +
             "order by command_id desc limit 1")
     Long selectLatestSessionAllowCommandId(@Param("sessionId") Long sessionId);
+
+    // 撤销命令发布前，检查同一 Session 是否还有更早入队、尚未发布的 ALLOW。
+    // ALLOW 一旦已经进入 PUBLISHED，说明 MQTT Broker 已先收到它，REVOKE 可以随后发布。
+    @Select("select count(*) from t_device_command " +
+            "where session_id = #{sessionId} " +
+            "and command_id < #{commandId} " +
+            "and command_type = 'ALLOW' " +
+            "and purpose in ('PORTAL_AUTHORIZE', 'LEASE_RENEW') " +
+            "and status = #{pendingStatus}")
+    long countEarlierPendingSessionAllowCommands(@Param("sessionId") Long sessionId, @Param("commandId") Long commandId, @Param("pendingStatus") Integer pendingStatus);
 }

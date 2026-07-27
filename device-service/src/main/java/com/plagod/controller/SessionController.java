@@ -3,6 +3,7 @@ package com.plagod.controller;
 import com.plagod.dto.ApiResponse;
 import com.plagod.dto.device.PortalAuthorizeDTO;
 import com.plagod.service.PortalSessionService;
+import com.plagod.service.SessionRevokeService;
 import com.plagod.vo.device.SessionPageResult;
 import com.plagod.service.SessionQueryService;
 import com.plagod.vo.device.SessionRecordVO;
@@ -21,6 +22,9 @@ public class SessionController {
     @Autowired
     private PortalSessionService portalSessionService;
 
+    @Autowired
+    private SessionRevokeService sessionRevokeService;
+
     // X-User-Id 类似于快递单号
     @PostMapping("/portal-authorize")
     public ApiResponse<SessionRecordVO> portalAuthorize(@Valid @RequestBody PortalAuthorizeDTO portalAuthorizeDTO,
@@ -37,5 +41,17 @@ public class SessionController {
                                                        @RequestParam(required = false) Long userId,
                                                        @RequestParam(required = false) Integer status) {
         return ApiResponse.success(sessionQueryService.pageSessions(current, size, mac, nodeId, userId, status));
+    }
+
+    @PostMapping("/{sessionId}/logout")
+    public ApiResponse<SessionRecordVO> logout(@PathVariable Long sessionId,
+                                               @RequestHeader("X-User-Id") Long userId) {
+        return ApiResponse.success("Session 退出请求已受理", sessionRevokeService.logout(sessionId, userId));
+    }
+
+    @PostMapping("/{sessionId}/admin-revoke")
+    public ApiResponse<SessionRecordVO> adminRevoke(@PathVariable Long sessionId,
+                                                    @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole) {
+        return ApiResponse.success("Session 撤销请求已受理", sessionRevokeService.adminRevoke(sessionId, operatorRole));
     }
 }

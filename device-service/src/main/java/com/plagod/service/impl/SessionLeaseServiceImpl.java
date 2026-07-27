@@ -1,6 +1,7 @@
 package com.plagod.service.impl;
 
 import com.plagod.client.UserEntitlementClient;
+import com.plagod.constant.SessionStatus;
 import com.plagod.dto.ApiResponse;
 import com.plagod.dto.user.EntitlementLeaseRequest;
 import com.plagod.entity.Esp32Node;
@@ -13,6 +14,7 @@ import com.plagod.vo.user.EntitlementLeaseResult;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -116,6 +118,39 @@ public class SessionLeaseServiceImpl implements SessionLeaseService {
         deviceCommandService.refreshClientLease(session.getNodeId(), node.getDeviceCode(), session.getMac(), session.getSessionId(), ttlSeconds);
     }
 
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY, rollbackFor = Exception.class)
+    public void settleFinalUsage(SessionRecord session, LocalDateTime now) {
+        if (session == null || now == null) {
+            throw new IllegalArgumentException("最终结算缺少 Session 或当前时间");
+        }
+
+        // PENDING 尚未被 ESP32 真正放行，没有可结算的在线使用时长。
+        if (!SessionStatus.isActive(session.getStatus()) || session.getLastSeenTime() == null) {
+            return;
+        }
+
+        LocalDateTime billedTime = session.getLastBilledTime();
+        if (billedTime == null) {
+            billedTime = session.getLoginTime();
+        }
+        if (billedTime == null) {
+            throw new IllegalStateException("Session 缺少计费基准时间");
+        }
+
+        // 只使用后端观测到的 RSSI 时间，并禁止未来时间扩大扣费区间。
+        LocalDateTime observedTime = session.getLastSeenTime().isAfter(now) ? now : session.getLastSeenTime();
+        LocalDateTime billingCutoff = observedTime.isAfter(billedTime) ? observedTime : billedTime;
+
+        long elapsedSeconds = Math.max(0L, Duration.between(billedTime, billingCutoff).getSeconds());
+        long usageSeconds = Math.min(elapsedSeconds, MAX_USAGE_SECONDS);
+
+        // 使用独立前缀：本地事务回滚重试时 requestId 保持一致，不会重复扣费。
+        EntitlementLeaseResult lease = acquireLease(session, billedTime, usageSeconds, "session-final-");
+
+        applyLeaseResult(session, lease, billingCutoff, usageSeconds);
+    }
+
     private void validateConfiguration() {
         if (leaseTtlSeconds < 1 || leaseTtlSeconds > 20) {
             throw new IllegalStateException("续租 TTL 必须在 1 到 20 秒之间");
@@ -152,9 +187,10 @@ public class SessionLeaseServiceImpl implements SessionLeaseService {
         }
     }
 
-    private EntitlementLeaseResult acquireLease(SessionRecord session, LocalDateTime billedTime, Long usageSeconds) {
+    private EntitlementLeaseResult acquireLease(SessionRecord session, LocalDateTime billedTime, Long usageSeconds, String requestIdPrefix) {
         EntitlementLeaseRequest request = new EntitlementLeaseRequest();
-        request.setRequestId("session-lease-" + session.getSessionId() + "-" + billedTime.format(REQUEST_TIME));
+
+        request.setRequestId(requestIdPrefix + session.getSessionId() + "-" + billedTime.format(REQUEST_TIME));
         request.setUserId(session.getUserId());
         request.setSessionId(session.getSessionId());
         request.setUsageSeconds(usageSeconds);
@@ -166,6 +202,10 @@ public class SessionLeaseServiceImpl implements SessionLeaseService {
             throw new IllegalStateException("权益续租服务调用失败");
         }
         return response.getData();
+    }
+
+    private EntitlementLeaseResult acquireLease(SessionRecord session, LocalDateTime billedTime, Long usageSeconds) {
+        return acquireLease(session, billedTime, usageSeconds, "session-lease-");
     }
 
     private void applyLeaseResult(SessionRecord session, EntitlementLeaseResult lease, LocalDateTime billingCutoff, Long requestedUsageSeconds) {

@@ -8,6 +8,7 @@ import com.plagod.constant.DeviceCommandPurpose;
 import com.plagod.constant.MqttTopics;
 import com.plagod.constant.SessionStatus;
 import com.plagod.dto.AllowClientCommand;
+import com.plagod.dto.RevokeAccessCommand;
 import com.plagod.dto.device.*;
 import com.plagod.entity.DeviceCommandRecord;
 import com.plagod.service.DeviceCommandOutboxService;
@@ -244,6 +245,53 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     @Override
     public DeviceCommandResult refreshClientLease(Long nodeId, String deviceCode, String mac, Long sessionId, Integer ttlSeconds) {
         return enqueueClientLease(nodeId, deviceCode, mac, sessionId, ttlSeconds, DeviceCommandPurpose.LEASE_RENEW);
+    }
+
+    @Override
+    public DeviceCommandResult revokeClientAccess(Long nodeId, String deviceCode, String mac, Long sessionId, String purpose) {
+        if (nodeId == null || nodeId <= 0) {
+            throw new IllegalArgumentException("nodeId 必须是有效值");
+        }
+        if (!StringUtils.hasText(deviceCode)) {
+            throw new IllegalArgumentException("deviceCode 不能为空");
+        }
+
+        String normalizedDeviceCode = deviceCode.trim();
+        String normalizedMac = normalizeMac(mac);
+
+        if (normalizedMac == null) {
+            throw new IllegalArgumentException("客户端 MAC 格式不正确");
+        }
+        if (sessionId == null || sessionId <= 0) {
+            throw new IllegalArgumentException("sessionId 必须是有效值");
+        }
+        if (!DeviceCommandPurpose.isSessionRevokePurpose(purpose)) {
+            throw new IllegalArgumentException("Session 撤销命令用途无效");
+        }
+
+        String requestId = UUID.randomUUID().toString();
+        String topic = MqttTopics.deviceRevokeAccess(normalizedDeviceCode);
+        RevokeAccessCommand body = new RevokeAccessCommand(requestId, normalizedMac, sessionId);
+
+        try {
+            String payload = objectMapper.writeValueAsString(body);
+
+            DeviceCommandRecord command = new DeviceCommandRecord();
+            command.setRequestId(requestId);
+            command.setNodeId(nodeId);
+            command.setDeviceCode(normalizedDeviceCode);
+            command.setCommandType("REVOKE_ACCESS");
+            command.setPurpose(purpose);
+            command.setSessionId(sessionId);
+            command.setMac(normalizedMac);
+            command.setTopic(topic);
+            command.setPayload(payload);
+
+            commandOutboxService.enqueue(command);
+            return new DeviceCommandResult(requestId, topic, payload);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("REVOKE_ACCESS 命令序列化失败", exception);
+        }
     }
 
     @Override
