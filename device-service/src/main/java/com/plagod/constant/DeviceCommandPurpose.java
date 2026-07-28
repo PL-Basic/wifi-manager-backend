@@ -31,6 +31,9 @@ public final class DeviceCommandPurpose {
 
     public static final String MANUAL_BLOCK_TRAFFIC = "MANUAL_BLOCK_TRAFFIC";
 
+    // 管理员要求 ESP32 节点执行安全重启。
+    public static final String MANUAL_DEVICE_RESTART = "MANUAL_DEVICE_RESTART";
+
     private DeviceCommandPurpose() {
     }
 
@@ -53,5 +56,9 @@ public final class DeviceCommandPurpose {
 
     public static boolean isBlockTrafficPurpose(String purpose) {
         return MONITOR_AUTO_BLOCK_TRAFFIC.equals(purpose) || MANUAL_BLOCK_TRAFFIC.equals(purpose);
+    }
+
+    public static boolean isKickPurpose(String purpose) {
+        return MANUAL_DEVICE_RESTART.equals(purpose);
     }
 }

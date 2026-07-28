@@ -70,22 +70,28 @@ create table t_mac_blacklist(
 
 drop table if exists t_traffic_log;
 create table t_traffic_log(
-    id bigint AUTO_INCREMENT,
-    session_id bigint NOT NULL,
-    mac varchar(17) NOT NULL,
-    dst_ip varchar(45) NOT NULL,
+    id bigint auto_increment,
+    event_id varchar(64) not null,
+    node_id bigint not null,
+    device_code varchar(64) not null,
+    session_id bigint not null,
+    mac varchar(17) not null,
+    dst_ip varchar(45) not null,
     dst_port int,
     sni varchar(255),
     protocol varchar(16),
-    bytes_up bigint NOT NULL DEFAULT 0,
-    bytes_down bigint NOT NULL DEFAULT 0,
-    log_time datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    bytes_up bigint not null default 0,
+    bytes_down bigint not null default 0,
+    log_time datetime not null default current_timestamp,
 
-    PRIMARY KEY (id),
-    KEY idx_mac_time(mac, log_time),
-    KEY idx_session(session_id),
-    KEY idx_dst_ip(dst_ip)
-) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    primary key (id),
+    unique key uk_traffic_device_event(device_code, event_id),
+    key idx_mac_time(mac, log_time),
+    key idx_session(session_id),
+    key idx_node_time(node_id, log_time),
+    key idx_device_time(device_code, log_time),
+    key idx_dst_ip(dst_ip)
+) default charset=utf8mb4 collate=utf8mb4_unicode_ci;
 
 create table if not exists t_client_signal(
     id bigint auto_increment,

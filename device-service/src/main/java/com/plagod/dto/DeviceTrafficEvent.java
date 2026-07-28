@@ -4,6 +4,7 @@ import lombok.Data;
 
 @Data
 public class DeviceTrafficEvent {
+    private String eventId;
     private String deviceCode;
     private Long sessionId;
     private String mac;

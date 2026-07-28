@@ -7,6 +7,9 @@ import java.time.LocalDateTime;
 @Data
 public class TrafficLogVO {
     private Long id;
+    private String eventId;
+    private Long nodeId;
+    private String deviceCode;
     private Long sessionId;
     private String mac;
     private String dstIp;

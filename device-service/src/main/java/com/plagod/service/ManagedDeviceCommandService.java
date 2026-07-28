@@ -7,4 +7,6 @@ public interface ManagedDeviceCommandService {
     DeviceCommandResult enqueueDisconnectMac(String deviceCode, String mac, Long alertId, String purpose);
 
     DeviceCommandResult enqueueBlockTraffic(String deviceCode, String dstIp, String sni, Long alertId, String purpose);
+
+    DeviceCommandResult enqueueKick(String deviceCode, String reason, String purpose);
 }

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.plagod.mapper.TrafficLogMapper">
+    <insert id="insertIgnore">
+        insert ignore into t_traffic_log(event_id, node_id, device_code, session_id, mac,
+                                         dst_ip, dst_port, sni, protocol, bytes_up, bytes_down,
+                                         log_time) values
+                                        (#{eventId}, #{nodeId}, #{deviceCode}, #{sessionId}, #{mac},
+                                         #{dstIp}, #{dstPort}, #{sni}, #{protocol}, #{bytesUp},
+                                         #{bytesDown}, #{logTime})
+    </insert>
+
+</mapper>

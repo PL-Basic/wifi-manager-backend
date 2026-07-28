@@ -33,11 +33,11 @@ public interface DeviceServiceClient {
     ApiResponse<DeviceNodeVO> getDevice(@PathVariable("nodeId") Long nodeId);
 
     @PostMapping("/devices/{deviceCode}/allow")
-    ApiResponse<DeviceCommandResult> allowDevice(@PathVariable("deviceCode") String deviceCode);
+    ApiResponse<DeviceNodeVO> allowDevice(@PathVariable("deviceCode") String deviceCode);
 
     @PostMapping("/devices/{deviceCode}/kick")
-    ApiResponse<DeviceCommandResult> kickDevice(@PathVariable("deviceCode") String deviceCode, @RequestBody KickDeviceDTO deviceKickDTO);
-
+    ApiResponse<DeviceCommandResult> kickDevice(@PathVariable("deviceCode") String deviceCode,
+                                                @RequestBody(required = false) KickDeviceDTO deviceKickDTO);
     @GetMapping("/blacklist")
     ApiResponse<MacBlacklistPageResult> pageBlacklist(@RequestParam("current") Long current,
                                                       @RequestParam("size") Long size,
