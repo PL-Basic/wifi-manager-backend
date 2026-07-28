@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.*;
 import javax.validation.Valid;
 
 @RestController
-@RequestMapping("/devices")
+@RequestMapping("/internal/admin/devices")
 public class DeviceController {
 
     @Autowired

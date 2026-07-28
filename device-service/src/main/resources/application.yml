@@ -34,6 +34,12 @@ mqtt:
 wifi:
   internal:
     token: ${WIFI_INTERNAL_TOKEN:local-internal-token-change-me}
+  security:
+    enabled: true
+    gateway-token: ${WIFI_GATEWAY_TOKEN:local-gateway-token-change-me}
+    internal-token: ${WIFI_INTERNAL_TOKEN:local-internal-token-change-me}
+    internal-path-prefixes:
+      - /internal/
   portal:
     # 固件约10秒上报一次RSSI，30秒窗口允许偶发丢失两次上报。
     client-signal-max-age-seconds: ${WIFI_PORTAL_CLIENT_SIGNAL_MAX_AGE_SECONDS:30}

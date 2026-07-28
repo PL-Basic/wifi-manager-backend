@@ -1,6 +1,7 @@
 server:
   port: 8384
-
+jwt:
+  secret: ${JWT_SECRET:local-dev-secret-at-least-32-bytes-long-change-me}
 spring:
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -22,3 +23,15 @@ monitor:
   evaluation:
     # 同一 mac 命中同一规则在冷却窗口内不再写告警 / 不再触发自动 action
     cooldown-seconds: 30
+wifi:
+  internal:
+    token: ${WIFI_INTERNAL_TOKEN:local-internal-token-change-me}
+  security:
+    enabled: true
+    gateway-token: ${WIFI_GATEWAY_TOKEN:local-gateway-token-change-me}
+    internal-token: ${WIFI_INTERNAL_TOKEN:local-internal-token-change-me}
+    internal-path-prefixes:
+      - /internal/
+  websocket:
+    allowed-origin: ${WIFI_ALLOWED_ORIGIN:http://localhost:5173}
+    allowed-origin-alt: ${WIFI_ALLOWED_ORIGIN_ALT:http://127.0.0.1:5173}

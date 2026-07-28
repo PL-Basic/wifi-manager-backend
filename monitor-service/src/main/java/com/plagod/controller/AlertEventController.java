@@ -6,17 +6,12 @@ import com.plagod.dto.ApiResponse;
 import com.plagod.service.AlertEventService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PatchMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 
 @RestController
-@RequestMapping("/alerts")
+@RequestMapping("/internal/admin/alerts")
 public class AlertEventController {
 
     @Autowired
@@ -41,8 +36,10 @@ public class AlertEventController {
     }
 
     @PatchMapping("/{id}/handle")
-    public ApiResponse<Void> handle(@PathVariable Long id, @RequestParam Long handleUserId) {
+    public ApiResponse<Void> handle(@PathVariable Long id, @RequestHeader("X-User-Id") Long handleUserId) {
+
         alertEventService.handle(id, handleUserId);
+
         return ApiResponse.success("告警已标记处理", null);
     }
 }

@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 import javax.validation.Valid;
 
 @RestController
-@RequestMapping("/blacklist")
+@RequestMapping("/internal/admin/blacklist")
 public class MacBlacklistController {
 
     @Autowired

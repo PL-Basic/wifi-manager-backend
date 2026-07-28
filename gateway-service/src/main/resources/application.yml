@@ -1,32 +1,73 @@
 server:
   port: 8080
+  forward-headers-strategy: framework
+
 spring:
   cloud:
     gateway:
       default-filters:
         - DedupeResponseHeader=Access-Control-Allow-Credentials Access-Control-Allow-Origin
+      globalcors:
+        add-to-simple-url-handler-mapping: true
+        cors-configurations:
+          '[/**]':
+            allowed-origins:
+              - ${WIFI_ALLOWED_ORIGIN:http://localhost:5173}
+              - ${WIFI_ALLOWED_ORIGIN_ALT:http://127.0.0.1:5173}
+            allowed-methods:
+              - GET
+              - POST
+              - PUT
+              - PATCH
+              - DELETE
+              - OPTIONS
+            allowed-headers:
+              - Authorization
+              - Content-Type
+              - Sec-WebSocket-Protocol
+            exposed-headers:
+              - Retry-After
+            allow-credentials: true
+            max-age: 3600
       routes:
         - id: auth-service-route
           uri: lb://auth-service
           predicates:
             - Path=/auth/**
+
         - id: user-service-route
           uri: lb://user-service
           predicates:
             - Path=/users/**
-        - id: device-service-route
+
+        # 这里只保留普通用户确实需要的自有资源接口。
+        - id: device-user-route
           uri: lb://device-service
           predicates:
-            - Path=/devices/**,/blacklist/**,/sessions/**,/traffic/**,/client-signals/**
+            - Path=/sessions/**,/traffic/**,/client-signals/**
+
         - id: admin-service-route
           uri: lb://admin-service
           predicates:
             - Path=/admin/**
-        - id: monitor-service-route
+
+        - id: monitor-user-route
           uri: lb://monitor-service
           predicates:
-            - Path=/rules/**,/alerts/**,/audits/**,/locations/**
+            - Path=/locations/**
 
+        - id: monitor-websocket-route
+          uri: lb:ws://monitor-service
+          predicates:
+            - Path=/ws/alerts
 jwt:
-  # 必须与 auth-service 的 jwt.secret 保持一致；签发与解析使用同一密钥。
   secret: ${JWT_SECRET:local-dev-secret-at-least-32-bytes-long-change-me}
+wifi:
+  security:
+    # 只证明请求经过 Gateway，不能与内部服务 Token 使用同一个值。
+    gateway-token: ${WIFI_GATEWAY_TOKEN:local-gateway-token-change-me}
+  rate-limit:
+    auth-per-minute: 30
+    portal-per-minute: 12
+    location-per-minute: 60
+    websocket-per-minute: 10
