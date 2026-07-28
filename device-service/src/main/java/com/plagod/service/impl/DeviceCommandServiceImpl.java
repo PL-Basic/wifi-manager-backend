@@ -182,7 +182,7 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         Long openSessionCount = sessionRecordMapper.selectCount(
                 new QueryWrapper<SessionRecord>()
                         .eq("node_id", nodeId)
-                        .in("status", SessionStatus.ACTIVE, SessionStatus.PENDING)
+                        .in("status", SessionStatus.ACTIVE, SessionStatus.PENDING, SessionStatus.WAITING_REPLACEMENT)
         );
 
         if (esp32Node == null) {
@@ -292,14 +292,6 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("REVOKE_ACCESS 命令序列化失败", exception);
         }
-    }
-
-    @Override
-    @Audited(action = "blacklist.add")
-    public void addBlacklist(MacBlacklistCreateDTO createDTO) {
-        MacBlacklist blacklist = new MacBlacklist();
-        BeanUtils.copyProperties(createDTO, blacklist);
-        macBlacklistMapper.insert(blacklist);
     }
 
     @Override

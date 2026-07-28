@@ -9,6 +9,7 @@ public class SessionRecordVO {
     private Long sessionId;
     private Long userId;
     private Long nodeId;
+    private Long replacedSessionId;
     private String mac;
     private String ip;
     private String deviceInfo;

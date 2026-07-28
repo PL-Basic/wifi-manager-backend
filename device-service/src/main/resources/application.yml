@@ -29,6 +29,7 @@ mqtt:
   traffic-topic: wifi/device/+/event/traffic
   command-result-topic: wifi/device/+/event/command-result
   client-signal-topic: wifi/device/+/event/client-signal
+  client-disconnect-topic: wifi/device/+/event/client-disconnect
 
 wifi:
   internal:

@@ -23,6 +23,9 @@ public class SessionRecord implements Serializable {
 
     private Long entitlementId;
 
+    // 当前等待 Session 所替换的旧 Session。
+    private Long replacedSessionId;
+
     private String authorizationMode;
 
     private Long nodeId;

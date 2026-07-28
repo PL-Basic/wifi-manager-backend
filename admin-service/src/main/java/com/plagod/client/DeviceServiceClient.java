@@ -86,4 +86,29 @@ public interface DeviceServiceClient {
                                                     @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
                                                     @RequestHeader(value = "X-User-Name", required = false) String operatorName,
                                                     @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole);
+
+    @PostMapping("/devices/{deviceCode}/disconnect-mac")
+    ApiResponse<DeviceCommandResult> disconnectMac(@PathVariable("deviceCode") String deviceCode,
+                                                   @Valid @RequestBody ManualDisconnectMacDTO dto,
+                                                   @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
+                                                   @RequestHeader(value = "X-User-Name", required = false) String operatorName,
+                                                   @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole);
+
+    @PostMapping("/devices/{deviceCode}/block-traffic")
+    ApiResponse<DeviceCommandResult> blockTraffic(@PathVariable("deviceCode") String deviceCode,
+                                                  @Valid @RequestBody ManualBlockTrafficDTO dto,
+                                                  @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
+                                                  @RequestHeader(value = "X-User-Name", required = false) String operatorName,
+                                                  @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole);
+
+    @GetMapping("/device-commands")
+    ApiResponse<DeviceCommandPageResult> pageDeviceCommands(@RequestParam("current") Long current,
+                                                            @RequestParam("size") Long size,
+                                                            @RequestParam(value = "requestId", required = false) String requestId,
+                                                            @RequestParam(value = "deviceCode", required = false) String deviceCode,
+                                                            @RequestParam(value = "commandType", required = false) String commandType,
+                                                            @RequestParam(value = "purpose", required = false) String purpose,
+                                                            @RequestParam(value = "status", required = false) Integer status,
+                                                            @RequestParam(value = "sessionId", required = false) Long sessionId,
+                                                            @RequestParam(value = "mac", required = false) String mac);
 }

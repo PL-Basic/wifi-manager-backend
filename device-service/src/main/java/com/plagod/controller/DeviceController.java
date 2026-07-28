@@ -1,10 +1,9 @@
 package com.plagod.controller;
 
 import com.plagod.dto.*;
+import com.plagod.dto.device.*;
+import com.plagod.service.ManualDeviceControlService;
 import com.plagod.vo.device.DeviceCommandResult;
-import com.plagod.dto.device.DeviceNodeCreateDTO;
-import com.plagod.dto.device.DeviceNodeUpdateDTO;
-import com.plagod.dto.device.KickDeviceDTO;
 import com.plagod.vo.device.DeviceNodeVO;
 import com.plagod.vo.device.DevicePageResult;
 import com.plagod.service.DeviceCommandService;
@@ -20,6 +19,8 @@ public class DeviceController {
 
     @Autowired
     private DeviceCommandService deviceCommandService;
+    @Autowired
+    private ManualDeviceControlService manualDeviceControlService;
 
     @PostMapping
     public ApiResponse<DeviceNodeVO> addDevice(@Valid @RequestBody DeviceNodeCreateDTO deviceNodeCreateDTO) {
@@ -73,5 +74,21 @@ public class DeviceController {
     public ApiResponse<DeviceCommandResult> kickDevice(@PathVariable String deviceCode,
                                                        @RequestBody(required = false) KickDeviceDTO kickDeviceDTO) {
         return ApiResponse.success("踢出设备命令已下发", deviceCommandService.kickDevice(deviceCode, kickDeviceDTO));
+    }
+
+    @PostMapping("/{deviceCode}/disconnect-mac")
+    public ApiResponse<DeviceCommandResult> disconnectMac(@PathVariable String deviceCode,
+                                                          @Valid @RequestBody ManualDisconnectMacDTO dto,
+                                                          @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole) {
+
+        return ApiResponse.success("客户端断线命令已进入发送队列", manualDeviceControlService.disconnectMac(deviceCode, dto, operatorRole));
+    }
+
+    @PostMapping("/{deviceCode}/block-traffic")
+    public ApiResponse<DeviceCommandResult> blockTraffic(@PathVariable String deviceCode,
+                                                         @Valid @RequestBody ManualBlockTrafficDTO dto,
+                                                         @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole) {
+
+        return ApiResponse.success("流量阻断命令已进入发送队列", manualDeviceControlService.blockTraffic(deviceCode, dto, operatorRole));
     }
 }
