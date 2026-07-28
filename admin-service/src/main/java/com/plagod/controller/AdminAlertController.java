@@ -5,12 +5,7 @@ import com.plagod.dto.ApiResponse;
 import com.plagod.vo.monitor.AlertEventPageResult;
 import com.plagod.vo.monitor.AlertEventVO;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PatchMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/admin/alerts")
@@ -36,7 +31,10 @@ public class AdminAlertController {
     }
 
     @PatchMapping("/{id}/handle")
-    public ApiResponse<Void> handle(@PathVariable Long id, @RequestParam Long handleUserId) {
+    public ApiResponse<Void> handle(@PathVariable Long id,
+                                    @RequestHeader("X-User-Id") Long handleUserId) {
+
+        // 处理人只能来自 Gateway 注入的当前管理员身份。
         return monitorServiceClient.handleAlert(id, handleUserId);
     }
 }

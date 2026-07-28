@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.time.LocalDateTime;
 
 @RestController
-@RequestMapping("/audits")
+@RequestMapping("/internal/admin/audits")
 public class AuditLogController {
 
     @Autowired

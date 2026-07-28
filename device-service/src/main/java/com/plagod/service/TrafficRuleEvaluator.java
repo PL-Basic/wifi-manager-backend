@@ -12,6 +12,7 @@ import com.plagod.mapper.Esp32NodeMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -43,6 +44,9 @@ public class TrafficRuleEvaluator {
     @Autowired
     private RuleActionExecutor ruleActionExecutor;
 
+    @Value("${wifi.internal.token}")
+    private String internalToken;
+
     @Async("monitorEvalExecutor")
     public void evaluateAndAct(DeviceTrafficEvent event, Long sessionId, SessionRecord sessionRecord) {
         TrafficEvaluationResult result = callEvaluate(event, sessionId, sessionRecord);
@@ -62,7 +66,7 @@ public class TrafficRuleEvaluator {
         request.setProtocol(event.getProtocol());
 
         try {
-            ApiResponse<TrafficEvaluationResult> response = monitorServiceClient.evaluate(request);
+            ApiResponse<TrafficEvaluationResult> response = monitorServiceClient.evaluate(internalToken, request);
             if (response == null || response.getData() == null) {
                 return null;
             }

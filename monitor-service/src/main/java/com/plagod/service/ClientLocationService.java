@@ -9,6 +9,7 @@ public interface ClientLocationService {
 
     Long report(ClientLocationReportDTO dto, Long userId);
 
-    ClientLocationPageResult pageLocations(long current, long size, String mac, Long userId,
-                                           LocalDateTime startTime, LocalDateTime endTime);
+    ClientLocationPageResult pageLocations(long current, long size, String mac, Long userId, LocalDateTime startTime, LocalDateTime endTime);
+
+    ClientLocationPageResult pageOwnedLocations(Long ownerUserId, long current, long size, String mac, LocalDateTime startTime, LocalDateTime endTime);
 }

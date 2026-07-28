@@ -5,6 +5,6 @@ import com.plagod.vo.device.TrafficPageResult;
 import java.time.LocalDateTime;
 
 public interface TrafficQueryService {
-    TrafficPageResult pageTraffic(long current, long size, String mac, Long sessionId, String dstIp,
-                                  LocalDateTime startTime, LocalDateTime endTime);
+    TrafficPageResult pageTraffic(long current, long size, String mac, Long sessionId, String dstIp, LocalDateTime startTime, LocalDateTime endTime);
+    TrafficPageResult pageOwnedTraffic(Long ownerUserId, long current, long size, String mac, Long sessionId, String dstIp, LocalDateTime startTime, LocalDateTime endTime);
 }

@@ -23,53 +23,54 @@ import org.springframework.web.bind.annotation.RequestParam;
 @FeignClient(name = "user-service")
 public interface UserServiceClient {
 
-    @GetMapping("/users")
+    @GetMapping("/internal/admin/users")
     ApiResponse<UserPageResult> pageUsers(@RequestParam("current") Long current,
                                           @RequestParam("size") Long size,
                                           @RequestParam(value = "keyword", required = false) String keyword);
 
-    @GetMapping("/users/{userId}")
+    @GetMapping("/internal/admin/users/{userId}")
     ApiResponse<UserVO> getUser(@PathVariable("userId") Long userId);
 
-    @PutMapping("/users/{userId}")
+    @PutMapping("/internal/admin/users/{userId}")
     ApiResponse<UserVO> updateUser(@PathVariable("userId") Long userId,
                                    @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
                                    @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole,
                                    @RequestBody UserUpdateDTO updateDTO);
 
-    @PutMapping("/users/{userId}/status")
+    @PutMapping("/internal/admin/users/{userId}/status")
     ApiResponse<Void> updateStatus(@PathVariable("userId") Long userId,
                                    @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
                                    @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole,
                                    @RequestBody UserStatusDTO statusDTO);
 
-    @DeleteMapping("/users/{userId}")
+
+    @DeleteMapping("/internal/admin/users/{userId}")
     ApiResponse<Void> deleteUser(@PathVariable("userId") Long userId,
                                  @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
                                  @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole);
 
-    @DeleteMapping("/users/{userId}/purge")
+    @DeleteMapping("/internal/admin/users/{userId}/purge")
     ApiResponse<Void> purgeUser(@PathVariable("userId") Long userId,
                                 @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
                                 @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole);
 
-    @PostMapping("/users/{userId}/purge-requests")
+    @PostMapping("/internal/admin/users/{userId}/purge-requests")
     ApiResponse<Long> requestPurgeUser(@PathVariable("userId") Long userId,
                                        @RequestHeader(value = "X-User-Id", required = false) Long requesterId,
                                        @RequestHeader(value = "X-User-Name", required = false) String requesterName,
                                        @RequestBody UserPurgeRequestDTO purgeRequestDTO);
 
-    @GetMapping("/users/operation-requests")
+    @GetMapping("/internal/admin/users/operation-requests")
     ApiResponse<UserOperationRequestPageResult> pageOperationRequests(@RequestParam("current") Long current,
                                                                       @RequestParam("size") Long size,
                                                                       @RequestParam(value = "status", required = false) Integer status);
 
-    @PutMapping("/users/operation-requests/{id}/review")
+    @PutMapping("/internal/admin/users/operation-requests/{id}/review")
     ApiResponse<Void> reviewOperationRequest(@PathVariable("id") Long id,
                                              @RequestHeader(value = "X-User-Id", required = false) Long approverId,
                                              @RequestHeader(value = "X-User-Name", required = false) String approverName,
                                              @RequestBody UserOperationReviewDTO dto);
 
-    @GetMapping("/users/stats")
+    @GetMapping("/internal/admin/users/stats")
     ApiResponse<UserStatsVO> getUserStats();
 }

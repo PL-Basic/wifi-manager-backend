@@ -1,2 +1,9 @@
 server:
   port: 8385
+wifi:
+  # admin-service 入站只接受 Gateway，出站 Feign 使用内部 Token。
+  internal:
+    token: ${WIFI_INTERNAL_TOKEN:local-internal-token-change-me}
+  security:
+    enabled: true
+    gateway-token: ${WIFI_GATEWAY_TOKEN:local-gateway-token-change-me}

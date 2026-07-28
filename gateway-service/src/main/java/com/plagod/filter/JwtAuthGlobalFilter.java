@@ -1,21 +1,26 @@
 package com.plagod.filter;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.plagod.dto.ApiResponse;
 import com.plagod.utils.JwtUtils;
 import io.jsonwebtoken.Claims;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
+import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.http.*;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
-import java.util.Arrays;
-import java.util.List;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -23,50 +28,314 @@ import java.util.regex.Pattern;
 public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
 
     private static final String BEARER_PREFIX = "Bearer ";
+    private static final String GATEWAY_TOKEN_HEADER = "X-Gateway-Token";
+    private static final String INTERNAL_TOKEN_HEADER = "X-Internal-Token";
+    private static final String SEC_WEBSOCKET_PROTOCOL_HEADER = "Sec-WebSocket-Protocol";
+    private static final long RATE_WINDOW_MILLIS = 60_000L;
 
-    private static final List<String> WHITE_PATHS = Arrays.asList(
-            "/auth/login",
-            "/auth/register",
-            "/auth/codes",
-            "/auth/code-login",
-            "/auth/reset-password"
-    );
-    private static final Pattern USER_SELF_PATH = Pattern.compile("^/users/(\\d+)(/avatar)?$");
-    private static final int SUPER_ADMIN_ROLE = 0;
-    private static final int ADMIN_ROLE = 1;
+    private static final Set<String> TRUST_HEADERS = new HashSet<>(Arrays.asList(
+            "X-User-Id", "X-User-Name", "X-User-Role",
+            GATEWAY_TOKEN_HEADER, INTERNAL_TOKEN_HEADER
+    ));
+
+    private static final Set<String> AUTH_WHITE_PATHS = new HashSet<>(Arrays.asList(
+            "/auth/login", "/auth/register", "/auth/codes",
+            "/auth/code-login", "/auth/reset-password"
+    ));
+
+    private static final Pattern USER_SELF = Pattern.compile("^/users/(\\d+)$");
+    private static final Pattern USER_AVATAR = Pattern.compile("^/users/(\\d+)/avatar$");
+    private static final Pattern USER_PURGE_REQUEST = Pattern.compile("^/users/(\\d+)/purge-requests$");
+    private static final Pattern PORTAL_STATUS = Pattern.compile("^/sessions/(\\d+)/portal-status$");
+    private static final Pattern SESSION_LOGOUT = Pattern.compile("^/sessions/(\\d+)/logout$");
+
+    private final Map<String, RateWindow> rateWindows = new ConcurrentHashMap<>();
 
     @Autowired
     private JwtUtils jwtUtils;
 
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Value("${wifi.security.gateway-token}")
+    private String gatewayToken;
+
+    @Value("${wifi.rate-limit.auth-per-minute:30}")
+    private int authLimit;
+
+    @Value("${wifi.rate-limit.portal-per-minute:12}")
+    private int portalLimit;
+
+    @Value("${wifi.rate-limit.location-per-minute:60}")
+    private int locationLimit;
+
+    @Value("${wifi.rate-limit.websocket-per-minute:10}")
+    private int websocketLimit;
+
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
-        String path = exchange.getRequest().getURI().getPath();
-        if (isWhitePath(path)) {
-            return chain.filter(exchange);
+        ServerWebExchange cleanExchange = removeUntrustedHeaders(exchange);
+        ServerHttpRequest request = cleanExchange.getRequest();
+        String path = request.getURI().getPath();
+        HttpMethod method = request.getMethod();
+
+        if (!StringUtils.hasText(gatewayToken)) {
+            return reject(cleanExchange, HttpStatus.INTERNAL_SERVER_ERROR, 500, "Gateway 可信凭据未配置");
         }
 
-        String authorization = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
-        if (!StringUtils.hasText(authorization) || !authorization.startsWith(BEARER_PREFIX)) {
-            return unauthorized(exchange);
+        if (isWhitePath(path, method)) {
+            if (isAuthRatePath(path) && !tryAcquire("auth:" + clientIp(request), authLimit)) {
+                return reject(cleanExchange, HttpStatus.TOO_MANY_REQUESTS, 429, "请求过于频繁，请稍后再试");
+            }
+            return chain.filter(addTrustedHeaders(cleanExchange, null, null, null));
         }
 
-        String token = authorization.substring(BEARER_PREFIX.length());
+        String token = extractToken(request, path);
+        if (!StringUtils.hasText(token)) {
+            return reject(cleanExchange, HttpStatus.UNAUTHORIZED, 401, "未提供有效登录凭据");
+        }
+
         try {
             Claims claims = jwtUtils.parseToken(token);
             Long userId = JwtUtils.getUserId(claims);
-            Integer role = Integer.valueOf(String.valueOf(claims.get("role")));
-            if (!isAllowed(path, userId, role)) {
-                return forbidden(exchange);
+            String username = claims.get("username", String.class);
+            Integer role = parseRole(claims.get("role"));
+
+            if (userId == null || userId <= 0 || !StringUtils.hasText(username) || !isSupportedRole(role)) {
+                return reject(cleanExchange, HttpStatus.UNAUTHORIZED, 401, "登录凭据内容无效");
             }
-            ServerHttpRequest request = exchange.getRequest().mutate()
-                    .header("X-User-Id", String.valueOf(userId))
-                    .header("X-User-Name", String.valueOf(claims.get("username")))
-                    .header("X-User-Role", String.valueOf(role))
-                    .build();
-            return chain.filter(exchange.mutate().request(request).build());
-        } catch (Exception ex) {
-            return unauthorized(exchange);
+
+            if (!isAllowed(path, method, userId, role)) {
+                return reject(cleanExchange, HttpStatus.FORBIDDEN, 403, "无权访问该资源");
+            }
+
+            if (!passProtectedRateLimit(path, userId)) {
+                return reject(cleanExchange, HttpStatus.TOO_MANY_REQUESTS, 429, "请求过于频繁，请稍后再试");
+            }
+
+            return chain.filter(
+                    addTrustedHeaders(cleanExchange, userId, username, role)
+            );
+        } catch (Exception exception) {
+            return reject(cleanExchange, HttpStatus.UNAUTHORIZED, 401, "登录凭据无效或已经过期");
         }
+    }
+
+    private ServerWebExchange removeUntrustedHeaders(ServerWebExchange exchange) {
+        ServerHttpRequest request = exchange.getRequest().mutate()
+                .headers(headers -> TRUST_HEADERS.forEach(headers::remove))
+                .build();
+        return exchange.mutate().request(request).build();
+    }
+
+    private ServerWebExchange addTrustedHeaders(ServerWebExchange exchange, Long userId, String username, Integer role) {
+        ServerHttpRequest request = exchange.getRequest().mutate()
+                .headers(headers -> {
+                    TRUST_HEADERS.forEach(headers::remove);
+                    headers.set(GATEWAY_TOKEN_HEADER, gatewayToken);
+                    if (userId != null) {
+                        headers.set("X-User-Id", String.valueOf(userId));
+                        headers.set("X-User-Name", username);
+                        headers.set("X-User-Role", String.valueOf(role));
+                    }
+                }).build();
+
+        return exchange.mutate().request(request).build();
+    }
+
+    private boolean isWhitePath(String path, HttpMethod method) {
+        if (AUTH_WHITE_PATHS.contains(path)) {
+            return true;
+        }
+        return HttpMethod.GET.equals(method) && path.startsWith("/users/avatars/");
+    }
+
+    private boolean isAuthRatePath(String path) {
+        return "/auth/login".equals(path)
+                || "/auth/code-login".equals(path)
+                || "/auth/codes".equals(path)
+                || "/auth/reset-password".equals(path);
+    }
+
+    private boolean isAllowed(String path, HttpMethod method, Long userId, Integer role) {
+        if ("/ws/alerts".equals(path)) {
+            return isAdmin(role);
+        }
+
+        if ("/admin".equals(path) || path.startsWith("/admin/")) {
+            return isAdmin(role);
+        }
+
+        Matcher matcher = USER_SELF.matcher(path);
+        if (matcher.matches()) {
+            return (HttpMethod.GET.equals(method) || HttpMethod.PUT.equals(method))
+                    && ownsPathUser(userId, matcher);
+        }
+
+        matcher = USER_AVATAR.matcher(path);
+        if (matcher.matches()) {
+            return HttpMethod.POST.equals(method) && ownsPathUser(userId, matcher);
+        }
+
+        matcher = USER_PURGE_REQUEST.matcher(path);
+        if (matcher.matches()) {
+            return HttpMethod.POST.equals(method) && ownsPathUser(userId, matcher);
+        }
+
+        if ("/sessions/portal-authorize".equals(path)) {
+            return HttpMethod.POST.equals(method);
+        }
+
+        if ("/sessions".equals(path)) {
+            return HttpMethod.GET.equals(method);
+        }
+
+        if (PORTAL_STATUS.matcher(path).matches()) {
+            return HttpMethod.GET.equals(method);
+        }
+
+        if (SESSION_LOGOUT.matcher(path).matches()) {
+            return HttpMethod.POST.equals(method);
+        }
+
+        if ("/traffic".equals(path) || "/client-signals".equals(path)) {
+            return HttpMethod.GET.equals(method);
+        }
+
+        if ("/locations".equals(path)) {
+            return HttpMethod.GET.equals(method);
+        }
+
+        if ("/locations/report".equals(path)) {
+            return HttpMethod.POST.equals(method);
+        }
+
+        // 不再使用“没有明确禁止就放行”的策略。
+        return false;
+    }
+
+    private boolean ownsPathUser(Long userId, Matcher matcher) {
+        return String.valueOf(userId).equals(matcher.group(1));
+    }
+
+    private boolean isAdmin(Integer role) {
+        return Integer.valueOf(0).equals(role) || Integer.valueOf(1).equals(role);
+    }
+
+    private boolean isSupportedRole(Integer role) {
+        return Integer.valueOf(0).equals(role) || Integer.valueOf(1).equals(role) || Integer.valueOf(2).equals(role);
+    }
+
+    private Integer parseRole(Object value) {
+        if (value == null) {
+            throw new IllegalArgumentException("JWT 缺少角色");
+        }
+        return Integer.valueOf(String.valueOf(value));
+    }
+
+    private String extractToken(ServerHttpRequest request, String path) {
+        String authorization = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
+
+        if (StringUtils.hasText(authorization) && authorization.startsWith(BEARER_PREFIX)) {
+            return authorization.substring(BEARER_PREFIX.length()).trim();
+        }
+
+        if ("/ws/alerts".equals(path)) {
+            return extractWebSocketProtocolToken(request);
+        }
+
+        return null;
+    }
+
+    private String extractWebSocketProtocolToken(ServerHttpRequest request) {
+        List<String> protocols = new ArrayList<>();
+
+        for (String header : request.getHeaders().getOrEmpty(SEC_WEBSOCKET_PROTOCOL_HEADER)) {
+            for (String item : header.split(",")) {
+                if (StringUtils.hasText(item)) {
+                    protocols.add(item.trim());
+                }
+            }
+        }
+
+        for (int i = 0; i + 1 < protocols.size(); i++) {
+            if ("access_token".equals(protocols.get(i))) {
+                return protocols.get(i + 1);
+            }
+        }
+
+        return null;
+    }
+
+    private boolean passProtectedRateLimit(String path, Long userId) {
+        if ("/sessions/portal-authorize".equals(path)) {
+            return tryAcquire("portal:" + userId, portalLimit);
+        }
+        if ("/locations/report".equals(path)) {
+            return tryAcquire("location:" + userId, locationLimit);
+        }
+        if ("/ws/alerts".equals(path)) {
+            return tryAcquire("websocket:" + userId, websocketLimit);
+        }
+        return true;
+    }
+
+    private String clientIp(ServerHttpRequest request) {
+        InetSocketAddress address = request.getRemoteAddress();
+        if (address == null || address.getAddress() == null) {
+            return "unknown";
+        }
+        return address.getAddress().getHostAddress();
+    }
+
+    private boolean tryAcquire(String key, int limit) {
+        if (limit <= 0) {
+            return false;
+        }
+
+        long now = System.currentTimeMillis();
+        RateWindow window = rateWindows.computeIfAbsent(key, ignored -> new RateWindow(now));
+
+        synchronized (window) {
+            if (now - window.startedAt >= RATE_WINDOW_MILLIS) {
+                window.startedAt = now;
+                window.count = 0;
+            }
+
+            if (window.count >= limit) {
+                return false;
+            }
+
+            window.count++;
+        }
+
+        // 防止长期运行时无效来源无限占用内存。
+        if (rateWindows.size() > 4096) {
+            rateWindows.entrySet().removeIf(entry -> now - entry.getValue().startedAt >= RATE_WINDOW_MILLIS * 2);
+        }
+
+        return true;
+    }
+
+    private Mono<Void> reject(ServerWebExchange exchange, HttpStatus status, int code, String message) {
+        byte[] body;
+
+        try {
+            body = objectMapper.writeValueAsBytes(ApiResponse.fail(code, message));
+        } catch (Exception exception) {
+            body = ("{\"code\":" + code + ",\"message\":\"请求处理失败\",\"data\":null}").getBytes(StandardCharsets.UTF_8);
+        }
+
+        exchange.getResponse().setStatusCode(status);
+        exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
+        exchange.getResponse().getHeaders().setContentLength(body.length);
+
+        if (status == HttpStatus.TOO_MANY_REQUESTS) {
+            exchange.getResponse().getHeaders().set(HttpHeaders.RETRY_AFTER, "60");
+        }
+
+        DataBuffer buffer = exchange.getResponse().bufferFactory().wrap(body);
+        return exchange.getResponse().writeWith(Mono.just(buffer));
     }
 
     @Override
@@ -74,34 +343,12 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
         return -100;
     }
 
-    private boolean isWhitePath(String path) {
-        return WHITE_PATHS.contains(path) || path.startsWith("/users/avatars/");
-    }
+    private static final class RateWindow {
+        private long startedAt;
+        private int count;
 
-    private boolean isAllowed(String path, Long userId, Integer role) {
-        if (Integer.valueOf(SUPER_ADMIN_ROLE).equals(role) || Integer.valueOf(ADMIN_ROLE).equals(role)) {
-            return true;
+        private RateWindow(long startedAt) {
+            this.startedAt = startedAt;
         }
-        if (path.startsWith("/admin/")) {
-            return false;
-        }
-        if ("/users".equals(path) || "/users/stats".equals(path)) {
-            return false;
-        }
-        if (path.startsWith("/users/")) {
-            Matcher matcher = USER_SELF_PATH.matcher(path);
-            return matcher.matches() && String.valueOf(userId).equals(matcher.group(1));
-        }
-        return true;
-    }
-
-    private Mono<Void> unauthorized(ServerWebExchange exchange) {
-        exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
-        return exchange.getResponse().setComplete();
-    }
-
-    private Mono<Void> forbidden(ServerWebExchange exchange) {
-        exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
-        return exchange.getResponse().setComplete();
     }
 }

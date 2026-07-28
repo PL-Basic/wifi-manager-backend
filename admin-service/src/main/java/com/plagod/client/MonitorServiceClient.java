@@ -5,43 +5,36 @@ import com.plagod.dto.monitor.AccessRuleCreateDTO;
 import com.plagod.dto.monitor.AccessRuleUpdateDTO;
 import com.plagod.vo.monitor.*;
 import org.springframework.cloud.openfeign.FeignClient;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PatchMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.*;
 
 import javax.validation.Valid;
 
 @FeignClient(name = "monitor-service")
 public interface MonitorServiceClient {
 
-    @GetMapping("/rules")
+    @GetMapping("/internal/admin/rules")
     ApiResponse<AccessRulePageResult> pageRules(@RequestParam("current") Long current,
                                                 @RequestParam("size") Long size,
                                                 @RequestParam(value = "ruleType", required = false) Integer ruleType,
                                                 @RequestParam(value = "enabled", required = false) Integer enabled,
                                                 @RequestParam(value = "keyword", required = false) String keyword);
 
-    @GetMapping("/rules/{id}")
+    @GetMapping("/internal/admin/rules/{id}")
     ApiResponse<AccessRuleVO> getRule(@PathVariable("id") Long id);
 
-    @PostMapping("/rules")
+    @PostMapping("/internal/admin/rules")
     ApiResponse<AccessRuleVO> createRule(@Valid @RequestBody AccessRuleCreateDTO createDTO);
 
-    @PutMapping("/rules/{id}")
+    @PutMapping("/internal/admin/rules/{id}")
     ApiResponse<AccessRuleVO> updateRule(@PathVariable("id") Long id,@Valid @RequestBody AccessRuleUpdateDTO updateDTO);
 
-    @DeleteMapping("/rules/{id}")
+    @DeleteMapping("/internal/admin/rules/{id}")
     ApiResponse<Void> deleteRule(@PathVariable("id") Long id);
 
-    @PatchMapping("/rules/{id}/enabled")
+    @PatchMapping("/internal/admin/rules/{id}/enabled")
     ApiResponse<Void> toggleRule(@PathVariable("id") Long id, @RequestParam("enabled") Integer enabled);
 
-    @GetMapping("/alerts")
+    @GetMapping("/internal/admin/alerts")
     ApiResponse<AlertEventPageResult> pageAlerts(@RequestParam("current") Long current,
                                                  @RequestParam("size") Long size,
                                                  @RequestParam(value = "level", required = false) Integer level,
@@ -50,13 +43,13 @@ public interface MonitorServiceClient {
                                                  @RequestParam(value = "startTime", required = false) String startTime,
                                                  @RequestParam(value = "endTime", required = false) String endTime);
 
-    @PatchMapping("/alerts/{id}/handle")
-    ApiResponse<Void> handleAlert(@PathVariable("id") Long id, @RequestParam("handleUserId") Long handleUserId);
-
-    @GetMapping("/alerts/{id}")
+    @GetMapping("/internal/admin/alerts/{id}")
     ApiResponse<AlertEventVO> getAlert(@PathVariable("id") Long id);
 
-    @GetMapping("/audits")
+    @PatchMapping("/internal/admin/alerts/{id}/handle")
+    ApiResponse<Void> handleAlert(@PathVariable("id") Long id, @RequestHeader("X-User-Id") Long handleUserId);
+
+    @GetMapping("/internal/admin/audits")
     ApiResponse<AuditLogPageResult> pageAudits(@RequestParam("current") Long current,
                                                @RequestParam("size") Long size,
                                                @RequestParam(value = "action", required = false) String action,
@@ -65,10 +58,10 @@ public interface MonitorServiceClient {
                                                @RequestParam(value = "startTime", required = false) String startTime,
                                                @RequestParam(value = "endTime", required = false) String endTime);
 
-    @GetMapping("/audits/{id}")
+    @GetMapping("/internal/admin/audits/{id}")
     ApiResponse<AuditLogVO> getAudit(@PathVariable("id") Long id);
 
-    @GetMapping("/locations")
+    @GetMapping("/internal/admin/locations")
     ApiResponse<ClientLocationPageResult> pageLocations(@RequestParam("current") Long current,
                                                         @RequestParam("size") Long size,
                                                         @RequestParam(value = "mac", required = false) String mac,

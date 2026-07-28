@@ -17,6 +17,12 @@ wifi:
     avatar-dir: ${WIFI_AVATAR_DIR:uploads/avatars}
   internal:
     token: ${WIFI_INTERNAL_TOKEN:local-internal-token-change-me}
+  security:
+    enabled: true
+    gateway-token: ${WIFI_GATEWAY_TOKEN:local-gateway-token-change-me}
+    internal-token: ${WIFI_INTERNAL_TOKEN:local-internal-token-change-me}
+    internal-path-prefixes:
+      - /internal/
 
 mybatis-plus:
   configuration:

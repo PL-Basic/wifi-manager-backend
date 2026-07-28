@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 import javax.validation.Valid;
 
 @RestController
-@RequestMapping("/rules")
+@RequestMapping("/internal/admin/rules")
 public class AccessRuleController {
 
     @Autowired

@@ -29,6 +29,7 @@
         <module>device-service</module>
         <module>admin-service</module>
         <module>monitor-service</module>
+        <module>wifi-service-security-spring-boot-starter</module>
     </modules>
 
     <properties>
@@ -167,6 +168,11 @@
             <dependency>
                 <groupId>org.example</groupId>
                 <artifactId>wifi-audit-spring-boot-starter</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.example</groupId>
+                <artifactId>wifi-service-security-spring-boot-starter</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

@@ -12,47 +12,49 @@ import javax.validation.Valid;
 public interface DeviceServiceClient {
 
 
-    @PostMapping("/devices")
+    @PostMapping("/internal/admin/devices")
     ApiResponse<DeviceNodeVO> addDevice(@Valid @RequestBody DeviceNodeCreateDTO deviceNodeCreateDTO);
 
-    @PostMapping("/devices/{nodeId}/restore")
+    @PostMapping("/internal/admin/devices/{nodeId}/restore")
     ApiResponse<DeviceNodeVO> restoreDevice(@PathVariable("nodeId") Long nodeId);
 
-    @PutMapping("/devices/{nodeId}")
+    @PutMapping("/internal/admin/devices/{nodeId}")
     ApiResponse<DeviceNodeVO> updateDevice(@PathVariable("nodeId") Long nodeId,@Valid @RequestBody DeviceNodeUpdateDTO deviceNodeUpdateDTO);
 
-    @DeleteMapping("/devices/{nodeId}")
+    @DeleteMapping("/internal/admin/devices/{nodeId}")
     ApiResponse<Boolean> deleteDevice(@PathVariable("nodeId") Long nodeId);
 
-    @GetMapping("/devices")
+    @GetMapping("/internal/admin/devices")
     ApiResponse<DevicePageResult> pageDevices(@RequestParam("current") Long current,
                                               @RequestParam("size") Long size,
                                               @RequestParam(value = "keyword", required = false) String keyword);
 
-    @GetMapping("/devices/{nodeId}")
+    @GetMapping("/internal/admin/devices/{nodeId}")
     ApiResponse<DeviceNodeVO> getDevice(@PathVariable("nodeId") Long nodeId);
 
-    @PostMapping("/devices/{deviceCode}/allow")
+    @PostMapping("/internal/admin/devices/{deviceCode}/allow")
     ApiResponse<DeviceNodeVO> allowDevice(@PathVariable("deviceCode") String deviceCode);
 
-    @PostMapping("/devices/{deviceCode}/kick")
+    @PostMapping("/internal/admin/devices/{deviceCode}/kick")
     ApiResponse<DeviceCommandResult> kickDevice(@PathVariable("deviceCode") String deviceCode,
                                                 @RequestBody(required = false) KickDeviceDTO deviceKickDTO);
-    @GetMapping("/blacklist")
+
+    @GetMapping("/internal/admin/devices/stats")
+    ApiResponse<DeviceStatsVO> getDeviceStats();
+
+    @GetMapping("/internal/admin/blacklist")
     ApiResponse<MacBlacklistPageResult> pageBlacklist(@RequestParam("current") Long current,
                                                       @RequestParam("size") Long size,
                                                       @RequestParam(value = "keyword", required = false) String keyword);
 
-    @PostMapping("/blacklist")
+    @PostMapping("/internal/admin/blacklist")
     ApiResponse<Void> addBlacklist(@RequestBody MacBlacklistCreateDTO macBlacklistCreateDTO);
 
-    @DeleteMapping("/blacklist/{mac}")
+    @DeleteMapping("/internal/admin/blacklist/{mac}")
     ApiResponse<Void> removeBlacklist(@PathVariable("mac") String mac);
 
-    @GetMapping("/devices/stats")
-    ApiResponse<DeviceStatsVO> getDeviceStats();
 
-    @GetMapping("/sessions")
+    @GetMapping("/internal/admin/sessions")
     ApiResponse<SessionPageResult> pageSessions(@RequestParam("current") Long current,
                                                 @RequestParam("size") Long size,
                                                 @RequestParam(value = "mac", required = false) String mac,
@@ -60,7 +62,13 @@ public interface DeviceServiceClient {
                                                 @RequestParam(value = "userId", required = false) Long userId,
                                                 @RequestParam(value = "status", required = false) Integer status);
 
-    @GetMapping("/traffic")
+    @PostMapping("/internal/admin/sessions/{sessionId}/revoke")
+    ApiResponse<SessionRecordVO> adminRevokeSession(@PathVariable("sessionId") Long sessionId,
+                                                    @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
+                                                    @RequestHeader(value = "X-User-Name", required = false) String operatorName,
+                                                    @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole);
+
+    @GetMapping("/internal/admin/traffic")
     ApiResponse<TrafficPageResult> pageTraffic(@RequestParam("current") Long current,
                                                @RequestParam("size") Long size,
                                                @RequestParam(value = "mac", required = false) String mac,
@@ -70,7 +78,7 @@ public interface DeviceServiceClient {
                                                @RequestParam(value = "endTime", required = false) String endTime);
 
 
-    @GetMapping("/client-signals")
+    @GetMapping("/internal/admin/client-signals")
     ApiResponse<ClientSignalPageResult> pageClientSignals(@RequestParam("current") Long current,
                                                           @RequestParam("size") Long size,
                                                           @RequestParam(value = "deviceCode", required = false) String deviceCode,
@@ -81,27 +89,22 @@ public interface DeviceServiceClient {
                                                           @RequestParam(value = "startTime", required = false) String startTime,
                                                           @RequestParam(value = "endTime", required = false) String endTime);
 
-    @PostMapping("/sessions/{sessionId}/admin-revoke")
-    ApiResponse<SessionRecordVO> adminRevokeSession(@PathVariable("sessionId") Long sessionId,
-                                                    @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
-                                                    @RequestHeader(value = "X-User-Name", required = false) String operatorName,
-                                                    @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole);
 
-    @PostMapping("/devices/{deviceCode}/disconnect-mac")
+    @PostMapping("/internal/admin/devices/{deviceCode}/disconnect-mac")
     ApiResponse<DeviceCommandResult> disconnectMac(@PathVariable("deviceCode") String deviceCode,
                                                    @Valid @RequestBody ManualDisconnectMacDTO dto,
                                                    @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
                                                    @RequestHeader(value = "X-User-Name", required = false) String operatorName,
                                                    @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole);
 
-    @PostMapping("/devices/{deviceCode}/block-traffic")
+    @PostMapping("/internal/admin/devices/{deviceCode}/block-traffic")
     ApiResponse<DeviceCommandResult> blockTraffic(@PathVariable("deviceCode") String deviceCode,
                                                   @Valid @RequestBody ManualBlockTrafficDTO dto,
                                                   @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
                                                   @RequestHeader(value = "X-User-Name", required = false) String operatorName,
                                                   @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole);
 
-    @GetMapping("/device-commands")
+    @GetMapping("/internal/admin/device-commands")
     ApiResponse<DeviceCommandPageResult> pageDeviceCommands(@RequestParam("current") Long current,
                                                             @RequestParam("size") Long size,
                                                             @RequestParam(value = "requestId", required = false) String requestId,

@@ -41,6 +41,11 @@
             <artifactId>lombok</artifactId>
             <optional>true</optional>
         </dependency>
+
+        <dependency>
+            <groupId>org.example</groupId>
+            <artifactId>wifi-service-security-spring-boot-starter</artifactId>
+        </dependency>
     </dependencies>
 
     <build>

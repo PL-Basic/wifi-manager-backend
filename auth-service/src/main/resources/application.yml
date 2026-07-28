@@ -51,4 +51,7 @@ login:
     lock-minutes: 10
     fail-window-minutes: 10
     record-keep-days: 30
-
+wifi:
+  security:
+    enabled: true
+    gateway-token: ${WIFI_GATEWAY_TOKEN:local-gateway-token-change-me}
