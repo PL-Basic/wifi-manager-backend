@@ -5,6 +5,7 @@ import com.plagod.entity.SessionRecord;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 import java.util.List;
 
@@ -34,4 +35,19 @@ public interface SessionRecordMapper extends BaseMapper<SessionRecord> {
     // 按固定顺序锁住该 MAC 的全部已分配 Session，避免批量关闭产生死锁。
     @Select("select * from t_session where mac = #{mac} and status in (1, 2, 3) order by session_id asc for update")
     List<SessionRecord> selectAllocatedByMacForUpdate(@Param("mac") String mac);
+
+    // 只给仍然 ACTIVE 且节点、MAC 均一致的 Session 原子累计流量。
+    @Update("update t_session " +
+            "set bytes_up = coalesce(bytes_up, 0) + #{bytesUp}, " +
+            "bytes_down = coalesce(bytes_down, 0) + #{bytesDown} " +
+            "where session_id = #{sessionId} " +
+            "and status = #{status} " +
+            "and node_id = #{nodeId} " +
+            "and mac = #{mac}")
+    int incrementTrafficIfActive(@Param("sessionId") Long sessionId,
+                                 @Param("nodeId") Long nodeId,
+                                 @Param("mac") String mac,
+                                 @Param("status") Integer status,
+                                 @Param("bytesUp") Long bytesUp,
+                                 @Param("bytesDown") Long bytesDown);
 }

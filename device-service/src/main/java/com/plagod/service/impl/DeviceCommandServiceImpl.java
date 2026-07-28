@@ -12,6 +12,7 @@ import com.plagod.dto.RevokeAccessCommand;
 import com.plagod.dto.device.*;
 import com.plagod.entity.DeviceCommandRecord;
 import com.plagod.service.DeviceCommandOutboxService;
+import com.plagod.service.ManagedDeviceCommandService;
 import com.plagod.vo.device.*;
 import com.plagod.entity.Esp32Node;
 import com.plagod.entity.MacBlacklist;
@@ -19,11 +20,11 @@ import com.plagod.entity.SessionRecord;
 import com.plagod.mapper.Esp32NodeMapper;
 import com.plagod.mapper.MacBlacklistMapper;
 import com.plagod.mapper.SessionRecordMapper;
-import com.plagod.mqtt.MqttCommandPublisher;
 import com.plagod.service.DeviceCommandService;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
@@ -48,13 +49,13 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     private SessionRecordMapper sessionRecordMapper;
 
     @Autowired
-    private MqttCommandPublisher mqttCommandPublisher;
-
-    @Autowired
     private ObjectMapper objectMapper;
 
     @Autowired
     private DeviceCommandOutboxService commandOutboxService;
+
+    @Autowired
+    private ManagedDeviceCommandService managedDeviceCommandService;
 
 
     @Override
@@ -219,23 +220,60 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
 
     @Override
     @Audited(action = "device.allow")
-    public DeviceCommandResult allowDevice(String deviceCode) {
-        String topic = MqttTopics.deviceAllow(deviceCode);
-        String payload = "{\"deviceCode\":\"" + deviceCode + "\"}";
-        mqttCommandPublisher.publish(topic, payload);
-        return new DeviceCommandResult(topic, payload);
+    @Transactional(rollbackFor = Exception.class)
+    public DeviceNodeVO allowDevice(String deviceCode) {
+        if (!StringUtils.hasText(deviceCode)) {
+            throw new IllegalArgumentException("deviceCode 不能为空");
+        }
+
+        String cleanedDeviceCode = deviceCode.trim();
+
+        if (cleanedDeviceCode.length() > 64) {
+            throw new IllegalArgumentException("deviceCode 长度超限");
+        }
+
+        Esp32Node node = esp32NodeMapper.selectByDeviceCodeIncludeDeleted(cleanedDeviceCode);
+
+        // 节点授权不能被 MQTT 心跳反向创建。
+        if (node == null) {
+            throw new IllegalArgumentException("ESP32 节点尚未登记，请先创建设备节点");
+        }
+
+        if (!cleanedDeviceCode.equals(node.getDeviceCode())) {
+            throw new IllegalArgumentException("deviceCode 与节点登记编码不完全一致");
+        }
+
+        if (Integer.valueOf(1).equals(node.getDelFlag())) {
+            int restored = esp32NodeMapper.restoreRetiredById(node.getNodeId());
+            if (restored != 1) {
+                // 并发授权时，另一请求可能已经完成恢复。
+                Esp32Node concurrentResult = esp32NodeMapper.selectByNodeIdIncludeDeleted(node.getNodeId());
+
+                if (concurrentResult == null || Integer.valueOf(1).equals(concurrentResult.getDelFlag())) {
+                    throw new IllegalStateException("ESP32 节点授权失败，请刷新后重试");
+                }
+                node = concurrentResult;
+            } else {
+                node = esp32NodeMapper.selectByNodeIdIncludeDeleted(node.getNodeId());
+            }
+        }
+
+        if (node == null || Integer.valueOf(1).equals(node.getDelFlag())) {
+            throw new IllegalStateException("ESP32 节点授权结果异常");
+        }
+
+        DeviceNodeVO result = new DeviceNodeVO();
+        BeanUtils.copyProperties(node, result);
+        return result;
     }
 
     @Override
     @Audited(action = "device.kick")
     public DeviceCommandResult kickDevice(String deviceCode, KickDeviceDTO kickDeviceDTO) {
-        String topic = MqttTopics.deviceKick(deviceCode);
-        String reason = kickDeviceDTO == null || kickDeviceDTO.getReason() == null ? "" : kickDeviceDTO.getReason();
-        String payload = "{\"deviceCode\":\"" + deviceCode + "\",\"reason\":\"" + reason + "\"}";
-        mqttCommandPublisher.publish(topic, payload);
-        return new DeviceCommandResult(topic, payload);
-    }
+        String reason = kickDeviceDTO == null ? null : kickDeviceDTO.getReason();
 
+        return managedDeviceCommandService.enqueueKick(deviceCode, reason, DeviceCommandPurpose.MANUAL_DEVICE_RESTART);
+    }
     @Override
     @Audited(action = "device.allow-client")
     public DeviceCommandResult allowClient(Long nodeId, String deviceCode, String mac, Long sessionId, Integer ttlSeconds) {

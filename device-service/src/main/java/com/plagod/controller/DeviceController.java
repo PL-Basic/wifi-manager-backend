@@ -66,14 +66,15 @@ public class DeviceController {
     }
 
     @PostMapping("/{deviceCode}/allow")
-    public ApiResponse<DeviceCommandResult> allowDevice(@PathVariable String deviceCode) {
-        return ApiResponse.success("允许设备接入成功", deviceCommandService.allowDevice(deviceCode));
+    public ApiResponse<DeviceNodeVO> allowDevice(@PathVariable String deviceCode) {
+
+        return ApiResponse.success("ESP32 节点已允许接入", deviceCommandService.allowDevice(deviceCode));
     }
 
     @PostMapping("/{deviceCode}/kick")
     public ApiResponse<DeviceCommandResult> kickDevice(@PathVariable String deviceCode,
                                                        @RequestBody(required = false) KickDeviceDTO kickDeviceDTO) {
-        return ApiResponse.success("踢出设备命令已下发", deviceCommandService.kickDevice(deviceCode, kickDeviceDTO));
+        return ApiResponse.success("ESP32 节点重启命令已进入发送队列", deviceCommandService.kickDevice(deviceCode, kickDeviceDTO));
     }
 
     @PostMapping("/{deviceCode}/disconnect-mac")

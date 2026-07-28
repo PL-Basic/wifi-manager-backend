@@ -54,7 +54,7 @@ public class AdminDeviceController {
     }
 
     @PostMapping("/{deviceCode}/allow")
-    public ApiResponse<DeviceCommandResult> allowDevice(@PathVariable String deviceCode) {
+    public ApiResponse<DeviceNodeVO> allowDevice(@PathVariable String deviceCode) {
         return deviceServiceClient.allowDevice(deviceCode);
     }
 

@@ -6,7 +6,7 @@ import com.plagod.vo.device.*;
 public interface DeviceCommandService {
     DeviceNodeVO getDevice(Long nodeId);
 
-    DeviceCommandResult allowDevice(String deviceCode);
+    DeviceNodeVO allowDevice(String deviceCode);
 
     DeviceCommandResult kickDevice(String deviceCode, KickDeviceDTO kickDeviceDTO);
 

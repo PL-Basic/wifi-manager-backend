@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -22,13 +23,10 @@ import java.util.UUID;
 import java.util.regex.Pattern;
 
 @Service
-public class ManagedDeviceCommandServiceImpl
-        implements ManagedDeviceCommandService {
+public class ManagedDeviceCommandServiceImpl implements ManagedDeviceCommandService {
 
-    private static final Pattern MAC_PATTERN =
-            Pattern.compile("(?i)^[0-9a-f]{2}(:[0-9a-f]{2}){5}$");
-    private static final Pattern IPV4_PATTERN = Pattern.compile(
-            "^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$");
+    private static final Pattern MAC_PATTERN = Pattern.compile("(?i)^[0-9a-f]{2}(:[0-9a-f]{2}){5}$");
+    private static final Pattern IPV4_PATTERN = Pattern.compile("^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$");
 
     @Autowired
     private Esp32NodeMapper esp32NodeMapper;
@@ -90,6 +88,27 @@ public class ManagedDeviceCommandServiceImpl
         body.put("alertId", alertId == null ? 0L : alertId);
 
         return enqueue(node, requestId, "BLOCK_TRAFFIC", purpose, null, alertId, topic, body);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public DeviceCommandResult enqueueKick(String deviceCode, String reason, String purpose) {
+        if (!DeviceCommandPurpose.isKickPurpose(purpose)) {
+            throw new IllegalArgumentException("KICK 命令用途无效");
+        }
+
+        Esp32Node node = loadNode(deviceCode);
+        String cleanedReason = cleanKickReason(reason);
+
+        String requestId = UUID.randomUUID().toString();
+        String topic = MqttTopics.deviceKick(node.getDeviceCode());
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("requestId", requestId);
+        body.put("deviceCode", node.getDeviceCode());
+        body.put("reason", cleanedReason == null ? "" : cleanedReason);
+
+        return enqueue(node, requestId, "KICK", purpose, null, null, topic, body);
     }
 
     private DeviceCommandResult enqueue(Esp32Node node, String requestId, String commandType, String purpose, String mac, Long alertId, String topic, Map<String, Object> body) {
@@ -156,6 +175,23 @@ public class ManagedDeviceCommandServiceImpl
         if (cleaned.length() > maxLength) {
             throw new IllegalArgumentException("可选参数长度超限");
         }
+        return cleaned;
+    }
+
+    // 固件当前使用 18 字节缓冲区保存 reason，需要保留一个字节给字符串结束符。
+
+    private String cleanKickReason(String reason) {
+        if (!StringUtils.hasText(reason)) {
+            return null;
+        }
+
+        String cleaned = reason.trim();
+
+        if (cleaned.getBytes(StandardCharsets.UTF_8).length > 17) {
+            throw new IllegalArgumentException(
+                    "KICK reason 的 UTF-8 长度不能超过 17 字节");
+        }
+
         return cleaned;
     }
 }

@@ -97,20 +97,17 @@ public class MqttEventSubscriber implements InitializingBean, DisposableBean {
             String payload = new String(message.getPayload(), StandardCharsets.UTF_8);
             if (topic.endsWith("/event/status")) {
                 DeviceStatusEvent event = objectMapper.readValue(payload, DeviceStatusEvent.class);
-                if (!StringUtils.hasText(event.getDeviceCode())) {
-                    event.setDeviceCode(parseDeviceCode(topic));
-                }
+                event.setDeviceCode(resolveTopicDeviceCode(topic, event.getDeviceCode(), "设备状态事件"));
                 deviceEventService.handleStatusEvent(event);
-                log.info("设备状态事件处理成功，topic={}, payload={}", topic, payload);
+                log.info("设备状态事件处理成功，topic={}", topic);
                 return;
             }
+
             if (topic.endsWith("/event/traffic")) {
                 DeviceTrafficEvent event = objectMapper.readValue(payload, DeviceTrafficEvent.class);
-                if (!StringUtils.hasText(event.getDeviceCode())) {
-                    event.setDeviceCode(parseDeviceCode(topic));
-                }
+                event.setDeviceCode(resolveTopicDeviceCode(topic, event.getDeviceCode(), "设备流量事件"));
                 trafficEventService.handleTrafficEvent(event);
-                log.info("设备流量事件处理成功，topic={}, payload={}", topic, payload);
+                log.info("设备流量事件处理成功，topic={}", topic);
                 return;
             }
             if (topic.endsWith("/event/client-signal")) {
@@ -191,6 +188,29 @@ public class MqttEventSubscriber implements InitializingBean, DisposableBean {
             options.setPassword(mqttProperties.getPassword().toCharArray());
         }
         return options;
+    }
+
+    /**
+     * MQTT topic 是设备身份来源。
+     * payload 可以省略 deviceCode，但提供时必须与 topic 一致。
+     */
+    private String resolveTopicDeviceCode(String topic, String payloadDeviceCode, String eventName) {
+
+        String topicDeviceCode = parseDeviceCode(topic);
+
+        if (!StringUtils.hasText(topicDeviceCode)) {
+            throw new IllegalArgumentException("无法从 " + eventName + " topic 中解析 deviceCode"
+            );
+        }
+
+        topicDeviceCode = topicDeviceCode.trim();
+
+        if (StringUtils.hasText(payloadDeviceCode) && !topicDeviceCode.equals(payloadDeviceCode.trim())) {
+            throw new IllegalArgumentException(eventName + " topic 与 payload 的 deviceCode 不一致"
+            );
+        }
+
+        return topicDeviceCode;
     }
 
     private String parseDeviceCode(String topic) {
