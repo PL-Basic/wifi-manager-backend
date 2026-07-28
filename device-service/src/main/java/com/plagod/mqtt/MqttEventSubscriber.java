@@ -2,14 +2,8 @@ package com.plagod.mqtt;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.plagod.configuration.MqttProperties;
-import com.plagod.dto.ClientSignalEvent;
-import com.plagod.dto.CommandResultEvent;
-import com.plagod.dto.DeviceTrafficEvent;
-import com.plagod.dto.DeviceStatusEvent;
-import com.plagod.service.ClientSignalEventService;
-import com.plagod.service.CommandResultEventService;
-import com.plagod.service.DeviceEventService;
-import com.plagod.service.TrafficEventService;
+import com.plagod.dto.*;
+import com.plagod.service.*;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken;
 import org.eclipse.paho.client.mqttv3.MqttCallback;
@@ -47,6 +41,9 @@ public class MqttEventSubscriber implements InitializingBean, DisposableBean {
     @Autowired
     private CommandResultEventService commandResultEventService;
 
+    @Autowired
+    private ClientDisconnectEventService clientDisconnectEventService;
+
     private MqttClient client;
 
     @Override
@@ -71,12 +68,20 @@ public class MqttEventSubscriber implements InitializingBean, DisposableBean {
 
         client.connect(buildOptions());
         client.subscribe(mqttProperties.getStatusTopic(), mqttProperties.getQos());
-        client.subscribe(mqttProperties.getCommandResultTopic(), mqttProperties.getQos());
-        client.subscribe(mqttProperties.getTrafficTopic(), mqttProperties.getQos());
-        client.subscribe(mqttProperties.getClientSignalTopic(), mqttProperties.getQos());
         log.info("MQTT 设备状态订阅已启动，topic={}", mqttProperties.getStatusTopic());
+
+        client.subscribe(mqttProperties.getCommandResultTopic(), mqttProperties.getQos());
+
+        client.subscribe(mqttProperties.getTrafficTopic(), mqttProperties.getQos());
         log.info("MQTT 设备流量订阅已启动，topic={}", mqttProperties.getTrafficTopic());
+
+        client.subscribe(mqttProperties.getClientSignalTopic(), mqttProperties.getQos());
         log.info("MQTT 客户端 RSSI 订阅已启动，topic={}", mqttProperties.getClientSignalTopic());
+
+        client.subscribe(mqttProperties.getClientDisconnectTopic(), mqttProperties.getQos());
+        log.info("MQTT 客户端断线订阅已启动，topic={}", mqttProperties.getClientDisconnectTopic());
+
+
     }
 
     @Override
@@ -148,6 +153,26 @@ public class MqttEventSubscriber implements InitializingBean, DisposableBean {
                 commandResultEventService.handleCommandResult(event);
 
                 log.info("命令执行结果处理完成，topic={}, requestId={}, success={}", topic, event.getRequestId(), event.getSuccess());
+                return;
+            }
+            if (topic.endsWith("/event/client-disconnect")) {
+                ClientDisconnectEvent event = objectMapper.readValue(payload, ClientDisconnectEvent.class);
+
+                // topic 才是设备身份的可信来源。
+                String topicDeviceCode = parseDeviceCode(topic);
+                if (!StringUtils.hasText(topicDeviceCode)) {
+                    throw new IllegalArgumentException("无法从 client-disconnect topic 解析 deviceCode");
+                }
+
+                // payload 提供 deviceCode 时必须和 topic 一致。
+                if (StringUtils.hasText(event.getDeviceCode()) && !topicDeviceCode.equals(event.getDeviceCode().trim())) {
+                    throw new IllegalArgumentException("client-disconnect topic 与 payload 的 deviceCode 不一致");
+                }
+
+                event.setDeviceCode(topicDeviceCode);
+                clientDisconnectEventService.handleClientDisconnectEvent(event);
+
+                log.info("客户端断线事件处理完成，topic={}, mac={}, sessionId={}", topic, event.getMac(), event.getSessionId());
                 return;
             }
         } catch (Exception e) {

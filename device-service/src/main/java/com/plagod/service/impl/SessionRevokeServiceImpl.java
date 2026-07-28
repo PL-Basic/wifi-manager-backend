@@ -69,19 +69,16 @@ public class SessionRevokeServiceImpl implements SessionRevokeService {
             throw new IllegalArgumentException("不能退出其他用户的 Session");
         }
 
-        // 重复退出不重复扣费、不重复创建撤销命令，直接返回当前最终状态。
-        if (!SessionStatus.isOpen(session.getStatus())) {
+        // CLOSED 等未分配状态直接幂等返回；WAITING_REPLACEMENT 仍需要被关闭。
+        if (!SessionStatus.isAllocated(session.getStatus())) {
             return toVO(session);
         }
 
-        Esp32Node node = esp32NodeMapper.selectById(session.getNodeId());
-        if (node == null) {
-            throw new IllegalStateException("Session 关联的 ESP32 节点不存在");
-        }
+        boolean waitingReplacement = SessionStatus.isWaitingReplacement(session.getStatus());
 
         LocalDateTime now = LocalDateTime.now();
 
-        // 仅 ACTIVE 代表固件已确认放行，PENDING 没有可计费的在线时长。
+        // 只有 ACTIVE 表示固件已经放行，需要进行最终计费结算。
         if (SessionStatus.isActive(session.getStatus())) {
             sessionLeaseService.settleFinalUsage(session, now);
         }
@@ -95,7 +92,17 @@ public class SessionRevokeServiceImpl implements SessionRevokeService {
             throw new IllegalStateException("Session 撤销状态保存失败");
         }
 
-        // 与 Session 更新共享当前事务；入队失败时关闭状态也会回滚。
+        // WAITING_REPLACEMENT 从未下发 ALLOW，只关闭数据库记录，不发送 REVOKE_ACCESS。
+        if (waitingReplacement) {
+            return toVO(session);
+        }
+
+        // ACTIVE/PENDING 可能已经或即将被固件放行，因此仍然需要撤销命令。
+        Esp32Node node = esp32NodeMapper.selectById(session.getNodeId());
+        if (node == null) {
+            throw new IllegalStateException("Session 关联的 ESP32 节点不存在");
+        }
+
         deviceCommandService.revokeClientAccess(session.getNodeId(), node.getDeviceCode(), session.getMac(), session.getSessionId(), reason);
 
         return toVO(session);

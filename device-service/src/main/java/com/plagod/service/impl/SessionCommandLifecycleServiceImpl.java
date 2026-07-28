@@ -8,6 +8,7 @@ import com.plagod.entity.DeviceCommandRecord;
 import com.plagod.entity.SessionRecord;
 import com.plagod.mapper.DeviceCommandRecordMapper;
 import com.plagod.mapper.SessionRecordMapper;
+import com.plagod.service.PortalSessionService;
 import com.plagod.service.SessionCommandLifecycleService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,9 +30,18 @@ public class SessionCommandLifecycleServiceImpl implements SessionCommandLifecyc
     @Autowired
     private DeviceCommandRecordMapper commandRecordMapper;
 
+    @Autowired
+    private PortalSessionService portalSessionService;
+
+
     @Override
     @Transactional(propagation = Propagation.MANDATORY, rollbackFor = Exception.class)
     public void handleTerminalCommand(DeviceCommandRecord command) {
+        if (isForceLoginReplacementRevoke(command)) {
+            handleForceLoginReplacement(command);
+            return;
+        }
+
         // 非 Session ALLOW 命令不能影响 Session。
         if (!isSessionAllowCommand(command)) {
             return;
@@ -168,5 +178,61 @@ public class SessionCommandLifecycleServiceImpl implements SessionCommandLifecyc
         }
 
         throw new IllegalStateException("未知的 Session ALLOW 失败状态");
+    }
+
+    private boolean isForceLoginReplacementRevoke(DeviceCommandRecord command) {
+
+        return command != null && "REVOKE_ACCESS".equals(command.getCommandType()) && DeviceCommandPurpose.FORCE_LOGIN_REPLACE.equals(command.getPurpose());
+    }
+
+    private void handleForceLoginReplacement(DeviceCommandRecord command) {
+
+        if (command.getSessionId() == null || command.getSessionId() <= 0) {
+            throw new IllegalStateException("强制替换撤销命令缺少旧 SessionId");
+        }
+
+        if (!DeviceCommandStatus.isTerminal(command.getStatus())) {
+            throw new IllegalStateException("非终态撤销命令不能驱动强制替换");
+        }
+
+        if (Integer.valueOf(DeviceCommandStatus.SUCCEEDED).equals(command.getStatus())) {
+            // 旧授权已由固件撤销，现在才允许生成新 ALLOW。
+            portalSessionService.activateWaitingReplacement(command.getSessionId());
+            return;
+        }
+
+        SessionRecord waiting = sessionRecordMapper.selectWaitingReplacementForUpdate(command.getSessionId());
+
+        if (waiting == null) {
+            return;
+        }
+
+        LocalDateTime now = command.getResultTime() == null ? LocalDateTime.now() : command.getResultTime();
+
+        waiting.setStatus(SessionStatus.CLOSED);
+        waiting.setExpireTime(now);
+        waiting.setLogoutTime(now);
+        waiting.setEndReason(resolveReplacementFailureReason(command.getStatus()));
+
+        if (sessionRecordMapper.updateById(waiting) != 1) {
+            throw new IllegalStateException("强制替换失败状态保存失败");
+        }
+    }
+
+    private String resolveReplacementFailureReason(Integer commandStatus) {
+
+        if (Integer.valueOf(DeviceCommandStatus.EXECUTION_FAILED).equals(commandStatus)) {
+            return "FORCE_REVOKE_EXEC_FAILED";
+        }
+
+        if (Integer.valueOf(DeviceCommandStatus.PUBLISH_FAILED).equals(commandStatus)) {
+            return "FORCE_REVOKE_PUBLISH_FAILED";
+        }
+
+        if (Integer.valueOf(DeviceCommandStatus.TIMED_OUT).equals(commandStatus)) {
+            return "FORCE_REVOKE_RESULT_TIMEOUT";
+        }
+
+        throw new IllegalStateException("未知的强制替换撤销状态");
     }
 }

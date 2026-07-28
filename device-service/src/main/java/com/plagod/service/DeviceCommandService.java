@@ -10,8 +10,6 @@ public interface DeviceCommandService {
 
     DeviceCommandResult kickDevice(String deviceCode, KickDeviceDTO kickDeviceDTO);
 
-    void addBlacklist(MacBlacklistCreateDTO createDTO);
-
     void removeBlacklist(String mac);
 
     DeviceStatsVO getDeviceStats();

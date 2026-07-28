@@ -24,4 +24,7 @@ public class PortalAuthorizeDTO {
 
     @Size(max = 255, message = "设备信息长度不能超过255")
     private String deviceInfo;
+
+    // 达到连接上限时，是否明确替换最旧 Session。
+    private Boolean forceReplaceOldest = false;
 }

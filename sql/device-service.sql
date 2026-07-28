@@ -29,6 +29,7 @@ create table t_session(
     entitlement_id bigint DEFAULT NULL,
     authorization_mode varchar(16) DEFAULT NULL,
     node_id bigint NOT NULL,
+    replaced_session_id bigint DEFAULT NULL,
     mac varchar(17) NOT NULL,
     ip varchar(45),
     device_info varchar(255),
@@ -50,6 +51,7 @@ create table t_session(
     KEY idx_node(node_id),
     KEY idx_login_time(login_time),
     KEY idx_session_entitlement_status (entitlement_id, status),
+    KEY idx_session_replacement (replaced_session_id, status),
     KEY idx_session_status_seen (status, last_seen_time)
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -108,6 +110,13 @@ create table if not exists t_session_user_guard (
 
     primary key (user_id)
 ) default charset=utf8mb4 collate=utf8mb4_unicode_ci comment='用户Session并发控制锁行';
+
+create table if not exists t_client_access_guard (
+    mac varchar(17) not null comment '需要串行处理授权和黑名单操作的客户端MAC',
+    create_time datetime not null default current_timestamp,
+
+    primary key (mac)
+) default charset=utf8mb4 collate=utf8mb4_unicode_ci comment='客户端访问状态并发控制锁行';
 
 create table if not exists t_device_command (
     command_id bigint auto_increment,

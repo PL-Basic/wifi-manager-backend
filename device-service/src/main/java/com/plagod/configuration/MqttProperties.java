@@ -13,8 +13,10 @@ public class MqttProperties {
     private String username;
     private String password;
     private Integer qos = 1;
+
     private String statusTopic;
     private String trafficTopic;
     private String commandResultTopic;
     private String clientSignalTopic;
+    private String clientDisconnectTopic;
 }

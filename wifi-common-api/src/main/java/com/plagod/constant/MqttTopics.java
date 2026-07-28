@@ -17,12 +17,13 @@ public class MqttTopics {
     public static final String DEVICE_TRAFFIC = "wifi/device/%s/event/traffic";
     public static final String DEVICE_CLIENT_SIGNAL = "wifi/device/%s/event/client-signal";
     public static final String DEVICE_COMMAND_RESULT = "wifi/device/%s/event/command-result";
-
+    public static final String DEVICE_CLIENT_DISCONNECT = "wifi/device/%s/event/client-disconnect";
     // ---- ESP32 → 后端上报命令执行结果 ----
     public static final String DEVICE_STATUS_SUBSCRIBE = "wifi/device/+/event/status";
     public static final String DEVICE_TRAFFIC_SUBSCRIBE = "wifi/device/+/event/traffic";
     public static final String DEVICE_COMMAND_RESULT_SUBSCRIBE = "wifi/device/+/event/command-result";
     public static final String DEVICE_CLIENT_SIGNAL_SUBSCRIBE = "wifi/device/+/event/client-signal";
+    public static final String DEVICE_CLIENT_DISCONNECT_SUBSCRIBE = "wifi/device/+/event/client-disconnect";
 
 
     public static String deviceAllow(String deviceCode) {
@@ -51,5 +52,9 @@ public class MqttTopics {
 
     public static String deviceClientSignal(String deviceCode) {
         return String.format(DEVICE_CLIENT_SIGNAL, deviceCode);
+    }
+
+    public static String deviceClientDisconnect(String deviceCode) {
+        return String.format(DEVICE_CLIENT_DISCONNECT, deviceCode);
     }
 }
