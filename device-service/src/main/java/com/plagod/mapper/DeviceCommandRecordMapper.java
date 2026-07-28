@@ -54,4 +54,20 @@ public interface DeviceCommandRecordMapper extends BaseMapper<DeviceCommandRecor
             "and purpose in ('PORTAL_AUTHORIZE', 'LEASE_RENEW') " +
             "and status = #{pendingStatus}")
     long countEarlierPendingSessionAllowCommands(@Param("sessionId") Long sessionId, @Param("commandId") Long commandId, @Param("pendingStatus") Integer pendingStatus);
+
+    // Portal 查询当前 Session 最新的授权或续租命令。
+    @Select("select * from t_device_command " +
+            "where session_id = #{sessionId} " +
+            "and command_type = 'ALLOW' " +
+            "and purpose in ('PORTAL_AUTHORIZE', 'LEASE_RENEW') " +
+            "order by command_id desc limit 1")
+    DeviceCommandRecord selectLatestSessionAllowCommand(@Param("sessionId") Long sessionId);
+
+    // 新 Session 尚未生成 ALLOW 时，查询它等待的旧 Session 撤销命令。
+    @Select("select * from t_device_command " +
+            "where session_id = #{replacedSessionId} " +
+            "and command_type = 'REVOKE_ACCESS' " +
+            "and purpose = 'FORCE_LOGIN_REPLACE' " +
+            "order by command_id desc limit 1")
+    DeviceCommandRecord selectLatestForceReplacementCommand(@Param("replacedSessionId") Long replacedSessionId);
 }
