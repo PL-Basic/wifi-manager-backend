@@ -22,4 +22,11 @@ public @interface Audited {
     String operatorName() default "";
 
     String target() default "";
+
+    /*
+     * 敏感操作可关闭参数序列化，避免密码、Token 等进入审计详情。
+     */
+    boolean includeArgs() default true;
+
+    boolean includeResult() default true;
 }

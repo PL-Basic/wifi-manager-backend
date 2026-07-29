@@ -19,7 +19,7 @@ create table t_esp32_node(
 
     PRIMARY KEY (node_id),
     UNIQUE KEY idx_device_code(device_code),
-    KEY idx_status(status)
+    KEY idx_status_heartbeat(status, last_heartbeat)
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 drop table if exists t_session;
@@ -137,6 +137,7 @@ create table if not exists t_device_command (
     ttl_seconds int default null,
     topic varchar(191) not null,
     payload text not null,
+    encrypted_payload text default null,
 
     status tinyint not null default 0 comment '0-待发布，1-已发布待结果，2-执行成功，3-执行失败，4-发布失败，5-结果超时',
     retry_count int not null default 0,
@@ -156,6 +157,32 @@ create table if not exists t_device_command (
     key idx_command_session_status (session_id, status),
     key idx_command_device_time (device_code, create_time)
 ) default charset=utf8mb4 collate=utf8mb4_unicode_ci comment='ESP32 MQTT 命令记录与 Outbox';
+
+create table if not exists t_device_wifi_config (
+    wifi_config_id bigint auto_increment,
+    node_id bigint not null,
+    device_code varchar(64) not null,
+    request_id varchar(64) not null,
+    config_version bigint not null,
+    ssid varchar(32) not null,
+    password_configured tinyint(1) not null default 0,
+    status tinyint not null default 0
+    comment '0-下发中,1-已预置,2-已激活,3-失败,4-结果未知,5-已被替换',
+
+    staged_time datetime default null,
+    activated_time datetime default null,
+    failure_message varchar(255) default null,
+
+    create_time datetime not null default current_timestamp,
+    update_time datetime not null
+    default current_timestamp
+    on update current_timestamp,
+
+    primary key (wifi_config_id),
+    unique key uk_wifi_config_request (request_id),
+    unique key uk_wifi_config_node_version (node_id,config_version),
+    key idx_wifi_config_node_status (node_id,status)
+) default charset=utf8mb4 collate=utf8mb4_unicode_ci comment='ESP32 上游 WiFi 候选配置任务';
 
 insert into t_esp32_node(device_code, name, location, ip, firmware_version, status)
 values ('esp32-main', '客厅ESP32网关', '客厅', '192.168.4.1', null, 0);

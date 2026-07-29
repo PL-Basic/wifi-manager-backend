@@ -1,10 +1,12 @@
 package com.plagod.service.impl;
 
 import com.plagod.constant.DeviceCommandStatus;
+import com.plagod.constant.DeviceCommandType;
 import com.plagod.dto.CommandResultEvent;
 import com.plagod.entity.DeviceCommandRecord;
 import com.plagod.mapper.DeviceCommandRecordMapper;
 import com.plagod.service.CommandResultEventService;
+import com.plagod.service.DeviceWifiConfigLifecycleService;
 import com.plagod.service.SessionCommandLifecycleService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,7 +33,8 @@ public class CommandResultEventServiceImpl implements CommandResultEventService 
                     "DISCONNECT_MAC",
                     "BLOCK_TRAFFIC",
                     "PING",
-                    "GET_STATUS"
+                    "GET_STATUS",
+                    DeviceCommandType.STAGE_WIFI_CONFIG
             ));
 
     @Autowired
@@ -40,6 +43,9 @@ public class CommandResultEventServiceImpl implements CommandResultEventService 
     @Autowired
     private SessionCommandLifecycleService sessionCommandLifecycleService;
 
+    @Autowired
+    private DeviceWifiConfigLifecycleService wifiConfigLifecycleService;
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void handleCommandResult(CommandResultEvent event) {
@@ -47,14 +53,21 @@ public class CommandResultEventServiceImpl implements CommandResultEventService 
             throw new IllegalArgumentException("命令结果不能为空");
         }
 
-        String deviceCode = cleanRequired(event.getDeviceCode(), 64, "命令结果缺少 deviceCode");
-        String requestId = cleanRequired(event.getRequestId(), 64, "命令结果缺少 requestId");
-        String commandType = normalizeCommandType(event.getType());
-        String message = cleanNullable(event.getMessage(), 255);
-
         if (event.getSuccess() == null) {
             throw new IllegalArgumentException("命令结果缺少 success");
         }
+
+        String message;
+        String deviceCode = cleanRequired(event.getDeviceCode(), 64, "命令结果缺少 deviceCode");
+        String requestId = cleanRequired(event.getRequestId(), 64, "命令结果缺少 requestId");
+        String commandType = normalizeCommandType(event.getType());
+
+        if (DeviceCommandType.STAGE_WIFI_CONFIG.equals(commandType)) {
+            message = Boolean.TRUE.equals(event.getSuccess()) ? "ESP32 已保存候选 WiFi 配置" : "ESP32 未能保存候选 WiFi 配置";
+        } else {
+            message = cleanNullable(event.getMessage(), 255);
+        }
+
 
         DeviceCommandRecord command = commandRecordMapper.selectByRequestIdForUpdate(requestId);
 
@@ -81,12 +94,13 @@ public class CommandResultEventServiceImpl implements CommandResultEventService 
             } else {
                 log.warn("忽略与现有终态冲突的命令结果，requestId={}, oldStatus={}, newStatus={}", requestId, command.getStatus(), targetStatus);
             }
+            commandRecordMapper.clearEncryptedPayload(command.getCommandId(), LocalDateTime.now());
+            wifiConfigLifecycleService.handleTerminalCommand(command);
             return;
         }
 
         // 只有已经发布的命令才有资格接收固件执行结果。
-        if (!Integer.valueOf(DeviceCommandStatus.PUBLISHED)
-                .equals(command.getStatus())) {
+        if (!Integer.valueOf(DeviceCommandStatus.PUBLISHED).equals(command.getStatus())) {
             throw new IllegalStateException("命令尚未进入已发布状态，不能接收执行结果");
         }
 
@@ -100,6 +114,8 @@ public class CommandResultEventServiceImpl implements CommandResultEventService 
         if (commandRecordMapper.updateById(command) != 1) {
             throw new IllegalStateException("命令结果保存失败");
         }
+        commandRecordMapper.clearEncryptedPayload(command.getCommandId(), now);
+        wifiConfigLifecycleService.handleTerminalCommand(command);
         // 命令状态和 Session 状态必须在同一事务中提交。
         sessionCommandLifecycleService.handleTerminalCommand(command);
         log.info("命令结果保存成功，requestId={}, type={}, success={}", requestId, commandType, event.getSuccess());
@@ -112,6 +128,7 @@ public class CommandResultEventServiceImpl implements CommandResultEventService 
         if (!SUPPORTED_TYPES.contains(type)) {
             throw new IllegalArgumentException("未知的 command-result 类型：" + type);
         }
+
 
         return type;
     }

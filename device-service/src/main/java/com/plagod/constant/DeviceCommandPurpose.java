@@ -34,6 +34,13 @@ public final class DeviceCommandPurpose {
     // 管理员要求 ESP32 节点执行安全重启。
     public static final String MANUAL_DEVICE_RESTART = "MANUAL_DEVICE_RESTART";
 
+    // 管理员向 ESP32 预置候选上游 WiFi 凭据。
+    public static final String ADMIN_STAGE_WIFI_CONFIG = "ADMIN_STAGE_WIFI_CONFIG";
+
+    public static boolean isSensitivePurpose(String purpose) {
+        return ADMIN_STAGE_WIFI_CONFIG.equals(purpose);
+    }
+
     private DeviceCommandPurpose() {
     }
 

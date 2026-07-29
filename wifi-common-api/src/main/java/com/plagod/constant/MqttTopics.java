@@ -11,6 +11,7 @@ public class MqttTopics {
     public static final String DEVICE_DISCONNECT_MAC = "wifi/device/%s/cmd/disconnect-mac";
     public static final String DEVICE_BLOCK_TRAFFIC = "wifi/device/%s/cmd/block-traffic";
     public static final String DEVICE_REVOKE_ACCESS = "wifi/device/%s/cmd/revoke-access";
+    public static final String DEVICE_STAGE_WIFI_CONFIG = "wifi/device/%s/cmd/stage-wifi-config";
 
     // /event/status 是 ESP32 主动上报事件给后端。
     public static final String DEVICE_STATUS = "wifi/device/%s/event/status";
@@ -56,5 +57,9 @@ public class MqttTopics {
 
     public static String deviceClientDisconnect(String deviceCode) {
         return String.format(DEVICE_CLIENT_DISCONNECT, deviceCode);
+    }
+
+    public static String deviceStageWifiConfig(String deviceCode) {
+        return String.format(DEVICE_STAGE_WIFI_CONFIG, deviceCode);
     }
 }

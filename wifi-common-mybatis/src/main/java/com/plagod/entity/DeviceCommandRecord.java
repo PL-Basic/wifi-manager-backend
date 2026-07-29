@@ -36,7 +36,7 @@ public class DeviceCommandRecord implements Serializable {
 
     private String topic;
     private String payload;
-
+    private String encryptedPayload;
     private Integer status;
     private Integer retryCount;
     private LocalDateTime nextRetryTime;

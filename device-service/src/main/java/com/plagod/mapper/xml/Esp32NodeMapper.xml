@@ -1,17 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
 <mapper namespace="com.plagod.mapper.Esp32NodeMapper">
 
     <select id="selectByDeviceCodeIncludeDeleted" resultType="com.plagod.entity.Esp32Node">
-        select * from t_esp32_node where device_code = #{deviceCode} limit 1
+        select *from t_esp32_node where device_code = #{deviceCode} limit 1
     </select>
 
     <select id="selectByNodeIdIncludeDeleted" resultType="com.plagod.entity.Esp32Node">
         select * from t_esp32_node where node_id = #{nodeId}
     </select>
 
-    <update id="restoreRetiredById" >
-        update t_esp32_node set del_flag = 0,status = 0,current_clients = 0,last_heartbeat = null where node_id = #{nodeId} and del_flag = 1;
+    <update id="restoreRetiredById">
+        update t_esp32_node set del_flag = 0, status = 0, current_clients = 0, last_heartbeat = null
+        where node_id = #{nodeId} and del_flag = 1
+    </update>
+
+    <update id="markTimedOutNodesOffline">
+        update t_esp32_node set status = #{offlineStatus},current_clients = 0, update_time = CURRENT_TIMESTAMP
+        where del_flag = 0 and status = #{onlineStatus} and last_heartbeat is not null and last_heartbeat <![CDATA[ <= ]]> #{cutoff}
     </update>
 
 </mapper>

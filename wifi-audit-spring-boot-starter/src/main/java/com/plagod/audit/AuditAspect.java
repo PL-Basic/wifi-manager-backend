@@ -57,7 +57,7 @@ public class AuditAspect {
         entry.setOperatorId(resolveOperatorId(request));
         entry.setIp(request == null ? null : request.getRemoteAddr());
         entry.setTarget(resolveTarget(annotation, joinPoint.getArgs()));
-        entry.setDetail(serializeDetail(joinPoint.getArgs(), result));
+        entry.setDetail(serializeDetail(annotation, joinPoint.getArgs(), result));
 
         auditLogMapper.insert(entry);
     }
@@ -105,13 +105,21 @@ public class AuditAspect {
         return null;
     }
 
-    private String serializeDetail(Object[] args, Object result) {
+    private String serializeDetail(Audited annotation, Object[] args, Object result) {
+
         try {
             java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
-            body.put("args", args);
-            body.put("result", result);
+
+            if (annotation.includeArgs()) {
+                body.put("args", args);
+            }
+
+            if (annotation.includeResult()) {
+                body.put("result", result);
+            }
+
             return objectMapper.writeValueAsString(body);
-        } catch (JsonProcessingException ex) {
+        } catch (JsonProcessingException exception) {
             return "{\"error\":\"serialize_failed\"}";
         }
     }

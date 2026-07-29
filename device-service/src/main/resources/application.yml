@@ -57,3 +57,10 @@ wifi:
     dispatch-scan-interval-ms: ${WIFI_COMMAND_DISPATCH_SCAN_INTERVAL_MS:1000}
     timeout-scan-interval-ms: ${WIFI_COMMAND_TIMEOUT_SCAN_INTERVAL_MS:1000}
     scheduler-initial-delay-ms: ${WIFI_COMMAND_SCHEDULER_INITIAL_DELAY_MS:5000}
+    # Base64 编码的 32 字节 AES 密钥，不得写入源码或 Nacos 默认配置。
+    secret-key: ${WIFI_COMMAND_SECRET_KEY:d2lmaS1tYW5hZ2VyLWRlbW8tc2VjcmV0LWtleS0wMDE=}
+  device:
+    # 超过该时间没有收到合法状态事件，节点自动转为离线。
+    heartbeat-timeout-seconds: ${WIFI_DEVICE_HEARTBEAT_TIMEOUT_SECONDS:60}
+    heartbeat-scan-interval-ms: ${WIFI_DEVICE_HEARTBEAT_SCAN_INTERVAL_MS:10000}
+    heartbeat-scheduler-enabled: ${WIFI_DEVICE_HEARTBEAT_SCHEDULER_ENABLED:true}

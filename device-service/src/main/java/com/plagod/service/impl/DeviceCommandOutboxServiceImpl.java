@@ -1,6 +1,8 @@
 package com.plagod.service.impl;
 
+import com.plagod.constant.DeviceCommandPurpose;
 import com.plagod.constant.DeviceCommandStatus;
+import com.plagod.constant.DeviceCommandType;
 import com.plagod.entity.DeviceCommandRecord;
 import com.plagod.mapper.DeviceCommandRecordMapper;
 import com.plagod.service.DeviceCommandOutboxService;
@@ -13,7 +15,6 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.Locale;
-
 
 @Slf4j
 @Service
@@ -28,6 +29,7 @@ public class DeviceCommandOutboxServiceImpl implements DeviceCommandOutboxServic
         if (command == null) {
             throw new IllegalArgumentException("待入队命令不能为空");
         }
+
         if (command.getNodeId() == null || command.getNodeId() <= 0) {
             throw new IllegalArgumentException("命令缺少有效 nodeId");
         }
@@ -39,12 +41,31 @@ public class DeviceCommandOutboxServiceImpl implements DeviceCommandOutboxServic
         command.setTopic(cleanRequired(command.getTopic(), 191, "命令缺少 MQTT topic"));
 
         if (!StringUtils.hasText(command.getPayload())) {
-            throw new IllegalArgumentException("命令 payload 不能为空");
+            throw new IllegalArgumentException("命令脱敏 payload 不能为空");
+        }
+
+        boolean sensitiveType = DeviceCommandType.isSensitiveType(command.getCommandType());
+
+        boolean sensitivePurpose = DeviceCommandPurpose.isSensitivePurpose(command.getPurpose());
+
+        /*
+         * 命令类型决定固件动作，purpose 决定后端业务来源。
+         * 两者必须同时声明敏感，防止错误组合绕过加密发布。
+         */
+        if (sensitiveType != sensitivePurpose) {
+            throw new IllegalArgumentException("敏感命令的 commandType 与 purpose 不匹配");
+        }
+
+        if (sensitiveType && !StringUtils.hasText(command.getEncryptedPayload())) {
+            throw new IllegalArgumentException("敏感命令缺少加密载荷");
+        }
+
+        if (!sensitiveType) {
+            command.setEncryptedPayload(null);
         }
 
         LocalDateTime now = LocalDateTime.now();
 
-        // 强制初始化 Outbox 状态，不信任调用方传入的运行结果字段。
         command.setCommandId(null);
         command.setStatus(DeviceCommandStatus.PENDING);
         command.setRetryCount(0);
@@ -60,20 +81,24 @@ public class DeviceCommandOutboxServiceImpl implements DeviceCommandOutboxServic
             throw new IllegalStateException("设备命令入队失败");
         }
 
+        // 只记录命令元数据，绝不记录普通或加密 payload。
         log.info("设备命令已进入 Outbox，commandId={}, requestId={}, type={}, purpose={}", command.getCommandId(), command.getRequestId(), command.getCommandType(), command.getPurpose());
 
         return command.getCommandId();
     }
 
     private String cleanRequired(String value, int maxLength, String message) {
+
         if (!StringUtils.hasText(value)) {
             throw new IllegalArgumentException(message);
         }
 
         String cleaned = value.trim();
+
         if (cleaned.length() > maxLength) {
             throw new IllegalArgumentException(message + "，长度超限");
         }
+
         return cleaned;
     }
 }

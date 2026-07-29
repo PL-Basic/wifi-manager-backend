@@ -10,4 +10,8 @@ public class DeviceStatusEvent {
     private String wifiStatus;
     private Integer status;
     private Integer currentClients;
+    private String activeWifiConfigRequestId;
+    private Long activeWifiConfigVersion;
+    private String pendingWifiConfigRequestId;
+    private Long pendingWifiConfigVersion;
 }

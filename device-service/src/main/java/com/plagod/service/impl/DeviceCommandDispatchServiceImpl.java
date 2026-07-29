@@ -3,10 +3,13 @@ package com.plagod.service.impl;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.plagod.constant.DeviceCommandPurpose;
 import com.plagod.constant.DeviceCommandStatus;
+import com.plagod.constant.DeviceCommandType;
 import com.plagod.entity.DeviceCommandRecord;
 import com.plagod.mapper.DeviceCommandRecordMapper;
 import com.plagod.mqtt.MqttCommandPublisher;
+import com.plagod.security.WifiCommandPayloadCrypto;
 import com.plagod.service.DeviceCommandDispatchService;
+import com.plagod.service.DeviceWifiConfigLifecycleService;
 import com.plagod.service.SessionCommandLifecycleService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,6 +32,12 @@ public class DeviceCommandDispatchServiceImpl implements DeviceCommandDispatchSe
 
     @Autowired
     private SessionCommandLifecycleService sessionCommandLifecycleService;
+
+    @Autowired
+    private WifiCommandPayloadCrypto wifiCommandPayloadCrypto;
+
+    @Autowired
+    private DeviceWifiConfigLifecycleService wifiConfigLifecycleService;
 
     // 包含首次发布在内的最大发布次数。
     @Value("${wifi.command.publish-max-attempts:3}")
@@ -60,6 +69,12 @@ public class DeviceCommandDispatchServiceImpl implements DeviceCommandDispatchSe
             return;
         }
 
+        if (DeviceCommandType.isSensitiveType(command.getCommandType()) && DeviceCommandPurpose.isSensitivePurpose(command.getPurpose()) && !wifiCommandPayloadCrypto.isAvailable()) {
+
+            deferUnavailableSensitiveCommand(command, now);
+            return;
+        }
+
         // 同一 Session 的旧 ALLOW 尚未发布时，REVOKE 必须等待。
         // 否则多实例调度可能让撤销命令先到 Broker，随后旧 ALLOW 又重新授权客户端。
         if (shouldWaitForEarlierSessionAllow(command)) {
@@ -67,8 +82,9 @@ public class DeviceCommandDispatchServiceImpl implements DeviceCommandDispatchSe
         }
 
         try {
-            // try 只捕获真正的 MQTT 发布异常。
-            mqttCommandPublisher.publish(command.getTopic(), command.getPayload());
+            String publishPayload = resolvePublishPayload(command);
+            mqttCommandPublisher.publish(command.getTopic(), publishPayload);
+
         } catch (Exception exception) {
             handlePublishFailure(command, exception);
             return;
@@ -112,10 +128,25 @@ public class DeviceCommandDispatchServiceImpl implements DeviceCommandDispatchSe
 
         // 先持久化命令终态。
         save(command);
+        clearEncryptedPayload(command, now);
+        wifiConfigLifecycleService.handleTerminalCommand(command);
         // TIMED_OUT 命令和 Session 关闭处于同一事务。
         sessionCommandLifecycleService.handleTerminalCommand(command);
 
         log.warn("设备命令结果超时，commandId={}, requestId={}", commandId, command.getRequestId());
+    }
+
+    /**
+     * 密钥暂不可用时延后敏感命令，不消耗发布重试次数。
+     * 这样既保留待发送命令，也不会长期占据 Outbox 扫描批次。
+     */
+    private void deferUnavailableSensitiveCommand(DeviceCommandRecord command, LocalDateTime now) {
+
+        command.setNextRetryTime(now.plusSeconds(publishRetryDelaySeconds));
+        command.setResultMessage("敏感命令功能暂不可用，等待密钥配置");
+        command.setUpdateTime(now);
+
+        save(command);
     }
 
     private void handlePublishFailure(DeviceCommandRecord command, Exception exception) {
@@ -140,10 +171,10 @@ public class DeviceCommandDispatchServiceImpl implements DeviceCommandDispatchSe
         }
 
         save(command);
-
-        // 普通重试仍为 PENDING，不能关闭 Session。
-        // 只有最终发布失败才驱动 Session 关闭。
         if (Integer.valueOf(DeviceCommandStatus.PUBLISH_FAILED).equals(command.getStatus())) {
+
+            clearEncryptedPayload(command, failedAt);
+            wifiConfigLifecycleService.handleTerminalCommand(command);
             sessionCommandLifecycleService.handleTerminalCommand(command);
         }
         log.warn("设备命令发布失败，commandId={}, requestId={}, attempts={}", command.getCommandId(), command.getRequestId(), failedAttempts, exception);
@@ -201,5 +232,35 @@ public class DeviceCommandDispatchServiceImpl implements DeviceCommandDispatchSe
         long pendingAllowCount = commandRecordMapper.countEarlierPendingSessionAllowCommands(command.getSessionId(), command.getCommandId(), DeviceCommandStatus.PENDING);
 
         return pendingAllowCount > 0;
+    }
+
+    private String resolvePublishPayload(DeviceCommandRecord command) {
+
+        boolean sensitiveType = DeviceCommandType.isSensitiveType(command.getCommandType());
+
+        boolean sensitivePurpose = DeviceCommandPurpose.isSensitivePurpose(command.getPurpose());
+
+        if (sensitiveType != sensitivePurpose) {
+            throw new IllegalStateException("敏感命令的 commandType 与 purpose 不匹配");
+        }
+
+        if (!sensitiveType) {
+            return command.getPayload();
+        }
+
+        if (!StringUtils.hasText(command.getEncryptedPayload())) {
+            throw new IllegalStateException("敏感命令缺少加密载荷");
+        }
+
+        return wifiCommandPayloadCrypto.decrypt(command.getEncryptedPayload(), command.getRequestId());
+    }
+
+    private void clearEncryptedPayload(DeviceCommandRecord command, LocalDateTime now) {
+
+        if (command == null || command.getCommandId() == null) {
+            return;
+        }
+
+        commandRecordMapper.clearEncryptedPayload(command.getCommandId(), now);
     }
 }
