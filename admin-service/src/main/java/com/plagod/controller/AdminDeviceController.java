@@ -100,4 +100,18 @@ public class AdminDeviceController {
 
         return deviceServiceClient.blockTraffic(deviceCode, dto, operatorId, operatorName, operatorRole);
     }
+
+    @PostMapping("/{deviceCode}/wifi-config/candidate")
+    public ApiResponse<WifiConfigTaskVO> stageWifiCandidate(@PathVariable String deviceCode,
+                                                            @Valid @RequestBody WifiConfigStageDTO stageDTO) {
+
+        return deviceServiceClient.stageWifiCandidate(deviceCode, stageDTO);
+    }
+
+    @GetMapping("/{deviceCode}/wifi-config/{requestId}")
+    public ApiResponse<WifiConfigTaskVO> getWifiConfigTask(@PathVariable String deviceCode,
+                                                           @PathVariable String requestId) {
+
+        return deviceServiceClient.getWifiConfigTask(deviceCode, requestId);
+    }
 }

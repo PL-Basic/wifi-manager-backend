@@ -114,4 +114,14 @@ public interface DeviceServiceClient {
                                                             @RequestParam(value = "status", required = false) Integer status,
                                                             @RequestParam(value = "sessionId", required = false) Long sessionId,
                                                             @RequestParam(value = "mac", required = false) String mac);
+
+    @PostMapping("/internal/admin/devices/{deviceCode}/wifi-config/candidate")
+    ApiResponse<WifiConfigTaskVO> stageWifiCandidate(@PathVariable("deviceCode") String deviceCode,
+                                                     @Valid @RequestBody WifiConfigStageDTO stageDTO);
+
+    @GetMapping("/internal/admin/devices/{deviceCode}/wifi-config/{requestId}")
+    ApiResponse<WifiConfigTaskVO> getWifiConfigTask(@PathVariable("deviceCode") String deviceCode,
+                                                    @PathVariable("requestId") String requestId);
+
+
 }

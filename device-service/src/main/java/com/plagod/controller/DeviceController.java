@@ -2,12 +2,11 @@ package com.plagod.controller;
 
 import com.plagod.dto.*;
 import com.plagod.dto.device.*;
+import com.plagod.service.DeviceWifiConfigQueryService;
+import com.plagod.service.DeviceWifiConfigService;
 import com.plagod.service.ManualDeviceControlService;
-import com.plagod.vo.device.DeviceCommandResult;
-import com.plagod.vo.device.DeviceNodeVO;
-import com.plagod.vo.device.DevicePageResult;
+import com.plagod.vo.device.*;
 import com.plagod.service.DeviceCommandService;
-import com.plagod.vo.device.DeviceStatsVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -21,6 +20,10 @@ public class DeviceController {
     private DeviceCommandService deviceCommandService;
     @Autowired
     private ManualDeviceControlService manualDeviceControlService;
+    @Autowired
+    private DeviceWifiConfigService deviceWifiConfigService;
+    @Autowired
+    private DeviceWifiConfigQueryService deviceWifiConfigQueryService;
 
     @PostMapping
     public ApiResponse<DeviceNodeVO> addDevice(@Valid @RequestBody DeviceNodeCreateDTO deviceNodeCreateDTO) {
@@ -91,5 +94,19 @@ public class DeviceController {
                                                          @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole) {
 
         return ApiResponse.success("流量阻断命令已进入发送队列", manualDeviceControlService.blockTraffic(deviceCode, dto, operatorRole));
+    }
+
+    @PostMapping("/{deviceCode}/wifi-config/candidate")
+    public ApiResponse<WifiConfigTaskVO> stageWifiCandidate(@PathVariable String deviceCode,
+                                                            @Valid @RequestBody WifiConfigStageDTO stageDTO) {
+
+        return ApiResponse.success("候选 WiFi 配置已进入发送队列", deviceWifiConfigService.stageCandidate(deviceCode, stageDTO));
+    }
+
+    @GetMapping("/{deviceCode}/wifi-config/{requestId}")
+    public ApiResponse<WifiConfigTaskVO> getWifiConfigTask(@PathVariable String deviceCode,
+                                                           @PathVariable String requestId) {
+
+        return ApiResponse.success(deviceWifiConfigQueryService.getTask(deviceCode, requestId));
     }
 }
