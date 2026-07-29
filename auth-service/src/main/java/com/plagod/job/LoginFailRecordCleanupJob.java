@@ -2,7 +2,7 @@ package com.plagod.job;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.plagod.configuration.LoginFailProtectionProperties;
-import com.plagod.entity.LoginFailRecord;
+import com.plagod.entity.auth.LoginFailRecord;
 import com.plagod.mapper.LoginFailRecordMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;

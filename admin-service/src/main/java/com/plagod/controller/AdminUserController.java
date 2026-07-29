@@ -2,14 +2,14 @@ package com.plagod.controller;
 
 import com.plagod.client.UserServiceClient;
 import com.plagod.dto.ApiResponse;
+import com.plagod.dto.entitlement.EntitlementAdjustmentRequest;
 import com.plagod.dto.user.UserOperationReviewDTO;
 import com.plagod.dto.user.UserPurgeRequestDTO;
 import com.plagod.dto.user.UserStatusDTO;
 import com.plagod.dto.user.UserUpdateDTO;
-import com.plagod.vo.user.UserOperationRequestPageResult;
-import com.plagod.vo.user.UserPageResult;
-import com.plagod.vo.user.UserStatsVO;
-import com.plagod.vo.user.UserVO;
+import com.plagod.vo.entitlement.DurationPurchasePageResult;
+import com.plagod.vo.entitlement.EntitlementUsagePageResult;
+import com.plagod.vo.user.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,6 +21,8 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import javax.validation.Valid;
 
 
 @RestController
@@ -98,5 +100,33 @@ public class AdminUserController {
                                                     @RequestHeader(value = "X-User-Name", required = false) String approverName,
                                                     @RequestBody UserOperationReviewDTO dto) {
         return userServiceClient.reviewOperationRequest(id, approverId, approverName, dto);
+    }
+
+    @GetMapping("/{userId}/entitlement")
+    public ApiResponse<EntitlementSnapshotVO> getEntitlement(@PathVariable Long userId) {
+        return userServiceClient.getEntitlement(userId);
+    }
+
+    @GetMapping("/{userId}/entitlement/purchases")
+    public ApiResponse<DurationPurchasePageResult> pagePurchases(@PathVariable Long userId,
+                                                                 @RequestParam(defaultValue = "1") Long current,
+                                                                 @RequestParam(defaultValue = "10") Long size) {
+        return userServiceClient.pagePurchases(userId, current, size);
+    }
+
+    @GetMapping("/{userId}/entitlement/usage-logs")
+    public ApiResponse<EntitlementUsagePageResult> pageUsageLogs(@PathVariable Long userId,
+                                                                 @RequestParam(defaultValue = "1") Long current,
+                                                                 @RequestParam(defaultValue = "10") Long size) {
+        return userServiceClient.pageUsageLogs(userId, current, size);
+    }
+
+    @PostMapping("/{userId}/entitlement/adjustments")
+    public ApiResponse<EntitlementSnapshotVO> adjustEntitlement(@PathVariable Long userId,
+                                                                @RequestHeader("X-User-Id") Long operatorId,
+                                                                @RequestHeader("X-User-Name") String operatorName,
+                                                                @Valid @RequestBody EntitlementAdjustmentRequest request) {
+
+        return userServiceClient.adjustEntitlement(userId, operatorId, operatorName, request);
     }
 }

@@ -1,7 +1,7 @@
 package com.plagod.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.plagod.entity.UserOperationRequest;
+import com.plagod.entity.user.UserOperationRequest;
 import org.apache.ibatis.annotations.Mapper;
 
 @Mapper

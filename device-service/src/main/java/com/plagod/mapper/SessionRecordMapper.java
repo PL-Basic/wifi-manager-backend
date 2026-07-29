@@ -1,7 +1,7 @@
 package com.plagod.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.plagod.entity.SessionRecord;
+import com.plagod.entity.device.SessionRecord;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;

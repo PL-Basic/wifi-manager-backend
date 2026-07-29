@@ -2,7 +2,7 @@ package com.plagod.audit;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.plagod.entity.AuditLog;
+import com.plagod.entity.monitor.AuditLog;
 import com.plagod.mapper.AuditLogMapper;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;

@@ -10,7 +10,7 @@ import com.plagod.vo.user.UserStatsVO;
 import com.plagod.dto.user.UserStatusDTO;
 import com.plagod.dto.user.UserUpdateDTO;
 import com.plagod.vo.user.UserVO;
-import com.plagod.entity.User;
+import com.plagod.entity.user.User;
 import com.plagod.mapper.UserMapper;
 import com.plagod.service.UserManageService;
 import org.springframework.beans.BeanUtils;

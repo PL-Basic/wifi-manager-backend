@@ -1,7 +1,7 @@
 package com.plagod.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.plagod.entity.LoginFailRecord;
+import com.plagod.entity.auth.LoginFailRecord;
 import org.apache.ibatis.annotations.Mapper;
 
 

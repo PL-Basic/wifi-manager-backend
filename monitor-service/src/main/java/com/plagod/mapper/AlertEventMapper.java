@@ -1,7 +1,7 @@
 package com.plagod.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.plagod.entity.AlertEvent;
+import com.plagod.entity.monitor.AlertEvent;
 import org.apache.ibatis.annotations.Mapper;
 
 @Mapper

@@ -2,7 +2,7 @@ package com.plagod.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.plagod.configuration.VerificationCodeProperties;
-import com.plagod.entity.VerifyCode;
+import com.plagod.entity.auth.VerifyCode;
 import com.plagod.mapper.VerifyCodeMapper;
 import com.plagod.sender.VerifyCodeSender;
 import com.plagod.service.VerificationCodeService;

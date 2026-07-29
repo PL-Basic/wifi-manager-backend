@@ -1,7 +1,7 @@
 package com.plagod.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.plagod.entity.DeviceWifiConfigRecord;
+import com.plagod.entity.device.DeviceWifiConfigRecord;
 import org.apache.ibatis.annotations.*;
 
 import java.time.LocalDateTime;

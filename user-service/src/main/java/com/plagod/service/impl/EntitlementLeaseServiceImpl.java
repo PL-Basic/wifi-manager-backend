@@ -1,10 +1,10 @@
 package com.plagod.service.impl;
 
 import com.plagod.dto.user.EntitlementLeaseRequest;
-import com.plagod.entity.DurationPurchase;
-import com.plagod.entity.EntitlementUsageLog;
-import com.plagod.entity.NetworkEntitlement;
-import com.plagod.entity.User;
+import com.plagod.entity.entitlement.DurationPurchase;
+import com.plagod.entity.entitlement.EntitlementUsageLog;
+import com.plagod.entity.entitlement.NetworkEntitlement;
+import com.plagod.entity.user.User;
 import com.plagod.mapper.DurationPurchaseMapper;
 import com.plagod.mapper.EntitlementUsageLogMapper;
 import com.plagod.mapper.NetworkEntitlementMapper;
@@ -58,7 +58,7 @@ public class EntitlementLeaseServiceImpl implements EntitlementLeaseService {
         }
 
         // 等待行锁期间，另一个线程可能已经完成了同一请求
-        existing = usageLogMapper.selectByRequestId(request.getRequestId());
+        existing = usageLogMapper.selectByRequestIdForUpdate(request.getRequestId());
         if (!existing.isEmpty()) {
             return duplicateResult(request, existing);
         }

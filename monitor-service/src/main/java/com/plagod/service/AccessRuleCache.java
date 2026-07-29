@@ -1,6 +1,6 @@
 package com.plagod.service;
 
-import com.plagod.entity.AccessRule;
+import com.plagod.entity.monitor.AccessRule;
 import com.plagod.mapper.AccessRuleMapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import org.springframework.beans.factory.annotation.Autowired;

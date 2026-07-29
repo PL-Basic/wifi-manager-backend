@@ -3,7 +3,7 @@ package com.plagod.service.impl;
 import com.plagod.constant.DeviceCommandPurpose;
 import com.plagod.constant.DeviceCommandStatus;
 import com.plagod.constant.DeviceCommandType;
-import com.plagod.entity.DeviceCommandRecord;
+import com.plagod.entity.device.DeviceCommandRecord;
 import com.plagod.mapper.DeviceCommandRecordMapper;
 import com.plagod.service.DeviceCommandOutboxService;
 import lombok.extern.slf4j.Slf4j;

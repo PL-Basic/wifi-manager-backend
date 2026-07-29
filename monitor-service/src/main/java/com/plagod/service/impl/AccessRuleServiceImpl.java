@@ -6,7 +6,7 @@ import com.plagod.dto.monitor.AccessRuleCreateDTO;
 import com.plagod.vo.monitor.AccessRulePageResult;
 import com.plagod.dto.monitor.AccessRuleUpdateDTO;
 import com.plagod.vo.monitor.AccessRuleVO;
-import com.plagod.entity.AccessRule;
+import com.plagod.entity.monitor.AccessRule;
 import com.plagod.mapper.AccessRuleMapper;
 import com.plagod.service.AccessRuleCache;
 import com.plagod.service.AccessRuleService;

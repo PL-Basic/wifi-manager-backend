@@ -1,14 +1,18 @@
 package com.plagod.client;
 
 import com.plagod.dto.ApiResponse;
+import com.plagod.dto.entitlement.EntitlementAdjustmentRequest;
+import com.plagod.dto.entitlement.LocalDemoRefundResultRequest;
+import com.plagod.dto.entitlement.RefundReviewRequest;
 import com.plagod.dto.user.UserOperationReviewDTO;
 import com.plagod.dto.user.UserPurgeRequestDTO;
 import com.plagod.dto.user.UserStatusDTO;
 import com.plagod.dto.user.UserUpdateDTO;
-import com.plagod.vo.user.UserOperationRequestPageResult;
-import com.plagod.vo.user.UserPageResult;
-import com.plagod.vo.user.UserStatsVO;
-import com.plagod.vo.user.UserVO;
+import com.plagod.vo.entitlement.DurationPurchasePageResult;
+import com.plagod.vo.entitlement.EntitlementUsagePageResult;
+import com.plagod.vo.entitlement.RefundPageResult;
+import com.plagod.vo.entitlement.RefundVO;
+import com.plagod.vo.user.*;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -73,4 +77,39 @@ public interface UserServiceClient {
 
     @GetMapping("/internal/admin/users/stats")
     ApiResponse<UserStatsVO> getUserStats();
+
+    @GetMapping("/internal/admin/entitlements/users/{userId}")
+    ApiResponse<EntitlementSnapshotVO> getEntitlement(@PathVariable("userId") Long userId);
+
+    @GetMapping("/internal/admin/entitlements/users/{userId}/purchases")
+    ApiResponse<DurationPurchasePageResult> pagePurchases(@PathVariable("userId") Long userId,
+                                                          @RequestParam("current") Long current,
+                                                          @RequestParam("size") Long size);
+
+    @GetMapping("/internal/admin/entitlements/users/{userId}/usage-logs")
+    ApiResponse<EntitlementUsagePageResult> pageUsageLogs(@PathVariable("userId") Long userId,
+                                                          @RequestParam("current") Long current,
+                                                          @RequestParam("size") Long size);
+
+    @PostMapping("/internal/admin/entitlements/users/{userId}/adjustments")
+    ApiResponse<EntitlementSnapshotVO> adjustEntitlement(@PathVariable("userId") Long userId,
+                                                         @RequestHeader("X-User-Id") Long operatorId,
+                                                         @RequestHeader("X-User-Name") String operatorName,
+                                                         @RequestBody EntitlementAdjustmentRequest request);
+
+    @PutMapping("/internal/admin/entitlements/refunds/{refundNo}/review")
+    ApiResponse<RefundVO> reviewRefund(@PathVariable("refundNo") String refundNo,
+                                       @RequestHeader("X-User-Id") Long reviewerId,
+                                       @RequestHeader("X-User-Name") String reviewerName,
+                                       @RequestBody RefundReviewRequest request);
+
+    @PostMapping("/internal/admin/entitlements/refunds/{refundNo}/demo-result")
+    ApiResponse<RefundVO> completeDemoRefund(@PathVariable("refundNo") String refundNo,
+                                             @RequestBody LocalDemoRefundResultRequest request);
+
+    @GetMapping("/internal/admin/entitlements/refunds")
+    ApiResponse<RefundPageResult> pageRefunds(@RequestParam("current") Long current,
+                                              @RequestParam("size") Long size,
+                                              @RequestParam(value = "userId", required = false) Long userId,
+                                              @RequestParam(value = "status", required = false) String status);
 }

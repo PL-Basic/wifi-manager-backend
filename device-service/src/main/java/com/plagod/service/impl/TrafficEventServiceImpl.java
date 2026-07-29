@@ -2,9 +2,9 @@ package com.plagod.service.impl;
 
 import com.plagod.constant.SessionStatus;
 import com.plagod.dto.DeviceTrafficEvent;
-import com.plagod.entity.Esp32Node;
-import com.plagod.entity.SessionRecord;
-import com.plagod.entity.TrafficLog;
+import com.plagod.entity.device.Esp32Node;
+import com.plagod.entity.device.SessionRecord;
+import com.plagod.entity.device.TrafficLog;
 import com.plagod.mapper.Esp32NodeMapper;
 import com.plagod.mapper.SessionRecordMapper;
 import com.plagod.mapper.TrafficLogMapper;
