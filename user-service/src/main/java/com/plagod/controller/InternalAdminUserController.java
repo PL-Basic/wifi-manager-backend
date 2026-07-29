@@ -159,4 +159,6 @@ public class InternalAdminUserController {
     private boolean isSelf(Long userId, Long operatorId) {
         return userId != null && operatorId != null && userId.equals(operatorId);
     }
+
+
 }

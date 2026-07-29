@@ -23,6 +23,26 @@ wifi:
     internal-token: ${WIFI_INTERNAL_TOKEN:local-internal-token-change-me}
     internal-path-prefixes:
       - /internal/
+  entitlement:
+    order-expire-minutes: 15
+    close-delay-ms: 60000
+    products:
+      - code: DURATION_1H
+        name: 1小时网络时长
+        mode: DURATION
+        grant-seconds: 3600
+        amount-cents: 100
+        enabled: true
+      - code: SUBSCRIPTION_30D
+        name: 30天网络订阅
+        mode: SUBSCRIPTION
+        grant-seconds: 2592000
+        amount-cents: 1000
+        enabled: true
+  payment:
+    default-channel: ${WIFI_PAYMENT_DEFAULT_CHANNEL:LOCAL_DEMO}
+    callback-window-seconds: ${WIFI_PAYMENT_CALLBACK_WINDOW_SECONDS:300}
+    local-demo-secret: ${WIFI_PAYMENT_LOCAL_DEMO_SECRET:local-demo-payment-secret-change-me}
 
 mybatis-plus:
   configuration:

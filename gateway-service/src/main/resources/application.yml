@@ -38,7 +38,7 @@ spring:
         - id: user-service-route
           uri: lb://user-service
           predicates:
-            - Path=/users/**
+            - Path=/users/**,/entitlements/**,/payment/**
 
         # 这里只保留普通用户确实需要的自有资源接口。
         - id: device-user-route
@@ -71,3 +71,4 @@ wifi:
     portal-per-minute: 12
     location-per-minute: 60
     websocket-per-minute: 10
+    payment-callback-per-minute: 120

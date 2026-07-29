@@ -1,7 +1,7 @@
 package com.plagod.service.impl;
 
 import com.plagod.constant.DeviceWifiConfigStatus;
-import com.plagod.entity.DeviceWifiConfigRecord;
+import com.plagod.entity.device.DeviceWifiConfigRecord;
 import com.plagod.mapper.DeviceWifiConfigRecordMapper;
 import com.plagod.service.DeviceWifiConfigQueryService;
 import com.plagod.vo.device.WifiConfigTaskVO;

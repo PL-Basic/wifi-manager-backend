@@ -1,7 +1,7 @@
 package com.plagod.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.plagod.entity.VerifyCode;
+import com.plagod.entity.auth.VerifyCode;
 import org.apache.ibatis.annotations.Mapper;
 
 

@@ -1,6 +1,6 @@
 package com.plagod.service;
 
-import com.plagod.entity.DeviceCommandRecord;
+import com.plagod.entity.device.DeviceCommandRecord;
 
 public interface DeviceCommandOutboxService {
 

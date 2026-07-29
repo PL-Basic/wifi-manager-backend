@@ -1,6 +1,6 @@
 package com.plagod.service;
 
-import com.plagod.entity.SessionRecord;
+import com.plagod.entity.device.SessionRecord;
 
 import java.time.LocalDateTime;
 

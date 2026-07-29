@@ -2,7 +2,7 @@ package com.plagod.job;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.plagod.configuration.VerificationCodeProperties;
-import com.plagod.entity.VerifyCode;
+import com.plagod.entity.auth.VerifyCode;
 import com.plagod.mapper.VerifyCodeMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;

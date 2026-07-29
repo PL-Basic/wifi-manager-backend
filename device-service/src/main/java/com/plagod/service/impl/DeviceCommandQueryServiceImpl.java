@@ -2,7 +2,7 @@ package com.plagod.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.plagod.entity.DeviceCommandRecord;
+import com.plagod.entity.device.DeviceCommandRecord;
 import com.plagod.mapper.DeviceCommandRecordMapper;
 import com.plagod.service.DeviceCommandQueryService;
 import com.plagod.vo.device.DeviceCommandPageResult;

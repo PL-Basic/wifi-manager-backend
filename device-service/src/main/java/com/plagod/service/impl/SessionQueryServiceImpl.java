@@ -2,12 +2,12 @@ package com.plagod.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.plagod.constant.SessionStatus;
-import com.plagod.entity.Esp32Node;
+import com.plagod.entity.device.Esp32Node;
 import com.plagod.mapper.Esp32NodeMapper;
 import com.plagod.vo.device.LocationSessionContextVO;
 import com.plagod.vo.device.SessionPageResult;
 import com.plagod.vo.device.SessionRecordVO;
-import com.plagod.entity.SessionRecord;
+import com.plagod.entity.device.SessionRecord;
 import com.plagod.mapper.SessionRecordMapper;
 import com.plagod.service.SessionQueryService;
 import org.springframework.beans.BeanUtils;

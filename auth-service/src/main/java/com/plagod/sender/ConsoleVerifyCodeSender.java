@@ -1,6 +1,5 @@
 package com.plagod.sender;
 
-import com.plagod.entity.VerifyCode;
 import org.springframework.stereotype.Component;
 
 //终端处理，做测试作用

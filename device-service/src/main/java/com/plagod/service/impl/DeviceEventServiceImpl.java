@@ -2,7 +2,7 @@ package com.plagod.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.plagod.dto.DeviceStatusEvent;
-import com.plagod.entity.Esp32Node;
+import com.plagod.entity.device.Esp32Node;
 import com.plagod.mapper.Esp32NodeMapper;
 import com.plagod.service.DeviceEventService;
 import com.plagod.service.DeviceWifiConfigLifecycleService;

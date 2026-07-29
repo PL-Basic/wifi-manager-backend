@@ -31,6 +31,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     private static final String GATEWAY_TOKEN_HEADER = "X-Gateway-Token";
     private static final String INTERNAL_TOKEN_HEADER = "X-Internal-Token";
     private static final String SEC_WEBSOCKET_PROTOCOL_HEADER = "Sec-WebSocket-Protocol";
+    private static final String LOCAL_DEMO_CALLBACK = "/payment/callbacks/local-demo";
     private static final long RATE_WINDOW_MILLIS = 60_000L;
 
     private static final Set<String> TRUST_HEADERS = new HashSet<>(Arrays.asList(
@@ -49,6 +50,12 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     private static final Pattern PORTAL_STATUS = Pattern.compile("^/sessions/(\\d+)/portal-status$");
     private static final Pattern SESSION_LOGOUT = Pattern.compile("^/sessions/(\\d+)/logout$");
     private static final Pattern LOCATION_REPORT = Pattern.compile("^/locations/sessions/(\\d+)/report$");
+    private static final Pattern ENTITLEMENT_ORDER_DETAIL = Pattern.compile("^/entitlements/orders/[A-Za-z0-9_-]{1,64}$");
+    private static final Pattern ENTITLEMENT_ORDER_CANCEL = Pattern.compile("^/entitlements/orders/[A-Za-z0-9_-]{1,64}/cancel$");
+    private static final Pattern ENTITLEMENT_PAYMENT_CREATE = Pattern.compile("^/entitlements/orders/[A-Za-z0-9_-]{1,64}/payments$");
+    private static final Pattern ENTITLEMENT_PAYMENT_DETAIL = Pattern.compile("^/entitlements/payments/[A-Za-z0-9_-]{1,64}$");
+    private static final Pattern ENTITLEMENT_PAYMENT_DEMO_COMPLETE = Pattern.compile("^/entitlements/payments/[A-Za-z0-9_-]{1,64}/demo-complete$");
+    private static final Pattern ENTITLEMENT_REFUND_DETAIL = Pattern.compile("^/entitlements/refunds/[A-Za-z0-9_-]{1,64}$");
 
     private final Map<String, RateWindow> rateWindows = new ConcurrentHashMap<>();
 
@@ -61,6 +68,9 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     @Value("${wifi.security.gateway-token}")
     private String gatewayToken;
 
+    @Value("${wifi.rate-limit.payment-callback-per-minute:120}")
+    private int paymentCallbackLimit;
+
     @Value("${wifi.rate-limit.auth-per-minute:30}")
     private int authLimit;
 
@@ -72,6 +82,8 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
 
     @Value("${wifi.rate-limit.websocket-per-minute:10}")
     private int websocketLimit;
+
+
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
@@ -87,6 +99,9 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
         if (isWhitePath(path, method)) {
             if (isAuthRatePath(path) && !tryAcquire("auth:" + clientIp(request), authLimit)) {
                 return reject(cleanExchange, HttpStatus.TOO_MANY_REQUESTS, 429, "请求过于频繁，请稍后再试");
+            }
+            if (LOCAL_DEMO_CALLBACK.equals(path) && !tryAcquire("payment-callback:" + clientIp(request), paymentCallbackLimit)) {
+                return reject(cleanExchange, HttpStatus.TOO_MANY_REQUESTS, 429, "支付回调请求过于频繁");
             }
             return chain.filter(addTrustedHeaders(cleanExchange, null, null, null));
         }
@@ -114,9 +129,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
                 return reject(cleanExchange, HttpStatus.TOO_MANY_REQUESTS, 429, "请求过于频繁，请稍后再试");
             }
 
-            return chain.filter(
-                    addTrustedHeaders(cleanExchange, userId, username, role)
-            );
+            return chain.filter(addTrustedHeaders(cleanExchange, userId, username, role));
         } catch (Exception exception) {
             return reject(cleanExchange, HttpStatus.UNAUTHORIZED, 401, "登录凭据无效或已经过期");
         }
@@ -145,9 +158,15 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     }
 
     private boolean isWhitePath(String path, HttpMethod method) {
+
         if (AUTH_WHITE_PATHS.contains(path)) {
             return true;
         }
+
+        if (LOCAL_DEMO_CALLBACK.equals(path)) {
+            return HttpMethod.POST.equals(method);
+        }
+
         return HttpMethod.GET.equals(method) && path.startsWith("/users/avatars/");
     }
 
@@ -181,6 +200,48 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
         matcher = USER_PURGE_REQUEST.matcher(path);
         if (matcher.matches()) {
             return HttpMethod.POST.equals(method) && ownsPathUser(userId, matcher);
+        }
+
+        if ("/entitlements/products".equals(path)) {
+            return HttpMethod.GET.equals(method);
+        }
+
+        if ("/entitlements/orders".equals(path)) {
+            return HttpMethod.GET.equals(method) || HttpMethod.POST.equals(method);
+        }
+
+        if ("/entitlements/refunds".equals(path)) {
+            return HttpMethod.GET.equals(method) || HttpMethod.POST.equals(method);
+        }
+
+        if ("/entitlements/me".equals(path)
+                || "/entitlements/purchases".equals(path)
+                || "/entitlements/usage-logs".equals(path)) {
+            return HttpMethod.GET.equals(method);
+        }
+
+        if (ENTITLEMENT_ORDER_DETAIL.matcher(path).matches()) {
+            return HttpMethod.GET.equals(method);
+        }
+
+        if (ENTITLEMENT_ORDER_CANCEL.matcher(path).matches()) {
+            return HttpMethod.POST.equals(method);
+        }
+
+        if (ENTITLEMENT_REFUND_DETAIL.matcher(path).matches()) {
+            return HttpMethod.GET.equals(method);
+        }
+
+        if (ENTITLEMENT_PAYMENT_CREATE.matcher(path).matches()) {
+            return HttpMethod.POST.equals(method);
+        }
+
+        if (ENTITLEMENT_PAYMENT_DETAIL.matcher(path).matches()) {
+            return HttpMethod.GET.equals(method);
+        }
+
+        if (ENTITLEMENT_PAYMENT_DEMO_COMPLETE.matcher(path).matches()) {
+            return HttpMethod.POST.equals(method);
         }
 
         if ("/sessions/portal-authorize".equals(path)) {

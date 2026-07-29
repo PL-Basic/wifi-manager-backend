@@ -2,7 +2,7 @@ package com.plagod.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.plagod.entity.TrafficLog;
+import com.plagod.entity.device.TrafficLog;
 import com.plagod.mapper.TrafficLogMapper;
 import com.plagod.service.TrafficQueryService;
 import com.plagod.vo.device.TrafficLogVO;

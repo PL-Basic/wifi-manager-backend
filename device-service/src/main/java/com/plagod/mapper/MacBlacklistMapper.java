@@ -1,7 +1,7 @@
 package com.plagod.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.plagod.entity.MacBlacklist;
+import com.plagod.entity.device.MacBlacklist;
 import org.apache.ibatis.annotations.Mapper;
 
 @Mapper

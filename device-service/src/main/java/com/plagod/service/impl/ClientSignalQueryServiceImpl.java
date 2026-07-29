@@ -2,7 +2,7 @@ package com.plagod.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.plagod.entity.ClientSignalRecord;
+import com.plagod.entity.device.ClientSignalRecord;
 import com.plagod.mapper.ClientSignalMapper;
 import com.plagod.service.ClientSignalQueryService;
 import com.plagod.vo.device.ClientSignalPageResult;

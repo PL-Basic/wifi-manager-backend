@@ -1,7 +1,7 @@
 package com.plagod.job;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.plagod.entity.SessionRecord;
+import com.plagod.entity.device.SessionRecord;
 import com.plagod.mapper.SessionRecordMapper;
 import com.plagod.service.SessionLeaseService;
 import lombok.extern.slf4j.Slf4j;
