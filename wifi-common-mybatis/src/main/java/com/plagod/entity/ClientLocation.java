@@ -26,6 +26,19 @@ public class ClientLocation implements Serializable {
     @TableField("user_id")
     private Long userId;
 
+    @TableField("session_id")
+    private Long sessionId;
+
+    @TableField("node_id")
+    private Long nodeId;
+
+    @TableField("device_code")
+    private String deviceCode;
+
+    // 0 表示历史数据，1 表示经过 ACTIVE Session 解析的新数据。
+    @TableField("trusted_binding")
+    private Integer trustedBinding;
+
     private BigDecimal latitude;
 
     private BigDecimal longitude;

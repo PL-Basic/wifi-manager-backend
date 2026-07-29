@@ -35,3 +35,8 @@ wifi:
   websocket:
     allowed-origin: ${WIFI_ALLOWED_ORIGIN:http://localhost:5173}
     allowed-origin-alt: ${WIFI_ALLOWED_ORIGIN_ALT:http://127.0.0.1:5173}
+  location:
+    # 同一用户的成功位置上报最小间隔。
+    minimum-report-interval-seconds: ${WIFI_LOCATION_MINIMUM_REPORT_INTERVAL_SECONDS:3}
+    # 仅拒绝明显异常跳点，默认约等于 360km/h。
+    maximum-speed-meters-per-second: ${WIFI_LOCATION_MAXIMUM_SPEED_METERS_PER_SECOND:100}

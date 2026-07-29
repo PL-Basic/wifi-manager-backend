@@ -22,21 +22,42 @@ create table t_access_rule(
 drop table if exists t_client_location;
 create table t_client_location(
     id bigint auto_increment,
-    mac varchar(32) not null comment '客户端MAC，由Portal/客户端上报',
-    user_id bigint comment '授权上报位置的登录用户',
+    mac varchar(32) not null comment '由可信ACTIVE Session推导的客户端MAC',
+    user_id bigint comment '位置所属用户',
+    session_id bigint comment '可信ACTIVE Session，历史数据为空',
+    node_id bigint comment 'Session所属ESP32节点，历史数据为空',
+    device_code varchar(64) comment 'Session所属设备编码，历史数据为空',
+    trusted_binding tinyint not null default 0 comment '0=历史数据 1=可信Session绑定',
     latitude decimal(10, 7) not null comment '纬度',
     longitude decimal(10, 7) not null comment '经度',
     accuracy decimal(10, 2) comment '定位精度，单位米',
-    consent_time datetime not null comment '客户端授权定位时间',
-    report_time datetime not null comment '客户端采集/上报位置时间',
-    source varchar(32) not null default 'portal' comment '来源：portal/mobile/other',
+    consent_time datetime not null comment '服务端记录的用户授权时间',
+    report_time datetime not null comment '服务端接收时间',
+    source varchar(32) not null default 'portal' comment '位置传感器来源',
     remark varchar(255),
     create_time datetime not null default current_timestamp,
 
     primary key (id),
     key idx_mac_report_time (mac, report_time),
-    key idx_user_report_time (user_id, report_time)
+    key idx_user_report_time (user_id, report_time),
+    key idx_session_report_time (session_id, report_time),
+    key idx_node_report_time (node_id, report_time),
+    key idx_device_report_time (device_code, report_time)
 ) default charset=utf8mb4 collate=utf8mb4_unicode_ci comment='客户端授权定位记录表';
+
+drop table if exists t_location_authorization;
+create table t_location_authorization(
+    user_id bigint not null comment '授权用户ID',
+    enabled tinyint not null default 0 comment '0=未授权或已撤销 1=允许上报',
+    consent_time datetime comment '最近一次授权时间',
+    revoked_time datetime comment '最近一次撤销时间',
+    last_report_time datetime comment '最近一次成功位置上报时间',
+    create_time datetime not null default current_timestamp,
+    update_time datetime not null default current_timestamp on update current_timestamp,
+
+    primary key (user_id),
+    key idx_location_authorization_enabled (enabled, update_time)
+) default charset=utf8mb4 collate=utf8mb4_unicode_ci comment='用户位置共享授权状态';
 
 drop table if exists t_audit_log;
 create table t_audit_log(

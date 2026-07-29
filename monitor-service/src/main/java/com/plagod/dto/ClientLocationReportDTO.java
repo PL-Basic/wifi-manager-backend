@@ -2,18 +2,11 @@ package com.plagod.dto;
 
 import lombok.Data;
 
-import javax.validation.constraints.DecimalMax;
-import javax.validation.constraints.DecimalMin;
-import javax.validation.constraints.NotBlank;
-import javax.validation.constraints.NotNull;
+import javax.validation.constraints.*;
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 
 @Data
 public class ClientLocationReportDTO {
-
-    @NotBlank(message = "mac is required")
-    private String mac;
 
     @NotNull(message = "latitude is required")
     @DecimalMin(value = "-90.0", message = "latitude must be >= -90")
@@ -25,13 +18,11 @@ public class ClientLocationReportDTO {
     @DecimalMax(value = "180.0", message = "longitude must be <= 180")
     private BigDecimal longitude;
 
+    @NotNull(message = "accuracy is required")
+    @DecimalMin(value = "0.0", message = "accuracy must be >= 0")
+    @DecimalMax(value = "1000.0", message = "accuracy must be <= 1000")
     private BigDecimal accuracy;
 
-    private LocalDateTime consentTime;
-
-    private LocalDateTime reportTime;
-
+    @Pattern(regexp = "browser|portal|mobile", flags = Pattern.Flag.CASE_INSENSITIVE, message = "source must be browser, portal or mobile")
     private String source;
-
-    private String remark;
 }
