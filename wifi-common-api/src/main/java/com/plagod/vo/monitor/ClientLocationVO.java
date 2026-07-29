@@ -7,9 +7,14 @@ import java.time.LocalDateTime;
 
 @Data
 public class ClientLocationVO {
+
     private Long id;
     private String mac;
     private Long userId;
+    private Long sessionId;
+    private Long nodeId;
+    private String deviceCode;
+    private Integer trustedBinding;
     private BigDecimal latitude;
     private BigDecimal longitude;
     private BigDecimal accuracy;

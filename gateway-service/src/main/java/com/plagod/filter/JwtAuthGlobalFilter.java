@@ -48,6 +48,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     private static final Pattern USER_PURGE_REQUEST = Pattern.compile("^/users/(\\d+)/purge-requests$");
     private static final Pattern PORTAL_STATUS = Pattern.compile("^/sessions/(\\d+)/portal-status$");
     private static final Pattern SESSION_LOGOUT = Pattern.compile("^/sessions/(\\d+)/logout$");
+    private static final Pattern LOCATION_REPORT = Pattern.compile("^/locations/sessions/(\\d+)/report$");
 
     private final Map<String, RateWindow> rateWindows = new ConcurrentHashMap<>();
 
@@ -206,7 +207,15 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
             return HttpMethod.GET.equals(method);
         }
 
-        if ("/locations/report".equals(path)) {
+        if ("/locations/consent".equals(path)) {
+            return HttpMethod.GET.equals(method) || HttpMethod.POST.equals(method) || HttpMethod.DELETE.equals(method);
+        }
+
+        if ("/locations/history".equals(path)) {
+            return HttpMethod.DELETE.equals(method);
+        }
+
+        if (LOCATION_REPORT.matcher(path).matches()) {
             return HttpMethod.POST.equals(method);
         }
 
@@ -271,7 +280,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
         if ("/sessions/portal-authorize".equals(path)) {
             return tryAcquire("portal:" + userId, portalLimit);
         }
-        if ("/locations/report".equals(path)) {
+        if (LOCATION_REPORT.matcher(path).matches()) {
             return tryAcquire("location:" + userId, locationLimit);
         }
         if ("/ws/alerts".equals(path)) {
