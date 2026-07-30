@@ -3,6 +3,7 @@ package com.plagod.service;
 import com.plagod.client.MonitorServiceClient;
 import com.plagod.dto.ApiResponse;
 import com.plagod.dto.DeviceTrafficEvent;
+import com.plagod.entity.device.TrafficLog;
 import com.plagod.vo.RuleHitVO;
 import com.plagod.dto.device.TrafficEvaluationRequest;
 import com.plagod.vo.device.TrafficEvaluationResult;
@@ -48,36 +49,47 @@ public class TrafficRuleEvaluator {
     private String internalToken;
 
     @Async("monitorEvalExecutor")
-    public void evaluateAndAct(DeviceTrafficEvent event, Long sessionId, SessionRecord sessionRecord) {
-        TrafficEvaluationResult result = callEvaluate(event, sessionId, sessionRecord);
+    public void evaluateAndAct(DeviceTrafficEvent event, TrafficLog trafficLog, SessionRecord sessionRecord) {
+
+        TrafficEvaluationResult result = callEvaluate(event, trafficLog, sessionRecord);
+
         if (result != null && result.isHit()) {
             executeActions(event, sessionRecord, result);
         }
     }
 
-    private TrafficEvaluationResult callEvaluate(DeviceTrafficEvent event, Long sessionId, SessionRecord sessionRecord) {
+    private TrafficEvaluationResult callEvaluate(DeviceTrafficEvent event, TrafficLog trafficLog, SessionRecord sessionRecord) {
+
         TrafficEvaluationRequest request = new TrafficEvaluationRequest();
-        request.setMac(event.getMac());
-        request.setSessionId(sessionId);
+
+        request.setEventId(trafficLog.getEventId());
+        request.setDeviceCode(trafficLog.getDeviceCode());
+        request.setNodeId(trafficLog.getNodeId());
+        request.setSessionId(trafficLog.getSessionId());
         request.setUserId(sessionRecord == null ? null : sessionRecord.getUserId());
-        request.setDstIp(event.getDstIp());
-        request.setDstPort(event.getDstPort());
-        request.setSni(event.getSni());
-        request.setProtocol(event.getProtocol());
+        request.setMac(trafficLog.getMac());
+        request.setDstIp(trafficLog.getDstIp());
+        request.setDstPort(trafficLog.getDstPort());
+        request.setSni(trafficLog.getSni());
+        request.setProtocol(trafficLog.getProtocol());
+        request.setEventTime(trafficLog.getLogTime());
 
         try {
             ApiResponse<TrafficEvaluationResult> response = monitorServiceClient.evaluate(internalToken, request);
+
             if (response == null || response.getData() == null) {
                 return null;
             }
+
             TrafficEvaluationResult result = response.getData();
+
             if (result.isHit()) {
-                log.info("traffic event {} matched {} rule(s), alertId={}",
-                        event.getMac(), result.getHits() == null ? 0 : result.getHits().size(), result.getAlertId());
+                log.info("traffic event {} matched {} actionable rule(s), alertId={}", event.getEventId(), result.getHits() == null ? 0 : result.getHits().size(), result.getAlertId());
             }
+
             return result;
-        } catch (Exception ex) {
-            log.warn("monitor evaluate failed for mac={} dstIp={}: {}", event.getMac(), event.getDstIp(), ex.getMessage());
+        } catch (Exception exception) {
+            log.warn("monitor evaluate failed for eventId={} mac={}: {}", event.getEventId(), event.getMac(), exception.getMessage());
             return null;
         }
     }

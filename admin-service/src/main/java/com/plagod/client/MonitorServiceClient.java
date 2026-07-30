@@ -3,6 +3,7 @@ package com.plagod.client;
 import com.plagod.dto.ApiResponse;
 import com.plagod.dto.monitor.AccessRuleCreateDTO;
 import com.plagod.dto.monitor.AccessRuleUpdateDTO;
+import com.plagod.vo.device.TrafficAnalyticsSourceVO;
 import com.plagod.vo.monitor.*;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.*;
@@ -68,4 +69,34 @@ public interface MonitorServiceClient {
                                                         @RequestParam(value = "userId", required = false) Long userId,
                                                         @RequestParam(value = "startTime", required = false) String startTime,
                                                         @RequestParam(value = "endTime", required = false) String endTime);
+
+    @GetMapping("/internal/admin/analytics/signals")
+    ApiResponse<SignalAnalysisVO> querySignalAnalytics(@RequestParam("nodeId") Long nodeId,
+                                                       @RequestParam("mac") String mac,
+                                                       @RequestParam("startTime") String startTime,
+                                                       @RequestParam("endTime") String endTime,
+                                                       @RequestParam("sampleLimit") Integer sampleLimit,
+                                                       @RequestParam("bucketMinutes") Integer bucketMinutes);
+
+    @GetMapping("/internal/admin/analytics/traffic")
+    ApiResponse<TrafficAnalyticsSourceVO> queryTrafficAnalytics(@RequestParam(value = "userId", required = false) Long userId,
+                                                                @RequestParam(value = "mac", required = false) String mac,
+                                                                @RequestParam(value = "sessionId", required = false) Long sessionId,
+                                                                @RequestParam(value = "nodeId", required = false) Long nodeId,
+                                                                @RequestParam(value = "deviceCode", required = false) String deviceCode,
+                                                                @RequestParam("startTime") String startTime,
+                                                                @RequestParam("endTime") String endTime,
+                                                                @RequestParam("bucketMinutes") Integer bucketMinutes,
+                                                                @RequestParam("topLimit") Integer topLimit);
+
+
+    @GetMapping("/internal/admin/analytics/alerts-rules")
+    ApiResponse<AlertRuleAnalyticsVO> queryAlertRuleAnalytics(@RequestParam(value = "userId", required = false) Long userId,
+                                                              @RequestParam(value = "mac", required = false) String mac,
+                                                              @RequestParam(value = "sessionId", required = false) Long sessionId,
+                                                              @RequestParam(value = "nodeId", required = false) Long nodeId,
+                                                              @RequestParam(value = "deviceCode", required = false) String deviceCode,
+                                                              @RequestParam("startTime") String startTime,
+                                                              @RequestParam("endTime") String endTime,
+                                                              @RequestParam("topLimit") Integer topLimit);
 }

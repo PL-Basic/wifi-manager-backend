@@ -69,20 +69,14 @@ public class TrafficEventServiceImpl implements TrafficEventService {
             return;
         }
 
-        int updated = sessionRecordMapper.incrementTrafficIfActive(
-                session.getSessionId(),
-                node.getNodeId(),
-                event.getMac(),
-                SessionStatus.ACTIVE,
-                event.getBytesUp(),
-                event.getBytesDown());
+        int updated = sessionRecordMapper.incrementTrafficIfActive(session.getSessionId(), node.getNodeId(), event.getMac(), SessionStatus.ACTIVE, event.getBytesUp(), event.getBytesDown());
 
         // Session 在前置校验后被关闭或关系改变时，流量插入也必须回滚。
         if (updated != 1) {
             throw new IllegalStateException("流量累计失败，Session 状态或关联关系已经变化");
         }
 
-        registerRuleEvaluationAfterCommit(event, session);
+        registerRuleEvaluationAfterCommit(event, session, trafficLog);
 
         log.info("流量事件保存成功，deviceCode={}, eventId={}, sessionId={}", event.getDeviceCode(), event.getEventId(), event.getSessionId());
     }
@@ -189,15 +183,14 @@ public class TrafficEventServiceImpl implements TrafficEventService {
                 && Objects.equals(first.getBytesDown(), second.getBytesDown());
     }
 
-    private void registerRuleEvaluationAfterCommit(DeviceTrafficEvent event, SessionRecord session) {
-        TransactionSynchronizationManager.registerSynchronization(
-                new TransactionSynchronizationAdapter() {
+    private void registerRuleEvaluationAfterCommit(DeviceTrafficEvent event, SessionRecord session, TrafficLog trafficLog) {
+
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronizationAdapter() {
                     @Override
                     public void afterCommit() {
                         try {
-                            trafficRuleEvaluator.evaluateAndAct(event, session.getSessionId(), session);
+                            trafficRuleEvaluator.evaluateAndAct(event, trafficLog, session);
                         } catch (Exception exception) {
-                            // 数据已经提交，规则旁路失败不能反向影响流量主链路。
                             log.warn("提交后规则评估调度失败，eventId={}", event.getEventId(), exception);
                         }
                     }
