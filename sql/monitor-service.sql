@@ -95,3 +95,31 @@ create table t_alert_event(
     key idx_create_time (create_time),
     key idx_mac (mac)
 ) default charset=utf8mb4 collate=utf8mb4_unicode_ci comment='告警事件表';
+
+
+create table if not exists t_rule_hit(
+    id bigint auto_increment,
+    event_id varchar(64) not null,
+    device_code varchar(64) not null,
+    node_id bigint not null,
+    session_id bigint not null,
+    user_id bigint,
+    mac varchar(17) not null,
+    rule_id bigint not null,
+    rule_code varchar(64) not null,
+    rule_type tinyint not null,
+    action_type tinyint not null,
+    level tinyint not null,
+    suppressed tinyint not null default 0
+    comment '是否被冷却窗口抑制：0=否 1=是',
+    alert_id bigint,
+    hit_time datetime not null,
+    create_time datetime not null default current_timestamp,
+
+    primary key (id),
+    unique key uk_rule_hit_event(device_code, event_id, rule_code),
+    key idx_rule_hit_time(rule_code, hit_time),
+    key idx_rule_hit_user_time(user_id, hit_time),
+    key idx_rule_hit_mac_time(mac, hit_time),
+    key idx_rule_hit_alert(alert_id)
+) default charset=utf8mb4 collate=utf8mb4_unicode_ci comment='流量规则命中记录';

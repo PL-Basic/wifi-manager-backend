@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.plagod.mapper.AlertEventMapper">
+
+    <sql id="analyticsFilter">
+        <if test="criteria.startTime != null">
+            and a.create_time &gt;= #{criteria.startTime}
+        </if>
+        <if test="criteria.endTime != null">
+            and a.create_time &lt;= #{criteria.endTime}
+        </if>
+        <if test="criteria.userId != null">
+            and a.user_id = #{criteria.userId}
+        </if>
+        <if test="criteria.mac != null">
+            and a.mac = #{criteria.mac}
+        </if>
+        <if test="criteria.sessionId != null or criteria.nodeId != null or criteria.deviceCode != null">
+            and exists (
+            select 1 from t_rule_hit h
+            where h.alert_id = a.id
+            <if test="criteria.sessionId != null">
+                and h.session_id = #{criteria.sessionId}
+            </if>
+            <if test="criteria.nodeId != null">
+                and h.node_id = #{criteria.nodeId}
+            </if>
+            <if test="criteria.deviceCode != null">
+                and h.device_code = #{criteria.deviceCode}
+            </if>
+            )
+        </if>
+    </sql>
+
+    <!-- ========== 1. 告警汇总统计 ========== -->
+    <select id="selectAnalyticsSummary" resultType="com.plagod.vo.monitor.AlertRuleAnalyticsVO$AlertSummary">
+        select
+        count(*) as total_alerts,
+        coalesce(sum(case when a.status = 0 then 1 else 0 end), 0) as unresolved_alerts,
+        coalesce(sum(case when a.status = 1 then 1 else 0 end), 0) as handled_alerts
+        from t_alert_event a
+        <where>
+            <include refid="analyticsFilter"/>
+        </where>
+    </select>
+
+    <!-- ========== 2. 告警等级分布 ========== -->
+    <select id="selectLevelDistribution" resultType="com.plagod.vo.monitor.AlertRuleAnalyticsVO$CountBucket">
+        select
+        a.level as code,
+        count(*) as count
+        from t_alert_event a
+        <where>
+            <include refid="analyticsFilter"/>
+        </where>
+        group by a.level
+        order by a.level
+    </select>
+
+    <!-- ========== 3. 告警状态分布 ========== -->
+    <select id="selectStatusDistribution" resultType="com.plagod.vo.monitor.AlertRuleAnalyticsVO$CountBucket">
+        select
+        a.status as code,
+        count(*) as count
+        from t_alert_event a
+        <where>
+            <include refid="analyticsFilter"/>
+        </where>
+        group by a.status
+        order by a.status
+    </select>
+
+</mapper>

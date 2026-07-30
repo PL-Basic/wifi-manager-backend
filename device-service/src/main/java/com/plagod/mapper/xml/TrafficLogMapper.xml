@@ -2,12 +2,135 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.plagod.mapper.TrafficLogMapper">
     <insert id="insertIgnore">
-        insert ignore into t_traffic_log(event_id, node_id, device_code, session_id, mac,
-                                         dst_ip, dst_port, sni, protocol, bytes_up, bytes_down,
-                                         log_time) values
-                                        (#{eventId}, #{nodeId}, #{deviceCode}, #{sessionId}, #{mac},
-                                         #{dstIp}, #{dstPort}, #{sni}, #{protocol}, #{bytesUp},
-                                         #{bytesDown}, #{logTime})
+        insert ignore into t_traffic_log(
+             event_id, node_id, device_code, session_id, mac,
+             dst_ip, dst_port, sni, protocol, bytes_up, bytes_down,
+             log_time
+        )
+        values(
+               #{eventId}, #{nodeId}, #{deviceCode}, #{sessionId}, #{mac},
+               #{dstIp}, #{dstPort}, #{sni}, #{protocol}, #{bytesUp},
+               #{bytesDown}, #{logTime}
+        )
     </insert>
+
+
+    <sql id="analyticsConditions">
+        <if test="criteria.startTime != null">
+            and t.log_time <![CDATA[ >= ]]> #{criteria.startTime}
+        </if>
+        <if test="criteria.endTime != null">
+            and t.log_time <![CDATA[ <= ]]> #{criteria.endTime}
+        </if>
+        <if test="criteria.userId != null">
+            and s.user_id = #{criteria.userId}
+        </if>
+        <if test="criteria.mac != null">
+            and t.mac = #{criteria.mac}
+        </if>
+        <if test="criteria.sessionId != null">
+            and t.session_id = #{criteria.sessionId}
+        </if>
+        <if test="criteria.nodeId != null">
+            and t.node_id = #{criteria.nodeId}
+        </if>
+        <if test="criteria.deviceCode != null">
+            and t.device_code = #{criteria.deviceCode}
+        </if>
+    </sql>
+
+    <select id="selectAnalyticsSummary" resultType="com.plagod.vo.device.TrafficAnalyticsSourceVO$Summary">
+        select count(*) as event_count,
+        coalesce(sum(t.bytes_up), 0) as bytes_up,
+        coalesce(sum(t.bytes_down), 0) as bytes_down,
+        coalesce(sum(t.bytes_up + t.bytes_down), 0) as total_bytes,
+        count(distinct s.user_id) as distinct_users,
+        count(distinct t.mac) as distinct_macs,
+        count(distinct t.session_id) as distinct_sessions,
+        count(distinct t.node_id) as distinct_nodes,
+        count(distinct t.device_code) as distinct_devices
+        from t_traffic_log t
+        left join t_session s on s.session_id = t.session_id
+        <where>
+            <include refid="analyticsConditions"/>
+        </where>
+    </select>
+
+    <select id="selectAnalyticsTrend" resultType="com.plagod.vo.device.TrafficAnalyticsSourceVO$TimeBucket">
+        select from_unixtime(
+        floor(unix_timestamp(t.log_time) / #{criteria.bucketSeconds})
+        * #{criteria.bucketSeconds}
+        ) as bucket_time,
+        count(*) as event_count,
+        coalesce(sum(t.bytes_up), 0) as bytes_up,
+        coalesce(sum(t.bytes_down), 0) as bytes_down,
+        coalesce(sum(t.bytes_up + t.bytes_down), 0) as total_bytes
+        from t_traffic_log t
+        left join t_session s on s.session_id = t.session_id
+        <where>
+            <include refid="analyticsConditions"/>
+        </where>
+        group by bucket_time
+        order by bucket_time
+    </select>
+
+    <select id="selectAnalyticsRanking" resultType="com.plagod.vo.device.TrafficAnalyticsSourceVO$RankBucket">
+        select
+        <choose>
+            <when test="dimension == 'USER'">
+                cast(s.user_id as char)
+            </when>
+            <when test="dimension == 'MAC'">
+                t.mac
+            </when>
+            <when test="dimension == 'SESSION'">
+                cast(t.session_id as char)
+            </when>
+            <when test="dimension == 'NODE'">
+                cast(t.node_id as char)
+            </when>
+            <when test="dimension == 'DEVICE'">
+                t.device_code
+            </when>
+            <when test="dimension == 'DESTINATION_IP'">
+                t.dst_ip
+            </when>
+            <when test="dimension == 'DESTINATION_PORT'">
+                cast(t.dst_port as char)
+            </when>
+            <when test="dimension == 'SNI'">
+                t.sni
+            </when>
+            <otherwise>
+                t.protocol
+            </otherwise>
+        </choose>
+        as dimension_key,
+        count(*) as event_count,
+        coalesce(sum(t.bytes_up), 0) as bytes_up,
+        coalesce(sum(t.bytes_down), 0) as bytes_down,
+        coalesce(sum(t.bytes_up + t.bytes_down), 0) as total_bytes
+        from t_traffic_log t
+        left join t_session s on s.session_id = t.session_id
+        <where>
+            <include refid="analyticsConditions"/>
+
+            <if test="dimension == 'USER'">
+                and s.user_id is not null
+            </if>
+            <if test="dimension == 'DESTINATION_PORT'">
+                and t.dst_port is not null
+            </if>
+            <if test="dimension == 'SNI'">
+                and t.sni is not null and t.sni != ''
+            </if>
+            <if test="dimension == 'PROTOCOL'">
+                and t.protocol is not null and t.protocol != ''
+            </if>
+        </where>
+        group by dimension_key
+        order by total_bytes desc, event_count desc, dimension_key
+        limit #{criteria.topLimit}
+    </select>
 
 </mapper>

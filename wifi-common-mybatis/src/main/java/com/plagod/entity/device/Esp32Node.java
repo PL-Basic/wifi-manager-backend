@@ -9,6 +9,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Data
@@ -43,6 +44,12 @@ public class Esp32Node implements Serializable {
 
     @TableField("last_heartbeat")
     private LocalDateTime lastHeartbeat;
+
+    // 节点在一米距离处的标定 RSSI。
+    private Integer rssiAtOneMeter;
+
+    // 当前部署环境的路径损耗指数。
+    private BigDecimal pathLossExponent;
 
     private LocalDateTime createTime;
 

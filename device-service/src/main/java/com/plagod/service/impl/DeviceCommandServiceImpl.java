@@ -27,6 +27,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -37,7 +39,8 @@ import java.util.regex.Pattern;
 public class DeviceCommandServiceImpl implements DeviceCommandService {
 
     private static final Pattern MAC_PATTERN = Pattern.compile("(?i)^[0-9a-f]{2}(:[0-9a-f]{2}){5}$");
-
+    private static final int DEFAULT_RSSI_AT_ONE_METER = -59;
+    private static final BigDecimal DEFAULT_PATH_LOSS_EXPONENT = new BigDecimal("2.00");
 
     @Autowired
     private Esp32NodeMapper esp32NodeMapper;
@@ -108,7 +111,8 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         }
         createDTO.setMaxClients(createDTO.getMaxClients() == null ? 4 : createDTO.getMaxClients());
 
-
+        Integer rssiAtOneMeter = createDTO.getRssiAtOneMeter() == null ? DEFAULT_RSSI_AT_ONE_METER : requireRssiAtOneMeter(createDTO.getRssiAtOneMeter());
+        BigDecimal pathLossExponent = createDTO.getPathLossExponent() == null ? DEFAULT_PATH_LOSS_EXPONENT : requirePathLossExponent(createDTO.getPathLossExponent());
 
         Esp32Node esp32Node = esp32NodeMapper.selectByDeviceCodeIncludeDeleted(cleanDeviceCode);
 
@@ -129,7 +133,8 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         esp32Node.setLocation(createDTO.getLocation());
         esp32Node.setFirmwareVersion(createDTO.getFirmwareVersion());
         esp32Node.setMaxClients(createDTO.getMaxClients());
-
+        esp32Node.setRssiAtOneMeter(rssiAtOneMeter);
+        esp32Node.setPathLossExponent(pathLossExponent);
         esp32Node.setDelFlag(0);
         esp32Node.setCurrentClients(0);
         esp32Node.setStatus(0);
@@ -166,6 +171,14 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
             oldEsp32Node.setLocation(cleanNullableText(updateDTO.getLocation()));
         }
         oldEsp32Node.setMaxClients(updateDTO.getMaxClients() == null ? oldEsp32Node.getMaxClients() : updateDTO.getMaxClients());
+        if (updateDTO.getRssiAtOneMeter() != null) {
+            oldEsp32Node.setRssiAtOneMeter(requireRssiAtOneMeter(updateDTO.getRssiAtOneMeter()));
+        }
+
+        if (updateDTO.getPathLossExponent() != null) {
+            oldEsp32Node.setPathLossExponent(requirePathLossExponent(updateDTO.getPathLossExponent()));
+        }
+
 
         esp32NodeMapper.updateById(oldEsp32Node);
         DeviceNodeVO deviceNodeVO = new DeviceNodeVO();
@@ -438,6 +451,35 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         result.setRecords(records);
         return result;
     }
+
+
+    private int requireRssiAtOneMeter(Integer value) {
+
+        if (value == null || value < -100 || value > -20) {
+            throw new IllegalArgumentException("一米参考RSSI必须在-100到-20之间");
+        }
+
+        return value;
+    }
+
+    private BigDecimal requirePathLossExponent(BigDecimal value) {
+
+        if (value == null || value.compareTo(BigDecimal.ONE) < 0 || value.compareTo(new BigDecimal("6.00")) > 0) {
+
+            throw new IllegalArgumentException("路径损耗指数必须在1.0到6.0之间");
+        }
+
+        /*
+         * stripTrailingZeros 允许 2.000 这种等价输入，
+         * 但拒绝真正超过两位有效小数的值。
+         */
+        if (value.stripTrailingZeros().scale() > 2) {
+            throw new IllegalArgumentException("路径损耗指数最多保留两位小数");
+        }
+
+        return value.setScale(2, RoundingMode.UNNECESSARY);
+    }
+
 
     private String cleanNullableText(String text) {
         if (!StringUtils.hasText(text)) {

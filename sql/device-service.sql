@@ -13,6 +13,8 @@ create table t_esp32_node(
     max_clients int NOT NULL DEFAULT 4,
     current_clients int NOT NULL DEFAULT 0,
     last_heartbeat datetime DEFAULT NULL,
+    rssi_at_one_meter smallint not null default -59 comment '节点一米参考RSSI，单位dBm',
+    path_loss_exponent decimal(4, 2) not null default 2.00 comment '节点环境路径损耗指数',
     create_time datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
     update_time datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     del_flag tinyint NOT NULL DEFAULT 0,
@@ -88,6 +90,7 @@ create table t_traffic_log(
     unique key uk_traffic_device_event(device_code, event_id),
     key idx_mac_time(mac, log_time),
     key idx_session(session_id),
+    key idx_log_time(log_time),
     key idx_node_time(node_id, log_time),
     key idx_device_time(device_code, log_time),
     key idx_dst_ip(dst_ip)
