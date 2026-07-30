@@ -1,10 +1,6 @@
 package com.plagod.entity.device;
 
-import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableField;
-import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableLogic;
-import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -27,6 +23,12 @@ public class Esp32Node implements Serializable {
     private String name;
 
     private String location;
+
+    @TableField(updateStrategy = FieldStrategy.IGNORED)
+    private BigDecimal latitude;
+
+    @TableField(updateStrategy = FieldStrategy.IGNORED)
+    private BigDecimal longitude;
 
     private String ip;
 

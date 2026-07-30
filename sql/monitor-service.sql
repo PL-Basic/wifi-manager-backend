@@ -123,3 +123,63 @@ create table if not exists t_rule_hit(
     key idx_rule_hit_mac_time(mac, hit_time),
     key idx_rule_hit_alert(alert_id)
 ) default charset=utf8mb4 collate=utf8mb4_unicode_ci comment='流量规则命中记录';
+
+create table if not exists t_geofence (
+    fence_id bigint auto_increment,
+    name varchar(64) not null,
+    center_latitude decimal(10, 7) not null,
+    center_longitude decimal(10, 7) not null,
+    radius_meters decimal(10, 2) not null,
+    enabled tinyint not null default 1,
+    description varchar(255),
+    create_time datetime not null default current_timestamp,
+    update_time datetime not null default current_timestamp on update current_timestamp,
+    del_flag tinyint not null default 0,
+
+    primary key (fence_id),
+    key idx_geofence_enabled (enabled, del_flag)
+) default charset=utf8mb4 collate=utf8mb4_unicode_ci comment='圆形地理围栏';
+
+create table if not exists t_geofence_state (
+    state_id bigint auto_increment,
+    fence_id bigint not null,
+    session_id bigint not null,
+    user_id bigint not null,
+    node_id bigint not null,
+    device_code varchar(64) not null,
+    mac varchar(17) not null,
+    inside_state tinyint not null
+    comment '0=围栏外 1=围栏内',
+    last_location_id bigint not null,
+    last_report_time datetime not null,
+    create_time datetime not null default current_timestamp,
+    update_time datetime not null default current_timestamp on update current_timestamp,
+
+    primary key (state_id),
+    unique key uk_geofence_session (fence_id, session_id),
+    key idx_geofence_state_user (user_id),
+    key idx_geofence_state_session (session_id),
+    key idx_geofence_state_location (last_location_id)
+) default charset=utf8mb4 collate=utf8mb4_unicode_ci comment='围栏与可信Session当前状态';
+
+create table if not exists t_geofence_event (
+    event_id bigint auto_increment,
+    fence_id bigint not null,
+    location_id bigint not null,
+    user_id bigint not null,
+    session_id bigint not null,
+    node_id bigint not null,
+    device_code varchar(64) not null,
+    mac varchar(17) not null,
+    event_type varchar(8) not null comment 'ENTER或EXIT',
+    event_time datetime not null,
+    create_time datetime not null default current_timestamp,
+
+    primary key (event_id),
+    unique key uk_geofence_location_event(fence_id, location_id, event_type),
+    key idx_geofence_event_fence_time(fence_id, event_time),
+    key idx_geofence_event_user_time(user_id, event_time),
+    key idx_geofence_event_session_time(session_id, event_time),
+    key idx_geofence_event_mac_time(mac, event_time)
+
+) default charset=utf8mb4 collate=utf8mb4_unicode_ci comment='地理围栏进入和离开事件';

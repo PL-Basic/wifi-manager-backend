@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.plagod.mapper.GeofenceEventMapper">
+
+    <select id="selectEventPage" resultType="com.plagod.vo.monitor.GeofenceEventVO">
+        select
+        e.event_id,
+        e.fence_id,
+        f.name as fence_name,
+        e.location_id,
+        e.user_id,
+        e.session_id,
+        e.node_id,
+        e.device_code,
+        e.mac,
+        e.event_type,
+        e.event_time,
+        l.latitude,
+        l.longitude
+        from t_geofence_event e
+        left join t_geofence f on f.fence_id = e.fence_id
+        left join t_client_location l on l.id = e.location_id
+        <where>
+            <if test="fenceId != null">
+                and e.fence_id = #{fenceId}
+            </if>
+            <if test="userId != null">
+                and e.user_id = #{userId}
+            </if>
+            <if test="sessionId != null">
+                and e.session_id = #{sessionId}
+            </if>
+            <if test="mac != null and mac != ''">
+                and e.mac = #{mac}
+            </if>
+            <if test="eventType != null and eventType != ''">
+                and e.event_type = #{eventType}
+            </if>
+            <if test="startTime != null">
+                and e.event_time <![CDATA[ >= ]]> #{startTime}
+            </if>
+            <if test="endTime != null">
+                and e.event_time <![CDATA[ <= ]]> #{endTime}
+            </if>
+        </where>
+        order by e.event_time desc, e.event_id desc
+    </select>
+
+</mapper>

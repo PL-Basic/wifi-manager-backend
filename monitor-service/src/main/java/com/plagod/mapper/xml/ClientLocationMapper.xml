@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.plagod.mapper.ClientLocationMapper">
+
+    <select id="selectTrustedPointsForGis" resultType="com.plagod.entity.monitor.ClientLocation">
+        select *
+        from t_client_location
+        <where>
+            trusted_binding = 1
+            and report_time <![CDATA[ >= ]]> #{startTime}
+            and report_time <![CDATA[ <= ]]> #{endTime}
+
+            <if test="sessionId != null">
+                and session_id = #{sessionId}
+            </if>
+            <if test="userId != null">
+                and user_id = #{userId}
+            </if>
+            <if test="nodeId != null">
+                and node_id = #{nodeId}
+            </if>
+            <if test="mac != null and mac != ''">
+                and mac = #{mac}
+            </if>
+        </where>
+        order by report_time asc, id asc
+        limit #{limit}
+    </select>
+
+</mapper>

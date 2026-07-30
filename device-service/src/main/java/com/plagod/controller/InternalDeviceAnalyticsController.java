@@ -38,6 +38,17 @@ public class InternalDeviceAnalyticsController {
         return ApiResponse.success(signalAnalyticsQueryService.query(nodeId, mac, startTime, endTime, sampleLimit, bucketMinutes));
     }
 
+    @GetMapping("/signals/coverage")
+    public ApiResponse<SignalAnalyticsSourceVO> queryCoverageSignals(@RequestParam Long nodeId,
+                                                                     @RequestParam String mac,
+                                                                     @RequestParam Long sessionId,
+                                                                     @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTime,
+                                                                     @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime,
+                                                                     @RequestParam(defaultValue = "5000") Integer sampleLimit) {
+
+        return ApiResponse.success(signalAnalyticsQueryService.queryCoverage(nodeId, mac, sessionId, startTime, endTime, sampleLimit));
+    }
+
     @GetMapping("/traffic")
     public ApiResponse<TrafficAnalyticsSourceVO> queryTraffic(@RequestParam(required = false) Long userId,
                                                               @RequestParam(required = false) String mac,

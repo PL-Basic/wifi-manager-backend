@@ -11,8 +11,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 @Mapper
-public interface ClientSignalMapper
-        extends BaseMapper<ClientSignalRecord> {
+public interface ClientSignalMapper extends BaseMapper<ClientSignalRecord> {
 
     @Select("select id, rssi, report_time from t_client_signal " +
             "where node_id = #{nodeId} and mac = #{mac} " +
@@ -25,19 +24,22 @@ public interface ClientSignalMapper
                                                                    @Param("endTime") LocalDateTime endTime,
                                                                    @Param("sampleLimit") Integer sampleLimit);
 
-    @Select("select from_unixtime(" +
-            "floor(unix_timestamp(report_time) / #{bucketSeconds}) " +
-            "* #{bucketSeconds}) as bucket_time, " +
-            "count(*) as sample_count, avg(rssi) as average_rssi, " +
-            "min(rssi) as min_rssi, max(rssi) as max_rssi " +
-            "from t_client_signal " +
-            "where node_id = #{nodeId} and mac = #{mac} " +
-            "and report_time >= #{startTime} " +
-            "and report_time <= #{endTime} " +
-            "group by bucket_time order by bucket_time")
+
     List<SignalAnalyticsSourceVO.SignalTrendBucket> selectTrendBuckets(@Param("nodeId") Long nodeId,
                                                                        @Param("mac") String mac,
                                                                        @Param("startTime") LocalDateTime startTime,
                                                                        @Param("endTime") LocalDateTime endTime,
                                                                        @Param("bucketSeconds") Integer bucketSeconds);
+
+    @Select("select id, session_id, rssi, report_time from t_client_signal " +
+            "where node_id = #{nodeId} and mac = #{mac} " +
+            "and session_id = #{sessionId} " +
+            "and report_time >= #{startTime} and report_time <= #{endTime} " +
+            "order by report_time asc, id asc limit #{queryLimit}")
+    List<SignalAnalyticsSourceVO.SignalSample> selectCoverageSamples(@Param("nodeId") Long nodeId,
+                                                                     @Param("mac") String mac,
+                                                                     @Param("sessionId") Long sessionId,
+                                                                     @Param("startTime") LocalDateTime startTime,
+                                                                     @Param("endTime") LocalDateTime endTime,
+                                                                     @Param("queryLimit") Integer queryLimit);
 }

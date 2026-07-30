@@ -13,6 +13,19 @@ public class DeviceNodeUpdateDTO {
 
     private String location;
 
+    @DecimalMin(value = "-90.0", message = "纬度不能小于-90")
+    @DecimalMax(value = "90.0", message = "纬度不能大于90")
+    @Digits(integer = 2, fraction = 7, message = "纬度最多保留七位小数")
+    private BigDecimal latitude;
+
+    @DecimalMin(value = "-180.0", message = "经度不能小于-180")
+    @DecimalMax(value = "180.0", message = "经度不能大于180")
+    @Digits(integer = 3, fraction = 7, message = "经度最多保留七位小数")
+    private BigDecimal longitude;
+
+    // true 表示明确清除安装坐标；未传坐标则保持原值。
+    private Boolean clearCoordinates;
+
     private String ip;
 
     @Min(value = 4,message = "设备最大连接数不能小于4")

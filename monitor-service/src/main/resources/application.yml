@@ -41,3 +41,6 @@ wifi:
     minimum-report-interval-seconds: ${WIFI_LOCATION_MINIMUM_REPORT_INTERVAL_SECONDS:3}
     # 仅拒绝明显异常跳点，默认约等于 360km/h。
     maximum-speed-meters-per-second: ${WIFI_LOCATION_MAXIMUM_SPEED_METERS_PER_SECOND:100}
+  gis:
+    maximum-query-points: ${WIFI_GIS_MAXIMUM_QUERY_POINTS:5000}
+    maximum-query-days: ${WIFI_GIS_MAXIMUM_QUERY_DAYS:7}

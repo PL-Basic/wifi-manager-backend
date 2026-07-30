@@ -6,6 +6,8 @@ create table t_esp32_node(
     device_code varchar(64) NOT NULL,
     name varchar(64) NOT NULL,
     location varchar(128),
+    latitude decimal(10, 7) default null comment '节点安装纬度，WGS84',
+    longitude decimal(10, 7) default null comment '节点安装经度，WGS84',
     ip varchar(45),
     firmware_version varchar(32),
     wifi_status varchar(32) DEFAULT NULL,

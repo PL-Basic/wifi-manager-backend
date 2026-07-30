@@ -114,6 +114,10 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         Integer rssiAtOneMeter = createDTO.getRssiAtOneMeter() == null ? DEFAULT_RSSI_AT_ONE_METER : requireRssiAtOneMeter(createDTO.getRssiAtOneMeter());
         BigDecimal pathLossExponent = createDTO.getPathLossExponent() == null ? DEFAULT_PATH_LOSS_EXPONENT : requirePathLossExponent(createDTO.getPathLossExponent());
 
+        validateCoordinatePair(createDTO.getLatitude(), createDTO.getLongitude());
+        BigDecimal latitude = normalizeLatitude(createDTO.getLatitude());
+        BigDecimal longitude = normalizeLongitude(createDTO.getLongitude());
+
         Esp32Node esp32Node = esp32NodeMapper.selectByDeviceCodeIncludeDeleted(cleanDeviceCode);
 
         //判断设备是否存在
@@ -131,6 +135,8 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         esp32Node.setName(createDTO.getName());
         esp32Node.setIp(createDTO.getIp());
         esp32Node.setLocation(createDTO.getLocation());
+        esp32Node.setLatitude(latitude);
+        esp32Node.setLongitude(longitude);
         esp32Node.setFirmwareVersion(createDTO.getFirmwareVersion());
         esp32Node.setMaxClients(createDTO.getMaxClients());
         esp32Node.setRssiAtOneMeter(rssiAtOneMeter);
@@ -170,6 +176,7 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         if (updateDTO.getLocation() != null){
             oldEsp32Node.setLocation(cleanNullableText(updateDTO.getLocation()));
         }
+        applyCoordinateUpdate(oldEsp32Node, updateDTO);
         oldEsp32Node.setMaxClients(updateDTO.getMaxClients() == null ? oldEsp32Node.getMaxClients() : updateDTO.getMaxClients());
         if (updateDTO.getRssiAtOneMeter() != null) {
             oldEsp32Node.setRssiAtOneMeter(requireRssiAtOneMeter(updateDTO.getRssiAtOneMeter()));
@@ -543,5 +550,65 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("ALLOW 命令序列化失败", exception);
         }
+    }
+
+    private void validateCoordinatePair(BigDecimal latitude, BigDecimal longitude) {
+        if ((latitude == null) != (longitude == null)) {
+            throw new IllegalArgumentException("节点纬度和经度必须同时提供");
+        }
+    }
+
+    private void applyCoordinateUpdate(Esp32Node node, DeviceNodeUpdateDTO dto) {
+        boolean clearCoordinates = Boolean.TRUE.equals(dto.getClearCoordinates());
+
+        if (clearCoordinates) {
+            if (dto.getLatitude() != null || dto.getLongitude() != null) {
+                throw new IllegalArgumentException("清除节点坐标时不能同时提交新坐标");
+            }
+
+            node.setLatitude(null);
+            node.setLongitude(null);
+            return;
+        }
+
+        if (dto.getLatitude() == null && dto.getLongitude() == null) {
+            return;
+        }
+
+        validateCoordinatePair(dto.getLatitude(), dto.getLongitude());
+        node.setLatitude(normalizeLatitude(dto.getLatitude()));
+        node.setLongitude(normalizeLongitude(dto.getLongitude()));
+    }
+
+    private BigDecimal normalizeLatitude(BigDecimal latitude) {
+        if (latitude == null) {
+            return null;
+        }
+
+        if (latitude.compareTo(new BigDecimal("-90")) < 0 || latitude.compareTo(new BigDecimal("90")) > 0) {
+            throw new IllegalArgumentException("纬度必须在-90到90之间");
+        }
+
+        return normalizeCoordinateScale(latitude, "纬度");
+    }
+
+    private BigDecimal normalizeLongitude(BigDecimal longitude) {
+        if (longitude == null) {
+            return null;
+        }
+
+        if (longitude.compareTo(new BigDecimal("-180")) < 0 || longitude.compareTo(new BigDecimal("180")) > 0) {
+            throw new IllegalArgumentException("经度必须在-180到180之间");
+        }
+
+        return normalizeCoordinateScale(longitude, "经度");
+    }
+
+    private BigDecimal normalizeCoordinateScale(BigDecimal value, String fieldName) {
+        if (value.stripTrailingZeros().scale() > 7) {
+            throw new IllegalArgumentException(fieldName + "最多保留七位小数");
+        }
+
+        return value.setScale(7, RoundingMode.UNNECESSARY);
     }
 }

@@ -11,6 +11,8 @@ import com.plagod.entity.monitor.LocationAuthorization;
 import com.plagod.mapper.ClientLocationMapper;
 import com.plagod.mapper.LocationAuthorizationMapper;
 import com.plagod.service.ClientLocationService;
+import com.plagod.service.GeofenceEvaluationService;
+import com.plagod.util.GeoMath;
 import com.plagod.vo.device.LocationSessionContextVO;
 import com.plagod.vo.monitor.ClientLocationPageResult;
 import com.plagod.vo.monitor.ClientLocationVO;
@@ -35,6 +37,8 @@ public class ClientLocationServiceImpl implements ClientLocationService {
     private LocationAuthorizationMapper locationAuthorizationMapper;
     @Autowired
     private DeviceLocationSessionClient deviceLocationSessionClient;
+    @Autowired
+    private GeofenceEvaluationService geofenceEvaluationService;
 
     @Value("${wifi.internal.token:}")
     private String internalToken;
@@ -89,6 +93,8 @@ public class ClientLocationServiceImpl implements ClientLocationService {
         if (locationAuthorizationMapper.updateById(authorization) != 1) {
             throw new IllegalStateException("位置授权状态更新失败");
         }
+
+        geofenceEvaluationService.evaluate(previous, entity);
 
         return entity.getId();
     }
@@ -172,6 +178,7 @@ public class ClientLocationServiceImpl implements ClientLocationService {
 
         QueryWrapper<ClientLocation> deleteQuery = new QueryWrapper<>();
         deleteQuery.eq("user_id", userId);
+        geofenceEvaluationService.clearUserData(userId);
         return clientLocationMapper.delete(deleteQuery);
     }
 
@@ -247,9 +254,7 @@ public class ClientLocationServiceImpl implements ClientLocationService {
         try {
             response = deviceLocationSessionClient.getLocationContext(sessionId, userId, internalToken);
         } catch (feign.FeignException exception) {
-            throw new IllegalStateException(
-                    "Session 当前不可用于位置上报，或设备服务暂时不可用"
-            );
+            throw new IllegalStateException("Session 当前不可用于位置上报，或设备服务暂时不可用");
         }
 
         LocationSessionContextVO context = response == null ? null : response.getData();
@@ -351,7 +356,7 @@ public class ClientLocationServiceImpl implements ClientLocationService {
 
         double elapsedSeconds = elapsedMillis / 1000.0D;
 
-        double distanceMeters = calculateDistanceMeters(previous.getLatitude(), previous.getLongitude(), current.getLatitude(), current.getLongitude());
+        double distanceMeters = GeoMath.distanceMeters(previous.getLatitude(), previous.getLongitude(), current.getLatitude(), current.getLongitude());
 
         // 两次定位精度作为误差缓冲，避免普通GPS漂移被当成异常移动。
         double allowedDistance = maximumSpeedMetersPerSecond * elapsedSeconds + previous.getAccuracy().doubleValue() + current.getAccuracy().doubleValue();
@@ -361,24 +366,5 @@ public class ClientLocationServiceImpl implements ClientLocationService {
         }
     }
 
-    private double calculateDistanceMeters(java.math.BigDecimal firstLatitude, java.math.BigDecimal firstLongitude, java.math.BigDecimal secondLatitude, java.math.BigDecimal secondLongitude) {
 
-        final double earthRadiusMeters = 6371000.0D;
-
-        double firstLatRadians = Math.toRadians(firstLatitude.doubleValue());
-        double secondLatRadians = Math.toRadians(secondLatitude.doubleValue());
-
-        double latitudeDelta = Math.toRadians(secondLatitude.doubleValue() - firstLatitude.doubleValue());
-        double longitudeDelta = Math.toRadians(secondLongitude.doubleValue() - firstLongitude.doubleValue());
-
-        double sinLatitude = Math.sin(latitudeDelta / 2.0D);
-        double sinLongitude = Math.sin(longitudeDelta / 2.0D);
-
-        double haversine = sinLatitude * sinLatitude + Math.cos(firstLatRadians) * Math.cos(secondLatRadians) * sinLongitude * sinLongitude;
-
-        // 避免浮点误差让 haversine 略微超过 1。
-        double bounded = Math.min(1.0D, Math.max(0.0D, haversine));
-
-        return 2.0D * earthRadiusMeters * Math.atan2(Math.sqrt(bounded), Math.sqrt(1.0D - bounded));
-    }
 }
