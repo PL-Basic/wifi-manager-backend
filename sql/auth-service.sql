@@ -45,3 +45,30 @@ create table t_login_fail_record (
     key idx_lock_until (lock_until),
     key idx_update_time (update_time)
 ) default charset = utf8mb4 collate = utf8mb4_unicode_ci comment = '登录失败记录表';
+
+drop table if exists t_oauth_state;
+create table t_oauth_state (
+    state_id bigint auto_increment,
+    state_hash char(64) collate utf8mb4_bin not null comment 'OAuth state 的 SHA-256，不保存原始 state',
+    provider varchar(16) not null comment 'github/qq/wechat',
+    purpose varchar(16) not null comment 'login/bind',
+    bind_user_id bigint default null comment '绑定目的对应的可信本地用户',
+    return_uri varchar(512) default null comment 'Provider 回调完成后的安全回跳地址',
+
+    authorization_code_hash char(64) collate utf8mb4_bin default null comment '授权码 SHA-256，用于回调重放保护',
+    status tinyint not null default 0 comment '0待回调 1处理中 2已完成 3失败',
+    result_status varchar(32) default null,
+    result_user_id bigint default null,
+    result_message varchar(255) default null,
+
+    expire_time datetime not null,
+    consume_time datetime default null,
+    create_time datetime not null default current_timestamp,
+    update_time datetime not null default current_timestamp on update current_timestamp,
+
+    primary key (state_id),
+    unique key uk_oauth_state_hash (state_hash),
+    unique key uk_oauth_provider_code (provider,authorization_code_hash),
+    key idx_oauth_state_expire (status, expire_time),
+    key idx_oauth_state_user (bind_user_id,create_time)
+) default charset=utf8mb4 collate=utf8mb4_unicode_ci comment='OAuth 授权状态与回调幂等记录';

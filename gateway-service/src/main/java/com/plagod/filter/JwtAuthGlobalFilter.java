@@ -50,12 +50,19 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     private static final Pattern PORTAL_STATUS = Pattern.compile("^/sessions/(\\d+)/portal-status$");
     private static final Pattern SESSION_LOGOUT = Pattern.compile("^/sessions/(\\d+)/logout$");
     private static final Pattern LOCATION_REPORT = Pattern.compile("^/locations/sessions/(\\d+)/report$");
+
     private static final Pattern ENTITLEMENT_ORDER_DETAIL = Pattern.compile("^/entitlements/orders/[A-Za-z0-9_-]{1,64}$");
     private static final Pattern ENTITLEMENT_ORDER_CANCEL = Pattern.compile("^/entitlements/orders/[A-Za-z0-9_-]{1,64}/cancel$");
     private static final Pattern ENTITLEMENT_PAYMENT_CREATE = Pattern.compile("^/entitlements/orders/[A-Za-z0-9_-]{1,64}/payments$");
     private static final Pattern ENTITLEMENT_PAYMENT_DETAIL = Pattern.compile("^/entitlements/payments/[A-Za-z0-9_-]{1,64}$");
     private static final Pattern ENTITLEMENT_PAYMENT_DEMO_COMPLETE = Pattern.compile("^/entitlements/payments/[A-Za-z0-9_-]{1,64}/demo-complete$");
     private static final Pattern ENTITLEMENT_REFUND_DETAIL = Pattern.compile("^/entitlements/refunds/[A-Za-z0-9_-]{1,64}$");
+
+    private static final Pattern OAUTH_AUTHORIZE = Pattern.compile("^/auth/oauth/(github|qq|wechat)/authorize$");
+    private static final Pattern OAUTH_CALLBACK = Pattern.compile("^/auth/oauth/(github|qq|wechat)/callback$");
+    private static final Pattern OAUTH_BIND = Pattern.compile("^/auth/oauth/(github|qq|wechat)/bind$");
+    private static final Pattern USER_SOCIAL_IDENTITIES = Pattern.compile("^/users/(\\d+)/social-identities$");
+    private static final Pattern USER_SOCIAL_IDENTITY_DETAIL = Pattern.compile("^/users/(\\d+)/social-identities/(\\d+)$");
 
     private final Map<String, RateWindow> rateWindows = new ConcurrentHashMap<>();
 
@@ -70,6 +77,9 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
 
     @Value("${wifi.rate-limit.payment-callback-per-minute:120}")
     private int paymentCallbackLimit;
+
+    @Value("${wifi.rate-limit.oauth-per-minute:20}")
+    private int oauthLimit;
 
     @Value("${wifi.rate-limit.auth-per-minute:30}")
     private int authLimit;
@@ -97,12 +107,18 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
         }
 
         if (isWhitePath(path, method)) {
+            if (isOAuthRatePath(path) && !tryAcquire("oauth:" + clientIp(request), oauthLimit)) {
+                return reject(cleanExchange, HttpStatus.TOO_MANY_REQUESTS, 429, "OAuth 请求过于频繁，请稍后再试");
+            }
+
             if (isAuthRatePath(path) && !tryAcquire("auth:" + clientIp(request), authLimit)) {
                 return reject(cleanExchange, HttpStatus.TOO_MANY_REQUESTS, 429, "请求过于频繁，请稍后再试");
             }
+
             if (LOCAL_DEMO_CALLBACK.equals(path) && !tryAcquire("payment-callback:" + clientIp(request), paymentCallbackLimit)) {
                 return reject(cleanExchange, HttpStatus.TOO_MANY_REQUESTS, 429, "支付回调请求过于频繁");
             }
+
             return chain.filter(addTrustedHeaders(cleanExchange, null, null, null));
         }
 
@@ -163,6 +179,11 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
             return true;
         }
 
+        // 登录授权入口和 Provider 回调允许匿名访问。
+        if (HttpMethod.GET.equals(method) && (OAUTH_AUTHORIZE.matcher(path).matches() || OAUTH_CALLBACK.matcher(path).matches())) {
+            return true;
+        }
+
         if (LOCAL_DEMO_CALLBACK.equals(path)) {
             return HttpMethod.POST.equals(method);
         }
@@ -177,6 +198,10 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
                 || "/auth/reset-password".equals(path);
     }
 
+    private boolean isOAuthRatePath(String path) {
+        return OAUTH_AUTHORIZE.matcher(path).matches() || OAUTH_CALLBACK.matcher(path).matches();
+    }
+
     private boolean isAllowed(String path, HttpMethod method, Long userId, Integer role) {
         if ("/ws/alerts".equals(path)) {
             return isAdmin(role);
@@ -186,10 +211,24 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
             return isAdmin(role);
         }
 
-        Matcher matcher = USER_SELF.matcher(path);
+        // 绑定入口必须先通过 JWT，随后由 Gateway 注入可信用户身份。
+        if (HttpMethod.GET.equals(method) && OAUTH_BIND.matcher(path).matches()) {
+            return true;
+        }
+
+        Matcher matcher = USER_SOCIAL_IDENTITIES.matcher(path);
         if (matcher.matches()) {
-            return (HttpMethod.GET.equals(method) || HttpMethod.PUT.equals(method))
-                    && ownsPathUser(userId, matcher);
+            return HttpMethod.GET.equals(method) && ownsPathUser(userId, matcher);
+        }
+
+        matcher = USER_SOCIAL_IDENTITY_DETAIL.matcher(path);
+        if (matcher.matches()) {
+            return HttpMethod.DELETE.equals(method) && ownsPathUser(userId, matcher);
+        }
+
+        matcher = USER_SELF.matcher(path);
+        if (matcher.matches()) {
+            return (HttpMethod.GET.equals(method) || HttpMethod.PUT.equals(method)) && ownsPathUser(userId, matcher);
         }
 
         matcher = USER_AVATAR.matcher(path);
@@ -338,6 +377,10 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     }
 
     private boolean passProtectedRateLimit(String path, Long userId) {
+        // 绑定入口会创建 OAuth state，按登录用户限制创建频率。
+        if (OAUTH_BIND.matcher(path).matches()) {
+            return tryAcquire("oauth-bind:" + userId, oauthLimit);
+        }
         if ("/sessions/portal-authorize".equals(path)) {
             return tryAcquire("portal:" + userId, portalLimit);
         }
