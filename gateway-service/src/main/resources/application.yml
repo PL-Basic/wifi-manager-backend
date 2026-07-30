@@ -72,3 +72,4 @@ wifi:
     location-per-minute: 60
     websocket-per-minute: 10
     payment-callback-per-minute: 120
+    oauth-per-minute: 20

@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.plagod.audit.Audited;
+import com.plagod.mapper.SocialIdentityMapper;
 import com.plagod.vo.user.UserConnectionPolicyVO;
 import com.plagod.vo.user.UserPageResult;
 import com.plagod.vo.user.UserStatsVO;
@@ -17,6 +18,7 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
@@ -30,6 +32,9 @@ public class UserManageServiceImpl implements UserManageService {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private SocialIdentityMapper socialIdentityMapper;
 
     @Override
     public UserPageResult pageUsers(long current, long size, String keyword) {
@@ -89,14 +94,30 @@ public class UserManageServiceImpl implements UserManageService {
         }
         UpdateWrapper<User> updateWrapper = new UpdateWrapper<>();
         updateWrapper.eq("user_id", userId);
-        if (rawEmail != null) updateWrapper.set("email", updateDTO.getEmail());
-        if (rawPhone != null) updateWrapper.set("phone", updateDTO.getPhone());
-        if (rawAvatar != null) updateWrapper.set("avatar", updateDTO.getAvatar());
-        if (rawNickname != null) updateWrapper.set("nickname", updateDTO.getNickname());
-        if (updateDTO.getRole() != null) updateWrapper.set("role", updateDTO.getRole());
-        if (updateDTO.getMaxConnections() != null) updateWrapper.set("max_connections", updateDTO.getMaxConnections());
-        if (updateDTO.getDailyQuotaMinutes() != null) updateWrapper.set("daily_quota_minutes", updateDTO.getDailyQuotaMinutes());
-        if (updateDTO.getExpireTime() != null) updateWrapper.set("expire_time", updateDTO.getExpireTime());
+        if (rawEmail != null) {
+            updateWrapper.set("email", updateDTO.getEmail());
+        }
+        if (rawPhone != null) {
+            updateWrapper.set("phone", updateDTO.getPhone());
+        }
+        if (rawAvatar != null) {
+            updateWrapper.set("avatar", updateDTO.getAvatar());
+        }
+        if (rawNickname != null) {
+            updateWrapper.set("nickname", updateDTO.getNickname());
+        }
+        if (updateDTO.getRole() != null) {
+            updateWrapper.set("role", updateDTO.getRole());
+        }
+        if (updateDTO.getMaxConnections() != null) {
+            updateWrapper.set("max_connections", updateDTO.getMaxConnections());
+        }
+        if (updateDTO.getDailyQuotaMinutes() != null) {
+            updateWrapper.set("daily_quota_minutes", updateDTO.getDailyQuotaMinutes());
+        }
+        if (updateDTO.getExpireTime() != null) {
+            updateWrapper.set("expire_time", updateDTO.getExpireTime());
+        }
 
         userMapper.update(null, updateWrapper);
         return toVO(userMapper.selectById(userId));
@@ -118,11 +139,16 @@ public class UserManageServiceImpl implements UserManageService {
     }
 
     @Override
+    @Transactional
     @Audited(action = "user.purge")
     public void purgeUser(Long userId) {
+        if (userId == null || userId <= 0) {
+            throw new IllegalArgumentException("用户 ID 无效");
+        }
+
+        socialIdentityMapper.physicalDeleteByUserId(userId);
         jdbcTemplate.update("DELETE FROM sys_user WHERE user_id = ?", userId);
     }
-
     @Override
     public UserConnectionPolicyVO getConnectionPolicy(Long userId) {
         if (userId == null || userId <= 0) {
