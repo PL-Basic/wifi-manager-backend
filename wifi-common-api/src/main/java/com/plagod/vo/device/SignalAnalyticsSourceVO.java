@@ -12,8 +12,13 @@ public class SignalAnalyticsSourceVO {
     private Long nodeId;
     private String deviceCode;
     private String mac;
+    private Long sessionId;
+
+    private BigDecimal nodeLatitude;
+    private BigDecimal nodeLongitude;
     private Integer rssiAtOneMeter;
     private BigDecimal pathLossExponent;
+
     private LocalDateTime startTime;
     private LocalDateTime endTime;
     private Integer sampleLimit;
@@ -23,6 +28,7 @@ public class SignalAnalyticsSourceVO {
     @Data
     public static class SignalSample {
         private Long id;
+        private Long sessionId;
         private Integer rssi;
         private LocalDateTime reportTime;
     }

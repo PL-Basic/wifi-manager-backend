@@ -3,6 +3,8 @@ package com.plagod.client;
 import com.plagod.dto.ApiResponse;
 import com.plagod.dto.monitor.AccessRuleCreateDTO;
 import com.plagod.dto.monitor.AccessRuleUpdateDTO;
+import com.plagod.dto.monitor.GeofenceCreateDTO;
+import com.plagod.dto.monitor.GeofenceUpdateDTO;
 import com.plagod.vo.device.TrafficAnalyticsSourceVO;
 import com.plagod.vo.monitor.*;
 import org.springframework.cloud.openfeign.FeignClient;
@@ -99,4 +101,69 @@ public interface MonitorServiceClient {
                                                               @RequestParam("startTime") String startTime,
                                                               @RequestParam("endTime") String endTime,
                                                               @RequestParam("topLimit") Integer topLimit);
+
+    @GetMapping("/internal/admin/gis/trajectory")
+    ApiResponse<GisTrajectoryVO> queryTrajectory(@RequestParam("sessionId") Long sessionId,
+                                                 @RequestParam("startTime") String startTime,
+                                                 @RequestParam("endTime") String endTime,
+                                                 @RequestParam("maximumAccuracyMeters") Double maximumAccuracyMeters);
+
+    @GetMapping("/internal/admin/gis/stay-points")
+    ApiResponse<GisStayPointResultVO> queryStayPoints(@RequestParam("sessionId") Long sessionId,
+                                                      @RequestParam("startTime") String startTime,
+                                                      @RequestParam("endTime") String endTime,
+                                                      @RequestParam("maximumAccuracyMeters") Double maximumAccuracyMeters,
+                                                      @RequestParam("radiusMeters") Integer radiusMeters,
+                                                      @RequestParam("minimumStaySeconds") Long minimumStaySeconds);
+
+    @GetMapping("/internal/admin/gis/heatmap")
+    ApiResponse<GisHeatmapVO> queryHeatmap(@RequestParam(value = "userId", required = false) Long userId,
+                                           @RequestParam(value = "sessionId", required = false) Long sessionId,
+                                           @RequestParam(value = "nodeId", required = false) Long nodeId,
+                                           @RequestParam(value = "mac", required = false) String mac,
+                                           @RequestParam("startTime") String startTime,
+                                           @RequestParam("endTime") String endTime,
+                                           @RequestParam("maximumAccuracyMeters") Double maximumAccuracyMeters,
+                                           @RequestParam("gridSizeMeters") Integer gridSizeMeters);
+
+    @PostMapping("/internal/admin/geofences")
+    ApiResponse<GeofenceVO> createGeofence(@Valid @RequestBody GeofenceCreateDTO dto);
+
+    @PutMapping("/internal/admin/geofences/{fenceId}")
+    ApiResponse<GeofenceVO> updateGeofence(@PathVariable("fenceId") Long fenceId,
+                                           @Valid @RequestBody GeofenceUpdateDTO dto);
+
+    @PatchMapping("/internal/admin/geofences/{fenceId}/enabled")
+    ApiResponse<GeofenceVO> toggleGeofence(@PathVariable("fenceId") Long fenceId,
+                                           @RequestParam("enabled") Integer enabled);
+
+    @DeleteMapping("/internal/admin/geofences/{fenceId}")
+    ApiResponse<Void> deleteGeofence(@PathVariable("fenceId") Long fenceId);
+
+    @GetMapping("/internal/admin/geofences/{fenceId}")
+    ApiResponse<GeofenceVO> getGeofence(@PathVariable("fenceId") Long fenceId);
+
+    @GetMapping("/internal/admin/geofences")
+    ApiResponse<GeofencePageResult> pageGeofences(@RequestParam("current") Long current,
+                                                  @RequestParam("size") Long size,
+                                                  @RequestParam(value = "enabled", required = false) Integer enabled,
+                                                  @RequestParam(value = "keyword", required = false) String keyword);
+
+    @GetMapping("/internal/admin/geofence-events")
+    ApiResponse<GeofenceEventPageResult> pageGeofenceEvents(@RequestParam("current") Long current,
+                                                            @RequestParam("size") Long size,
+                                                            @RequestParam(value = "fenceId", required = false) Long fenceId,
+                                                            @RequestParam(value = "userId", required = false) Long userId,
+                                                            @RequestParam(value = "sessionId", required = false) Long sessionId,
+                                                            @RequestParam(value = "mac", required = false) String mac,
+                                                            @RequestParam(value = "eventType", required = false) String eventType,
+                                                            @RequestParam(value = "startTime", required = false) String startTime,
+                                                            @RequestParam(value = "endTime", required = false) String endTime);
+
+    @GetMapping("/internal/admin/gis/node-coverage")
+    ApiResponse<GisNodeCoverageVO> queryNodeCoverage(@RequestParam("sessionId") Long sessionId,
+                                                     @RequestParam("startTime") String startTime,
+                                                     @RequestParam("endTime") String endTime,
+                                                     @RequestParam("maximumAccuracyMeters") Double maximumAccuracyMeters,
+                                                     @RequestParam("matchToleranceSeconds") Integer matchToleranceSeconds);
 }

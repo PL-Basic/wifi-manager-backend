@@ -18,4 +18,13 @@ public interface DeviceSignalAnalyticsClient {
                                                       @RequestParam("sampleLimit") Integer sampleLimit,
                                                       @RequestParam("bucketMinutes") Integer bucketMinutes,
                                                       @RequestHeader("X-Internal-Token") String internalToken);
+
+    @GetMapping("/internal/analytics/signals/coverage")
+    ApiResponse<SignalAnalyticsSourceVO> queryCoverageSignals(@RequestParam("nodeId") Long nodeId,
+                                                              @RequestParam("mac") String mac,
+                                                              @RequestParam("sessionId") Long sessionId,
+                                                              @RequestParam("startTime") String startTime,
+                                                              @RequestParam("endTime") String endTime,
+                                                              @RequestParam("sampleLimit") Integer sampleLimit,
+                                                              @RequestHeader("X-Internal-Token") String internalToken);
 }

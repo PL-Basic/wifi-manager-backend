@@ -2,12 +2,16 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.plagod.mapper.PaymentRecordMapper">
     <insert id="insertOrResolveExisting">
-        insert into t_payment_record (payment_no, order_no, user_id, request_id, business_key, channel,
-                                      amount_cents, paid_amount_cents, refunded_amount_cents, status, version,
-                                      create_time, update_time) values
-                                      (#{paymentNo}, #{orderNo}, #{userId}, #{requestId}, #{businessKey},
-                                       #{channel}, #{amountCents}, #{paidAmountCents}, #{refundedAmountCents},
-                                       #{status}, #{version}, #{createTime}, #{updateTime})
-                                        on duplicate key update payment_id = last_insert_id(payment_id)
+        insert into t_payment_record (
+            payment_no, order_no, user_id, request_id, business_key, channel,
+            amount_cents, paid_amount_cents, refunded_amount_cents, status, version,
+            create_time, update_time
+        )
+        values (
+            #{paymentNo}, #{orderNo}, #{userId}, #{requestId}, #{businessKey},
+            #{channel}, #{amountCents}, #{paidAmountCents}, #{refundedAmountCents},
+            #{status}, #{version}, #{createTime}, #{updateTime}
+        )
+        on duplicate key update payment_id = last_insert_id(payment_id)
     </insert>
 </mapper>
