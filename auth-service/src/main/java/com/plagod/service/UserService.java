@@ -3,11 +3,13 @@ package com.plagod.service;
 
 import com.plagod.dto.*;
 import com.plagod.dto.auth.LoginDTO;
+import com.plagod.vo.LoginResult;
+import com.plagod.vo.RegisterResult;
 
 public interface UserService {
 
     //注册业务
-    public RegisterResult register(RegisterDTO registerDTO,String verifyIp);
+    public RegisterResult register(RegisterDTO registerDTO, String verifyIp);
 
     //登录业务
     public LoginResult login(LoginDTO loginDTO, String requestIp);
