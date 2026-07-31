@@ -3,6 +3,7 @@ package com.plagod.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.plagod.constant.SessionStatus;
 import com.plagod.entity.device.Esp32Node;
+import com.plagod.exception.ApiStatusException;
 import com.plagod.mapper.Esp32NodeMapper;
 import com.plagod.vo.device.LocationSessionContextVO;
 import com.plagod.vo.device.SessionPageResult;
@@ -57,8 +58,7 @@ public class SessionQueryServiceImpl implements SessionQueryService {
         }
         queryWrapper.orderByDesc("login_time");
 
-        com.baomidou.mybatisplus.extension.plugins.pagination.Page<SessionRecord> page =
-                sessionRecordMapper.selectPage(new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(pageCurrent, pageSize), queryWrapper);
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<SessionRecord> page = sessionRecordMapper.selectPage(new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(pageCurrent, pageSize), queryWrapper);
 
         List<SessionRecordVO> records = new ArrayList<>();
         for (SessionRecord item : page.getRecords()) {
@@ -89,28 +89,32 @@ public class SessionQueryServiceImpl implements SessionQueryService {
 
         SessionRecord session = sessionRecordMapper.selectById(sessionId);
 
-        // 不区分“不存在”和“不属于本人”，避免枚举他人 Session。
         if (session == null || !Objects.equals(ownerUserId, session.getUserId())) {
-            throw new IllegalArgumentException("Session 不存在或无权访问");
+
+            // 不区分不存在和越权，避免枚举他人的 Session。
+            throw ApiStatusException.notFound("Session 不存在或无权访问");
         }
 
         LocalDateTime now = LocalDateTime.now();
 
         if (!SessionStatus.isActive(session.getStatus()) || session.getExpireTime() == null || !session.getExpireTime().isAfter(now)) {
-            throw new IllegalStateException("Session 当前不可用于位置上报");
+
+            throw ApiStatusException.conflict("Session 当前不可用于位置上报");
         }
 
         LocalDateTime sessionCutoff = now.minusSeconds(sessionOfflineTimeoutSeconds);
 
         if (session.getLastSeenTime() == null || !session.getLastSeenTime().isAfter(sessionCutoff)) {
-            throw new IllegalStateException("Session 已经离线");
+
+            throw ApiStatusException.conflict("Session 已经离线");
         }
 
         Esp32Node node = esp32NodeMapper.selectById(session.getNodeId());
         LocalDateTime nodeCutoff = now.minusSeconds(heartbeatTimeoutSeconds);
 
         if (node == null || !Integer.valueOf(1).equals(node.getStatus()) || node.getLastHeartbeat() == null || !node.getLastHeartbeat().isAfter(nodeCutoff)) {
-            throw new IllegalStateException("Session 所属节点当前不可用");
+
+            throw ApiStatusException.conflict("Session 所属节点当前不可用");
         }
 
         LocationSessionContextVO result = new LocationSessionContextVO();

@@ -8,6 +8,7 @@ import com.plagod.dto.device.WifiConfigStageDTO;
 import com.plagod.entity.device.DeviceCommandRecord;
 import com.plagod.entity.device.DeviceWifiConfigRecord;
 import com.plagod.entity.device.Esp32Node;
+import com.plagod.exception.ApiStatusException;
 import com.plagod.mapper.*;
 import com.plagod.security.WifiCommandPayloadCrypto;
 import com.plagod.service.*;
@@ -55,7 +56,7 @@ public class DeviceWifiConfigServiceImpl implements DeviceWifiConfigService {
         }
 
         if (!payloadCrypto.isAvailable()) {
-            throw new IllegalStateException("敏感设备命令密钥未配置，暂时不能下发候选 WiFi 配置");
+            throw ApiStatusException.serviceUnavailable("敏感设备命令功能当前不可用，请联系管理员检查密钥配置");
         }
 
         String ssid = stageDTO.getSsid();
@@ -81,7 +82,7 @@ public class DeviceWifiConfigServiceImpl implements DeviceWifiConfigService {
                     now);
 
             if (changed != 1) {
-                throw new IllegalStateException("原候选配置状态已经变化，请刷新后重试");
+                throw ApiStatusException.conflict("原候选配置状态已经变化，请刷新后重试");
             }
         }
 
@@ -151,7 +152,8 @@ public class DeviceWifiConfigServiceImpl implements DeviceWifiConfigService {
         }
 
         if (Integer.valueOf(DeviceWifiConfigStatus.DISPATCHING).equals(latest.getStatus())) {
-            throw new IllegalStateException("设备已有正在下发的候选 WiFi 配置");
+
+            throw ApiStatusException.conflict("设备已有正在下发的候选 WiFi 配置");
         }
 
         if (latest.getConfigVersion() >= MAX_WIFI_CONFIG_VERSION) {
@@ -164,7 +166,7 @@ public class DeviceWifiConfigServiceImpl implements DeviceWifiConfigService {
     private void validateOnlineNode(Esp32Node node, String deviceCode, LocalDateTime now) {
 
         if (node == null || Integer.valueOf(1).equals(node.getDelFlag())) {
-            throw new IllegalArgumentException("目标 ESP32 不存在或已退役");
+            throw ApiStatusException.notFound("目标 ESP32 不存在或已经退役");
         }
 
         if (!deviceCode.equals(node.getDeviceCode())) {
@@ -172,13 +174,15 @@ public class DeviceWifiConfigServiceImpl implements DeviceWifiConfigService {
         }
 
         if (heartbeatTimeoutSeconds < 10 || heartbeatTimeoutSeconds > 3600) {
+
             throw new IllegalStateException("设备心跳超时配置无效");
         }
 
         LocalDateTime cutoff = now.minusSeconds(heartbeatTimeoutSeconds);
 
         if (!Integer.valueOf(NODE_ONLINE).equals(node.getStatus()) || node.getLastHeartbeat() == null || !node.getLastHeartbeat().isAfter(cutoff)) {
-            throw new IllegalStateException("设备当前离线或心跳已经过期，不能下发 WiFi 配置");
+
+            throw ApiStatusException.conflict("设备当前离线或心跳已经过期，不能下发 WiFi 配置");
         }
     }
 

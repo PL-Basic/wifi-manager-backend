@@ -7,6 +7,7 @@ import com.plagod.entity.auth.VerifyCode;
 import com.plagod.exception.VerificationCodeRateLimitException;
 import com.plagod.exception.VerificationDeliveryException;
 import com.plagod.mapper.VerifyCodeMapper;
+import com.plagod.ratelimit.VerificationCodeRedisRateLimiter;
 import com.plagod.sender.VerifyCodeSender;
 import com.plagod.sender.phone.PhoneVerificationProvider;
 import com.plagod.sender.phone.PhoneVerificationProviderRegistry;
@@ -20,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -50,8 +52,9 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
     private final PhoneVerificationProviderRegistry providerRegistry;
     private final VerificationCodeStateService stateService;
     private final SecureRandom random = new SecureRandom();
+    private final VerificationCodeRedisRateLimiter redisRateLimiter;
 
-    public VerificationCodeServiceImpl(VerificationCodeProperties properties, PhoneVerificationProperties phoneProperties, VerifyCodeMapper verifyCodeMapper, VerifyCodeSender verifyCodeSender, PhoneVerificationProviderRegistry providerRegistry, VerificationCodeStateService stateService) {
+    public VerificationCodeServiceImpl(VerificationCodeProperties properties, PhoneVerificationProperties phoneProperties, VerifyCodeMapper verifyCodeMapper, VerifyCodeSender verifyCodeSender, PhoneVerificationProviderRegistry providerRegistry, VerificationCodeStateService stateService, VerificationCodeRedisRateLimiter redisRateLimiter) {
 
         this.properties = properties;
         this.phoneProperties = phoneProperties;
@@ -59,6 +62,7 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
         this.verifyCodeSender = verifyCodeSender;
         this.providerRegistry = providerRegistry;
         this.stateService = stateService;
+        this.redisRateLimiter = redisRateLimiter;
     }
 
     @Override
@@ -69,7 +73,13 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
         String cleanScene = cleanScene(scene);
         LocalDateTime now = LocalDateTime.now();
 
-        checkSendLimit(cleanTarget, cleanScene, sendIp, now);
+        /*
+         * Redis 正常时执行多实例原子检查；
+         * Redis 故障时继续使用现有 MySQL 记录完成降级检查。
+         */
+        if (!redisRateLimiter.acquire(cleanTarget, cleanScene, sendIp, now)) {
+            checkSendLimit(cleanTarget, cleanScene, sendIp, now);
+        }
 
         PhoneVerificationProvider phoneProvider = null;
         String rawEmailCode = null;
@@ -275,7 +285,7 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
         );
 
         if (recentTargetCount != null && recentTargetCount > 0) {
-            throw new VerificationCodeRateLimitException("验证码发送太频繁，请稍后再试");
+            throw new VerificationCodeRateLimitException("验证码发送太频繁，请稍后再试", properties.getTargetIntervalSeconds());
         }
 
         Long targetTodayCount = verifyCodeMapper.selectCount(
@@ -285,10 +295,9 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
                         .ge("create_time", todayStart)
         );
 
-        if (targetTodayCount != null
-                && targetTodayCount >= properties.getTargetDailyLimit()) {
+        if (targetTodayCount != null && targetTodayCount >= properties.getTargetDailyLimit()) {
 
-            throw new VerificationCodeRateLimitException("今日验证码发送次数已达上限");
+            throw new VerificationCodeRateLimitException("今日验证码发送次数已达上限", secondsUntilTomorrow(now));
         }
 
         if (!StringUtils.hasText(sendIp)) {
@@ -303,8 +312,7 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
         );
 
         if (ipMinuteCount != null && ipMinuteCount >= properties.getIpMinuteLimit()) {
-
-            throw new VerificationCodeRateLimitException("验证码发送太频繁，请稍后再试");
+            throw new VerificationCodeRateLimitException("验证码发送太频繁，请稍后再试", 60L);
         }
 
         Long ipTodayCount = verifyCodeMapper.selectCount(
@@ -315,8 +323,7 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
         );
 
         if (ipTodayCount != null && ipTodayCount >= properties.getIpDailyLimit()) {
-
-            throw new VerificationCodeRateLimitException("当前网络验证码请求次数已达上限");
+            throw new VerificationCodeRateLimitException("当前网络验证码请求次数已达上限", secondsUntilTomorrow(now));
         }
     }
 
@@ -382,5 +389,11 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
         String result = StringUtils.hasText(message) ? message : "验证码发送失败";
 
         return result.length() > 512 ? result.substring(0, 512) : result;
+    }
+
+    private long secondsUntilTomorrow(LocalDateTime now) {
+        LocalDateTime tomorrow = now.toLocalDate().plusDays(1).atStartOfDay();
+
+        return Math.max(1L, Duration.between(now, tomorrow).getSeconds());
     }
 }
