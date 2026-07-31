@@ -1,4 +1,4 @@
-package com.plagod.dto;
+package com.plagod.vo;
 
 import com.plagod.dto.auth.AuthResultDTO;
 import com.plagod.enums.LoginStatusEnum;

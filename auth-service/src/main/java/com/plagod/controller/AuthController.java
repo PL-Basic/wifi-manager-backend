@@ -7,6 +7,8 @@ import com.plagod.enums.LoginStatusEnum;
 import com.plagod.enums.RegisterStatusEnum;
 import com.plagod.service.UserService;
 import com.plagod.utils.RequestIpUtils;
+import com.plagod.vo.LoginResult;
+import com.plagod.vo.RegisterResult;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 

@@ -1,6 +1,7 @@
 package com.plagod.configuration;
 
 import com.plagod.dto.ApiResponse;
+import com.plagod.exception.VerificationDeliveryException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -79,6 +80,16 @@ public class GlobalExceptionHandler {
                 .status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.fail(400, "请求参数格式错误或缺少必要参数"));
     }
+
+    /**
+     * 发送或核验供应商暂时不可用时返回统一的 HTTP 503。
+     */
+    @ExceptionHandler(VerificationDeliveryException.class)
+    public ResponseEntity<ApiResponse<Void>> handleVerificationDeliveryException(VerificationDeliveryException exception) {
+        String message = exception.getMessage() == null ? "验证码服务暂时不可用" : exception.getMessage();
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(ApiResponse.fail(503, message));
+    }
+
 
     /**
      * 处理业务层明确识别出的非法输入。

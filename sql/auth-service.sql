@@ -1,29 +1,44 @@
 use wifi;
 
 drop table if exists t_verify_code;
-create table t_verify_code(
-    id bigint auto_increment,
-    target varchar(128) not null comment '接收方：手机号或邮箱',
-    target_type varchar(16) not null comment '接收方类型：phone/email',
-    scene varchar(32) not null comment '使用场景：register/login/reset_password/bind_contact',
-    code varchar(16) not null comment '验证码',
-    status tinyint not null default 0 comment '状态：0未使用，1已使用，2已过期',
-    expire_time datetime not null comment '过期时间',
-    verify_time datetime default null comment '验证通过时间',
-    send_ip varchar(45) default null comment '发送请求IP',
-    verify_ip varchar(45) default null comment '验证请求IP',
-    send_status tinyint not null default 0 comment '发送状态：0待发送，1发送成功，2发送失败',
-    send_time datetime default null comment '发送完成时间',
-    send_error varchar(512) default null comment '发送失败原因',
-    create_time datetime not null default current_timestamp comment '创建时间',
+create table t_verify_code (
+    id bigint auto_increment primary key,
+    target varchar(128) not null comment '手机号或邮箱',
+    target_type varchar(16) not null comment 'phone/email',
+    scene varchar(32) not null comment 'register/login/reset_password/bind_contact',
 
-    primary key (id),
-    key idx_target_scene_status (target, scene, status),
-    key idx_target_scene_create_time (target, scene, create_time),
-    key idx_send_ip_scene_create_time (send_ip, scene, create_time),
+    code_hash varchar(100) default null comment '本地验证码BCrypt摘要，云端核验成功后保存提交值摘要',
+    verification_provider varchar(32) not null comment 'email-smtp/local/aliyun-number-auth',
+    provider_out_id varchar(64) default null comment '后端生成的供应商关联ID',
+    provider_biz_id varchar(128) default null comment '供应商短信业务ID',
+    provider_request_id varchar(128) default null comment '供应商发送请求ID',
+    provider_send_code varchar(64) default null comment '供应商发送结果码',
+
+    send_status tinyint not null default 0 comment '0待发送 1成功 2失败',
+    send_time datetime default null,
+    send_error varchar(512) default null,
+
+    verify_status tinyint not null default 0 comment '0未核验 1已核验',
+    verify_attempt_count int not null default 0 comment '有效核验尝试次数',
+    provider_verify_code varchar(64) default null comment '供应商核验接口结果码',
+    provider_verify_result varchar(32) default null comment 'PASS/UNKNOWN等结果',
+    verify_error varchar(512) default null,
+
+    status tinyint not null default 0 comment '0可消费 1已消费 2已过期',
+    expire_time datetime not null,
+    verify_time datetime default null comment '首次核验通过时间',
+    consume_time datetime default null comment '业务消费时间',
+    send_ip varchar(45) default null,
+    verify_ip varchar(45) default null,
+    create_time datetime not null default current_timestamp,
+
+    unique key uk_verify_provider_out_id (verification_provider, provider_out_id),
+    key idx_target_scene_status (target,scene,status),
+    key idx_target_scene_create_time (target,scene,create_time),
+    key idx_send_ip_scene_create_time (send_ip,scene,create_time),
     key idx_expire_time (expire_time),
     key idx_create_time (create_time)
-) default charset=utf8mb4 collate=utf8mb4_unicode_ci comment='验证码记录表';
+) default charset=utf8mb4 collate=utf8mb4_unicode_ci comment='验证码发送、核验与消费记录';
 
 
 drop table if exists t_login_fail_record;

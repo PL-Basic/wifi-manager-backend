@@ -1,4 +1,4 @@
-package com.plagod.dto;
+package com.plagod.vo;
 
 import com.plagod.enums.ConflictFieldEnum;
 import com.plagod.enums.RegisterStatusEnum;

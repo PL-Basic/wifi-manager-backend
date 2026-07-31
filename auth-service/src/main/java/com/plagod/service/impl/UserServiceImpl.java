@@ -14,6 +14,8 @@ import com.plagod.service.UserService;
 import com.plagod.service.VerificationCodeService;
 import com.plagod.utils.JwtUtils;
 import com.plagod.utils.PasswordUtils;
+import com.plagod.vo.LoginResult;
+import com.plagod.vo.RegisterResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -50,7 +52,7 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     @Audited(action = "auth.register")
-    public RegisterResult register(RegisterDTO registerDTO,String verifyIp){
+    public RegisterResult register(RegisterDTO registerDTO, String verifyIp){
         RegisterResult checkResult = checkRegisterContact(registerDTO);
         if (checkResult != null){
             return checkResult;
