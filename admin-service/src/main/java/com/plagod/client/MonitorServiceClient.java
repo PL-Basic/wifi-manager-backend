@@ -15,6 +15,9 @@ import javax.validation.Valid;
 @FeignClient(name = "monitor-service")
 public interface MonitorServiceClient {
 
+    @GetMapping("/internal/admin/health")
+    ApiResponse<String> health();
+
     @GetMapping("/internal/admin/rules")
     ApiResponse<AccessRulePageResult> pageRules(@RequestParam("current") Long current,
                                                 @RequestParam("size") Long size,

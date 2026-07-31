@@ -17,6 +17,15 @@ spring:
           starttls:
             enable: true
             required: true
+  redis:
+    host: ${REDIS_HOST:127.0.0.1}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}
+    database: ${REDIS_DATABASE:0}
+    ssl: ${REDIS_SSL:false}
+    timeout: 500ms
+    lettuce:
+      shutdown-timeout: 100ms
 server:
   port: 8381
 mybatis-plus:
@@ -79,7 +88,9 @@ wifi:
     gateway-token: ${WIFI_GATEWAY_TOKEN:local-gateway-token-change-me}
   internal:
     token: ${WIFI_INTERNAL_TOKEN:local-internal-token-change-me}
-
+  rate-limit:
+    redis-enabled: ${REDIS_RATE_LIMIT_ENABLED:true}
+    redis-fallback-cooldown-millis: 30000
 oauth:
   state-expire-minutes: 10
   connect-timeout-millis: 5000

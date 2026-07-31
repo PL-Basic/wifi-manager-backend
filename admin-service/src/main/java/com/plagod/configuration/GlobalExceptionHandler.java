@@ -1,6 +1,8 @@
 package com.plagod.configuration;
 
 import com.plagod.dto.ApiResponse;
+import com.plagod.exception.ApiStatusException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -92,6 +94,26 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.fail(400, message));
+    }
+
+    @ExceptionHandler(ApiStatusException.class)
+    public ResponseEntity<ApiResponse<Void>> handleApiStatusException(ApiStatusException exception) {
+
+        HttpStatus status = HttpStatus.resolve(exception.getHttpStatus());
+
+        if (status == null) {
+            status = HttpStatus.INTERNAL_SERVER_ERROR;
+        }
+
+        ResponseEntity.BodyBuilder response = ResponseEntity.status(status);
+
+        if (exception.getRetryAfterSeconds() != null) {
+            response.header(HttpHeaders.RETRY_AFTER, String.valueOf(exception.getRetryAfterSeconds()));
+        }
+
+        String message = exception.getMessage() == null ? "请求处理失败" : exception.getMessage();
+
+        return response.body(ApiResponse.fail(exception.getCode(), message));
     }
 
     /**

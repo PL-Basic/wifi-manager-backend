@@ -3,7 +3,9 @@ package com.plagod.controller;
 import com.plagod.client.DeviceServiceClient;
 import com.plagod.dto.ApiResponse;
 import com.plagod.dto.device.*;
+import com.plagod.exception.ApiStatusException;
 import com.plagod.vo.device.*;
+import feign.FeignException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -105,7 +107,31 @@ public class AdminDeviceController {
     public ApiResponse<WifiConfigTaskVO> stageWifiCandidate(@PathVariable String deviceCode,
                                                             @Valid @RequestBody WifiConfigStageDTO stageDTO) {
 
-        return deviceServiceClient.stageWifiCandidate(deviceCode, stageDTO);
+        try {
+            return deviceServiceClient.stageWifiCandidate(deviceCode, stageDTO);
+        } catch (FeignException exception) {
+
+            int status = exception.status();
+
+            if (status == 400) {
+                throw new IllegalArgumentException("候选 WiFi 配置参数无效");
+            }
+
+            if (status == 404) {
+                throw ApiStatusException.notFound("目标 ESP32 不存在或已经退役");
+            }
+
+            if (status == 409) {
+                throw ApiStatusException.conflict("设备当前离线、心跳已经过期，或者配置任务状态已经变化，请刷新后重试");
+            }
+
+            if (status == 429) {
+                throw ApiStatusException.tooManyRequests("设备配置请求过于频繁", 1L);
+            }
+
+            // 内部 401/403、连接失败和下游 5xx 都是服务端问题。
+            throw ApiStatusException.serviceUnavailable("设备配置服务暂时不可用");
+        }
     }
 
     @GetMapping("/{deviceCode}/wifi-config/{requestId}")

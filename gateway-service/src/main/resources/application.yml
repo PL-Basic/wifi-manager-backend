@@ -1,6 +1,6 @@
 server:
   port: 8080
-  forward-headers-strategy: framework
+  forward-headers-strategy: ${FORWARD_HEADERS_STRATEGY:none}
 
 spring:
   cloud:
@@ -60,12 +60,22 @@ spring:
           uri: lb:ws://monitor-service
           predicates:
             - Path=/ws/alerts
+  redis:
+    host: ${REDIS_HOST:127.0.0.1}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}
+    database: ${REDIS_DATABASE:0}
+    ssl: ${REDIS_SSL:false}
+    timeout: 500ms
+    lettuce:
+      shutdown-timeout: 100ms
 jwt:
   secret: ${JWT_SECRET:local-dev-secret-at-least-32-bytes-long-change-me}
 wifi:
   security:
     # 只证明请求经过 Gateway，不能与内部服务 Token 使用同一个值。
     gateway-token: ${WIFI_GATEWAY_TOKEN:local-gateway-token-change-me}
+    trust-proxy-headers: ${WIFI_TRUST_PROXY_HEADERS:false}
   rate-limit:
     auth-per-minute: 30
     portal-per-minute: 12
@@ -73,3 +83,7 @@ wifi:
     websocket-per-minute: 10
     payment-callback-per-minute: 120
     oauth-per-minute: 20
+    commerce-write-per-minute: 30
+    redis-fallback-cooldown-millis: 30000
+    fallback-max-keys: 4096
+    redis-enabled: ${REDIS_RATE_LIMIT_ENABLED:true}

@@ -2,6 +2,7 @@ package com.plagod.filter;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.plagod.dto.ApiResponse;
+import com.plagod.ratelimit.GatewayRateLimiter;
 import com.plagod.utils.JwtUtils;
 import io.jsonwebtoken.Claims;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,8 +20,8 @@ import reactor.core.publisher.Mono;
 
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -32,11 +33,12 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     private static final String INTERNAL_TOKEN_HEADER = "X-Internal-Token";
     private static final String SEC_WEBSOCKET_PROTOCOL_HEADER = "Sec-WebSocket-Protocol";
     private static final String LOCAL_DEMO_CALLBACK = "/payment/callbacks/local-demo";
-    private static final long RATE_WINDOW_MILLIS = 60_000L;
+    private static final String CLIENT_IP_HEADER = "X-Client-IP";
 
     private static final Set<String> TRUST_HEADERS = new HashSet<>(Arrays.asList(
             "X-User-Id", "X-User-Name", "X-User-Role",
-            GATEWAY_TOKEN_HEADER, INTERNAL_TOKEN_HEADER
+            GATEWAY_TOKEN_HEADER, INTERNAL_TOKEN_HEADER,
+            CLIENT_IP_HEADER
     ));
 
     private static final Set<String> AUTH_WHITE_PATHS = new HashSet<>(Arrays.asList(
@@ -64,13 +66,21 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     private static final Pattern USER_SOCIAL_IDENTITIES = Pattern.compile("^/users/(\\d+)/social-identities$");
     private static final Pattern USER_SOCIAL_IDENTITY_DETAIL = Pattern.compile("^/users/(\\d+)/social-identities/(\\d+)$");
 
-    private final Map<String, RateWindow> rateWindows = new ConcurrentHashMap<>();
 
     @Autowired
     private JwtUtils jwtUtils;
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private GatewayRateLimiter gatewayRateLimiter;
+
+    @Value("${wifi.rate-limit.commerce-write-per-minute:30}")
+    private int commerceWriteLimit;
+
+    @Value("${wifi.security.trust-proxy-headers:false}")
+    private boolean trustProxyHeaders;
 
     @Value("${wifi.security.gateway-token}")
     private String gatewayToken;
@@ -93,8 +103,6 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     @Value("${wifi.rate-limit.websocket-per-minute:10}")
     private int websocketLimit;
 
-
-
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         ServerWebExchange cleanExchange = removeUntrustedHeaders(exchange);
@@ -107,19 +115,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
         }
 
         if (isWhitePath(path, method)) {
-            if (isOAuthRatePath(path) && !tryAcquire("oauth:" + clientIp(request), oauthLimit)) {
-                return reject(cleanExchange, HttpStatus.TOO_MANY_REQUESTS, 429, "OAuth 请求过于频繁，请稍后再试");
-            }
-
-            if (isAuthRatePath(path) && !tryAcquire("auth:" + clientIp(request), authLimit)) {
-                return reject(cleanExchange, HttpStatus.TOO_MANY_REQUESTS, 429, "请求过于频繁，请稍后再试");
-            }
-
-            if (LOCAL_DEMO_CALLBACK.equals(path) && !tryAcquire("payment-callback:" + clientIp(request), paymentCallbackLimit)) {
-                return reject(cleanExchange, HttpStatus.TOO_MANY_REQUESTS, 429, "支付回调请求过于频繁");
-            }
-
-            return chain.filter(addTrustedHeaders(cleanExchange, null, null, null));
+            return filterWhitePathRateLimit(cleanExchange, chain, path);
         }
 
         String token = extractToken(request, path);
@@ -141,14 +137,16 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
                 return reject(cleanExchange, HttpStatus.FORBIDDEN, 403, "无权访问该资源");
             }
 
-            if (!passProtectedRateLimit(path, userId)) {
-                return reject(cleanExchange, HttpStatus.TOO_MANY_REQUESTS, 429, "请求过于频繁，请稍后再试");
-            }
+            return filterProtectedRateLimit(cleanExchange, chain, path, method, userId, username, role);
 
-            return chain.filter(addTrustedHeaders(cleanExchange, userId, username, role));
         } catch (Exception exception) {
             return reject(cleanExchange, HttpStatus.UNAUTHORIZED, 401, "登录凭据无效或已经过期");
         }
+    }
+
+    @Override
+    public int getOrder() {
+        return -100;
     }
 
     private ServerWebExchange removeUntrustedHeaders(ServerWebExchange exchange) {
@@ -163,6 +161,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
                 .headers(headers -> {
                     TRUST_HEADERS.forEach(headers::remove);
                     headers.set(GATEWAY_TOKEN_HEADER, gatewayToken);
+                    headers.set(CLIENT_IP_HEADER, clientIp(exchange.getRequest()));
                     if (userId != null) {
                         headers.set("X-User-Id", String.valueOf(userId));
                         headers.set("X-User-Name", username);
@@ -192,12 +191,12 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     }
 
     private boolean isAuthRatePath(String path) {
-        return "/auth/login".equals(path)
+        return "/auth/register".equals(path)
+                || "/auth/login".equals(path)
                 || "/auth/code-login".equals(path)
                 || "/auth/codes".equals(path)
                 || "/auth/reset-password".equals(path);
     }
-
     private boolean isOAuthRatePath(String path) {
         return OAUTH_AUTHORIZE.matcher(path).matches() || OAUTH_CALLBACK.matcher(path).matches();
     }
@@ -376,61 +375,41 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
         return null;
     }
 
-    private boolean passProtectedRateLimit(String path, Long userId) {
-        // 绑定入口会创建 OAuth state，按登录用户限制创建频率。
-        if (OAUTH_BIND.matcher(path).matches()) {
-            return tryAcquire("oauth-bind:" + userId, oauthLimit);
-        }
-        if ("/sessions/portal-authorize".equals(path)) {
-            return tryAcquire("portal:" + userId, portalLimit);
-        }
-        if (LOCATION_REPORT.matcher(path).matches()) {
-            return tryAcquire("location:" + userId, locationLimit);
-        }
-        if ("/ws/alerts".equals(path)) {
-            return tryAcquire("websocket:" + userId, websocketLimit);
-        }
-        return true;
-    }
-
     private String clientIp(ServerHttpRequest request) {
+        if (trustProxyHeaders) {
+            String forwardedFor = request.getHeaders().getFirst("X-Forwarded-For");
+
+            if (StringUtils.hasText(forwardedFor)) {
+                String firstAddress = forwardedFor.split(",")[0].trim();
+
+                if (StringUtils.hasText(firstAddress)) {
+                    return firstAddress;
+                }
+            }
+
+            String realIp = request.getHeaders().getFirst("X-Real-IP");
+
+            if (StringUtils.hasText(realIp)) {
+                return realIp.trim();
+            }
+        }
+
         InetSocketAddress address = request.getRemoteAddress();
+
         if (address == null || address.getAddress() == null) {
             return "unknown";
         }
+
         return address.getAddress().getHostAddress();
     }
 
-    private boolean tryAcquire(String key, int limit) {
-        if (limit <= 0) {
-            return false;
-        }
+    private Mono<Void> reject(ServerWebExchange exchange, HttpStatus status, int code, String message) {
 
-        long now = System.currentTimeMillis();
-        RateWindow window = rateWindows.computeIfAbsent(key, ignored -> new RateWindow(now));
-
-        synchronized (window) {
-            if (now - window.startedAt >= RATE_WINDOW_MILLIS) {
-                window.startedAt = now;
-                window.count = 0;
-            }
-
-            if (window.count >= limit) {
-                return false;
-            }
-
-            window.count++;
-        }
-
-        // 防止长期运行时无效来源无限占用内存。
-        if (rateWindows.size() > 4096) {
-            rateWindows.entrySet().removeIf(entry -> now - entry.getValue().startedAt >= RATE_WINDOW_MILLIS * 2);
-        }
-
-        return true;
+        return reject(exchange, status, code, message, null);
     }
 
-    private Mono<Void> reject(ServerWebExchange exchange, HttpStatus status, int code, String message) {
+    private Mono<Void> reject(ServerWebExchange exchange, HttpStatus status, int code, String message, Long retryAfterSeconds) {
+
         byte[] body;
 
         try {
@@ -443,25 +422,86 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
         exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
         exchange.getResponse().getHeaders().setContentLength(body.length);
 
-        if (status == HttpStatus.TOO_MANY_REQUESTS) {
-            exchange.getResponse().getHeaders().set(HttpHeaders.RETRY_AFTER, "60");
+        if (retryAfterSeconds != null) {
+            exchange.getResponse().getHeaders().set(HttpHeaders.RETRY_AFTER, String.valueOf(Math.max(1L, retryAfterSeconds)));
         }
 
         DataBuffer buffer = exchange.getResponse().bufferFactory().wrap(body);
+
         return exchange.getResponse().writeWith(Mono.just(buffer));
     }
 
-    @Override
-    public int getOrder() {
-        return -100;
-    }
+    private Mono<Void> filterWhitePathRateLimit(ServerWebExchange exchange, GatewayFilterChain chain, String path) {
 
-    private static final class RateWindow {
-        private long startedAt;
-        private int count;
+        String ip = clientIp(exchange.getRequest());
 
-        private RateWindow(long startedAt) {
-            this.startedAt = startedAt;
+        if (isOAuthRatePath(path)) {
+            return rateLimitOrContinue(exchange, chain, "oauth", ip, oauthLimit, "OAuth 请求过于频繁，请稍后再试", null, null, null);
         }
+
+        if (isAuthRatePath(path)) {
+            return rateLimitOrContinue(exchange, chain, "auth", ip, authLimit, "认证请求过于频繁，请稍后再试", null, null, null);
+        }
+
+        if (LOCAL_DEMO_CALLBACK.equals(path)) {
+            return rateLimitOrContinue(exchange, chain, "payment-callback", ip, paymentCallbackLimit, "支付回调请求过于频繁", null, null, null);
+        }
+
+        return chain.filter(addTrustedHeaders(exchange, null, null, null));
     }
+
+    private Mono<Void> filterProtectedRateLimit(ServerWebExchange exchange, GatewayFilterChain chain, String path, HttpMethod method, Long userId, String username, Integer role) {
+
+        String scene = null;
+        int limit = 0;
+
+        if (OAUTH_BIND.matcher(path).matches()) {
+            scene = "oauth-bind";
+            limit = oauthLimit;
+        } else if ("/sessions/portal-authorize".equals(path)) {
+            scene = "portal";
+            limit = portalLimit;
+        } else if (LOCATION_REPORT.matcher(path).matches()) {
+            scene = "location";
+            limit = locationLimit;
+        } else if ("/ws/alerts".equals(path)) {
+            scene = "websocket";
+            limit = websocketLimit;
+        } else if (isCommerceWritePath(path, method)) {
+            scene = "commerce-write";
+            limit = commerceWriteLimit;
+        }
+
+        if (scene == null) {
+            return chain.filter(addTrustedHeaders(exchange, userId, username, role));
+        }
+
+        return rateLimitOrContinue(exchange, chain, scene, String.valueOf(userId), limit, "请求过于频繁，请稍后再试", userId, username, role);
+    }
+
+    private Mono<Void> rateLimitOrContinue(ServerWebExchange exchange, GatewayFilterChain chain, String scene, String subject, int limit, String message, Long userId, String username, Integer role) {
+
+        return gatewayRateLimiter
+                .acquire(scene, subject, limit, Duration.ofMinutes(1))
+                .flatMap(decision -> {
+                    if (!decision.isAllowed()) {
+                        return reject(exchange, HttpStatus.TOO_MANY_REQUESTS, 429, message, decision.getRetryAfterSeconds());
+                    }
+
+                    return chain.filter(addTrustedHeaders(exchange, userId, username, role));
+                });
+    }
+
+    private boolean isCommerceWritePath(String path, HttpMethod method) {
+        if (!HttpMethod.POST.equals(method)) {
+            return false;
+        }
+
+        return "/entitlements/orders".equals(path)
+                || "/entitlements/refunds".equals(path)
+                || ENTITLEMENT_ORDER_CANCEL.matcher(path).matches()
+                || ENTITLEMENT_PAYMENT_CREATE.matcher(path).matches()
+                || ENTITLEMENT_PAYMENT_DEMO_COMPLETE.matcher(path).matches();
+    }
+
 }

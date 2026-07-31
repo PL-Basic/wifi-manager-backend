@@ -8,16 +8,16 @@ public class RequestIpUtils {
 
     }
 
-    //获取客户端IP
     public static String getClientIP(HttpServletRequest request) {
-        String forwardedFor = request.getHeader("X-forwarded-for");
-        if (forwardedFor != null && !forwardedFor.isEmpty()) {
-            return forwardedFor.split(",")[0].trim();
+        /*
+         * X-Client-IP 由 Gateway 删除客户端原值后重新生成，
+         * Auth 不再直接信任客户端提供的代理 Header。
+         */
+        String trustedClientIp = request.getHeader("X-Client-IP");
+        if (trustedClientIp != null && !trustedClientIp.trim().isEmpty()) {
+            return trustedClientIp.trim();
         }
-        String realIp = request.getHeader("X-Real-IP");
-        if (realIp != null && !realIp.isEmpty()) {
-            return realIp;
-        }
+
         return request.getRemoteAddr();
     }
 }

@@ -7,6 +7,7 @@ import com.plagod.exception.VerificationDeliveryException;
 import com.plagod.service.VerificationCodeService;
 import com.plagod.utils.RequestIpUtils;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -35,7 +36,7 @@ public class VerificationController {
 
             return ResponseEntity.ok(ApiResponse.success("验证码已经发送", null));
         } catch (VerificationCodeRateLimitException exception) {
-            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(ApiResponse.fail(429, exception.getMessage(), null));
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).header(HttpHeaders.RETRY_AFTER, String.valueOf(exception.getRetryAfterSeconds())).body(ApiResponse.fail(429, exception.getMessage(), null));
         } catch (IllegalArgumentException exception) {
             return ResponseEntity.badRequest().body(ApiResponse.fail(400, exception.getMessage(), null));
         } catch (VerificationDeliveryException exception) {

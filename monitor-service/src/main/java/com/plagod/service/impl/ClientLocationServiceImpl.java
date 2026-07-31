@@ -8,6 +8,7 @@ import com.plagod.dto.ApiResponse;
 import com.plagod.dto.ClientLocationReportDTO;
 import com.plagod.entity.monitor.ClientLocation;
 import com.plagod.entity.monitor.LocationAuthorization;
+import com.plagod.exception.ApiStatusException;
 import com.plagod.mapper.ClientLocationMapper;
 import com.plagod.mapper.LocationAuthorizationMapper;
 import com.plagod.service.ClientLocationService;
@@ -17,6 +18,9 @@ import com.plagod.vo.device.LocationSessionContextVO;
 import com.plagod.vo.monitor.ClientLocationPageResult;
 import com.plagod.vo.monitor.ClientLocationVO;
 import com.plagod.vo.monitor.LocationAuthorizationVO;
+import feign.FeignException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -30,6 +34,8 @@ import java.util.List;
 
 @Service
 public class ClientLocationServiceImpl implements ClientLocationService {
+
+    private static final Logger log = LoggerFactory.getLogger(ClientLocationServiceImpl.class);
 
     @Autowired
     private ClientLocationMapper clientLocationMapper;
@@ -47,6 +53,8 @@ public class ClientLocationServiceImpl implements ClientLocationService {
     @Value("${wifi.location.maximum-speed-meters-per-second:100}")
     private double maximumSpeedMetersPerSecond;
 
+
+
     @Override
     @Audited(action = "location.report", includeArgs = false)
     @Transactional(rollbackFor = Exception.class)
@@ -61,7 +69,8 @@ public class ClientLocationServiceImpl implements ClientLocationService {
         LocationAuthorization authorization = locationAuthorizationMapper.selectByUserIdForUpdate(userId);
 
         if (authorization == null || !Integer.valueOf(1).equals(authorization.getEnabled()) || authorization.getConsentTime() == null) {
-            throw new IllegalStateException("用户尚未开启位置共享");
+
+            throw ApiStatusException.conflict("用户尚未开启位置共享");
         }
 
         validateReportInterval(authorization, now);
@@ -245,22 +254,33 @@ public class ClientLocationServiceImpl implements ClientLocationService {
     }
 
     private LocationSessionContextVO resolveContext(Long userId, Long sessionId) {
+
         if (!StringUtils.hasText(internalToken)) {
-            throw new IllegalStateException("位置 Session 校验功能当前不可用");
+            throw ApiStatusException.serviceUnavailable("位置 Session 校验功能当前不可用");
         }
 
         ApiResponse<LocationSessionContextVO> response;
 
         try {
             response = deviceLocationSessionClient.getLocationContext(sessionId, userId, internalToken);
-        } catch (feign.FeignException exception) {
-            throw new IllegalStateException("Session 当前不可用于位置上报，或设备服务暂时不可用");
+        } catch (FeignException exception) {
+            log.warn("位置 Session 上下文调用失败，sessionId={}，status={}", sessionId, exception.status());
+
+            throw mapLocationSessionFailure(exception.status());
         }
 
-        LocationSessionContextVO context = response == null ? null : response.getData();
+        if (response == null) {
+            throw ApiStatusException.serviceUnavailable("设备服务暂时没有返回结果");
+        }
 
-        if (response == null || response.getCode() != 200 || context == null) {
-            throw new IllegalStateException("设备服务未返回有效 Session 关系");
+        if (response.getCode() != 200) {
+            throw mapLocationSessionFailure(response.getCode());
+        }
+
+        LocationSessionContextVO context = response.getData();
+
+        if (context == null) {
+            throw ApiStatusException.badGateway("设备服务未返回有效 Session 关系");
         }
 
         if (!java.util.Objects.equals(userId, context.getUserId())
@@ -268,10 +288,33 @@ public class ClientLocationServiceImpl implements ClientLocationService {
                 || context.getNodeId() == null
                 || !StringUtils.hasText(context.getDeviceCode())
                 || !StringUtils.hasText(context.getMac())) {
-            throw new IllegalStateException("设备服务返回的 Session 关系不完整");
+
+            throw ApiStatusException.badGateway("设备服务返回的 Session 关系不完整");
         }
 
         return context;
+    }
+
+    private ApiStatusException mapLocationSessionFailure(int status) {
+
+        if (status == 404) {
+            return ApiStatusException.notFound("Session 不存在或无权访问");
+        }
+
+        if (status == 409) {
+            return ApiStatusException.conflict("Session 当前不可用于位置上报");
+        }
+
+        if (status == 429) {
+            return ApiStatusException.tooManyRequests("位置 Session 校验请求过于频繁", 1L);
+        }
+
+        if (status == 502) {
+            return ApiStatusException.badGateway("设备服务返回了无效响应");
+        }
+
+        // 401 通常代表内部 Token 配置不一致，不能把它暴露成用户未登录。
+        return ApiStatusException.serviceUnavailable("设备服务暂时不可用");
     }
 
     private void validateIdentity(Long userId, Long sessionId) {
@@ -332,10 +375,15 @@ public class ClientLocationServiceImpl implements ClientLocationService {
 
         LocalDateTime nextAllowedTime = lastReportTime.plusSeconds(minimumReportIntervalSeconds);
 
-        // 刚好到达最小间隔时允许上报。
-        if (now.isBefore(nextAllowedTime)) {
-            throw new IllegalArgumentException("位置上报过于频繁，请稍后再试");
+        if (!now.isBefore(nextAllowedTime)) {
+            return;
         }
+
+        long remainingMillis = java.time.Duration.between(now, nextAllowedTime).toMillis();
+
+        long retryAfterSeconds = Math.max(1L, (remainingMillis + 999L) / 1000L);
+
+        throw ApiStatusException.tooManyRequests("位置上报过于频繁，请稍后再试", retryAfterSeconds);
     }
 
     private void validateLocationJump(ClientLocation previous, ClientLocationReportDTO current, LocalDateTime now) {
