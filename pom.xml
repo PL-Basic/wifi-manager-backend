@@ -30,6 +30,7 @@
         <module>admin-service</module>
         <module>monitor-service</module>
         <module>wifi-service-security-spring-boot-starter</module>
+        <module>database-migration</module>
     </modules>
 
     <properties>

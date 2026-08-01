@@ -1,0 +1,178 @@
+create table t_duration_purchase (
+    purchase_id bigint auto_increment,
+    order_no varchar(64) not null,
+    user_id bigint not null,
+    purchased_seconds bigint not null,
+    remaining_seconds bigint not null,
+    paid_amount_cents bigint not null,
+    refundable tinyint not null default 1,
+    status tinyint not null default 1 comment '1-可用，2-耗尽，3-已退款，4-退款冻结',
+    refunded_amount_cents bigint default null,
+    refund_time datetime default null,
+    create_time datetime not null default current_timestamp,
+    update_time datetime not null default current_timestamp on update current_timestamp,
+
+    primary key (purchase_id),
+    unique key uk_duration_order_no (order_no),
+    key idx_duration_user_status (user_id, status),
+    key idx_duration_fifo (user_id, status, create_time, purchase_id)
+) default charset=utf8mb4 collate=utf8mb4_unicode_ci comment='购买时长批次';
+
+create table t_network_entitlement (
+    entitlement_id bigint auto_increment,
+    user_id bigint not null,
+    mode varchar(16) not null comment 'SUBSCRIPTION或DURATION',
+    subscription_start_time datetime default null,
+    subscription_end_time datetime default null,
+    remaining_seconds bigint not null default 0,
+    status tinyint not null default 1 comment '0-停用，1-有效',
+    version int not null default 0,
+    create_time datetime not null default current_timestamp,
+    update_time datetime not null default current_timestamp on update current_timestamp,
+
+    primary key (entitlement_id),
+    unique key uk_entitlement_user (user_id),
+    key idx_entitlement_mode_status (mode, status),
+    key idx_entitlement_end_time (subscription_end_time)
+) default charset=utf8mb4 collate=utf8mb4_unicode_ci comment='网络访问权益';
+
+create table t_entitlement_usage_log (
+    id bigint auto_increment,
+    entitlement_id bigint not null,
+    user_id bigint not null,
+    request_id varchar(64) not null,
+    line_no int not null,
+    purchase_id bigint default null,
+    authorization_mode varchar(16) not null,
+    session_id bigint default null,
+    change_seconds bigint not null comment '正数增加，负数消费',
+    before_seconds bigint not null,
+    after_seconds bigint not null,
+    reason varchar(32) not null,
+    create_time datetime not null default current_timestamp,
+
+    primary key (id),
+    unique key uk_usage_request_line (request_id, line_no),
+    key idx_usage_purchase (purchase_id),
+    key idx_usage_entitlement_time (entitlement_id, create_time),
+    key idx_usage_user_time (user_id, create_time),
+    key idx_usage_session (session_id)
+) default charset=utf8mb4 collate=utf8mb4_unicode_ci comment='权益时长变更流水';
+
+create table t_entitlement_order (
+    order_id bigint auto_increment,
+    order_no varchar(64) not null,
+    user_id bigint not null,
+    client_request_id varchar(64) not null,
+    product_code varchar(32) not null,
+    entitlement_mode varchar(16) not null comment 'SUBSCRIPTION或DURATION',
+    grant_seconds bigint not null comment '支付成功后应发放的权益秒数快照',
+    amount_cents bigint not null comment '订单应付金额，整数分',
+    paid_amount_cents bigint not null default 0,
+    refunded_amount_cents bigint not null default 0,
+    status varchar(24) not null comment '订单状态',
+    expire_time datetime not null,
+    paid_time datetime default null,
+    fulfilled_time datetime default null,
+    close_time datetime default null,
+    close_reason varchar(64) default null,
+    version int not null default 0,
+    create_time datetime not null default current_timestamp,
+    update_time datetime not null default current_timestamp on update current_timestamp,
+
+    primary key (order_id),
+    unique key uk_entitlement_order_no (order_no),
+    unique key uk_entitlement_order_request (user_id, client_request_id),
+    key idx_entitlement_order_user_time (user_id, create_time),
+    key idx_entitlement_order_user_status (user_id, status),
+    key idx_entitlement_order_expire (status, expire_time)
+) default charset=utf8mb4 collate=utf8mb4_unicode_ci comment='权益业务订单';
+
+create table t_payment_record (
+    payment_id bigint auto_increment,
+    payment_no varchar(64) not null,
+    order_no varchar(64) not null,
+    user_id bigint not null,
+    request_id varchar(64) not null,
+    business_key varchar(64) not null comment '传递给支付渠道的业务幂等键',
+    channel varchar(32) not null,
+    amount_cents bigint not null,
+    paid_amount_cents bigint not null default 0,
+    refunded_amount_cents bigint not null default 0,
+    status varchar(24) not null comment '支付状态',
+    channel_transaction_no varchar(64) default null,
+    callback_event_id varchar(64) default null,
+    callback_payload_hash char(64) default null,
+    paid_time datetime default null,
+    failure_code varchar(32) default null,
+    failure_message varchar(255) default null,
+    version int not null default 0,
+    create_time datetime not null default current_timestamp,
+    update_time datetime not null default current_timestamp on update current_timestamp,
+
+    primary key (payment_id),
+    unique key uk_payment_no (payment_no),
+    unique key uk_payment_user_request (user_id, request_id),
+    unique key uk_payment_business_key (business_key),
+    unique key uk_payment_channel_trade (channel, channel_transaction_no),
+    unique key uk_payment_callback_event (channel, callback_event_id),
+    unique key uk_payment_order (order_no),
+    key idx_payment_user_time (user_id, create_time),
+    key idx_payment_status_time (status, create_time)
+) default charset=utf8mb4 collate=utf8mb4_unicode_ci comment='支付记录';
+
+create table t_refund_record (
+    refund_id bigint auto_increment,
+    refund_no varchar(64) not null,
+    order_no varchar(64) not null,
+    payment_no varchar(64) not null,
+    purchase_id bigint not null,
+    user_id bigint not null,
+    request_id varchar(64) not null,
+    channel varchar(32) not null,
+    status varchar(24) not null comment '退款状态',
+    reason varchar(255) default null,
+    requested_seconds bigint not null,
+    requested_amount_cents bigint not null,
+    refunded_seconds bigint default null,
+    refund_amount_cents bigint default null,
+    reviewer_id bigint default null,
+    reviewer_name varchar(64) default null,
+    review_comment varchar(255) default null,
+    review_time datetime default null,
+    channel_refund_no varchar(64) default null,
+    channel_event_id varchar(64) default null,
+    channel_payload_hash char(64) default null,
+    failure_message varchar(255) default null,
+    complete_time datetime default null,
+    version int not null default 0,
+    create_time datetime not null default current_timestamp,
+    update_time datetime not null default current_timestamp on update current_timestamp,
+
+    primary key (refund_id),
+    unique key uk_refund_no (refund_no),
+    unique key uk_refund_user_request (user_id, request_id),
+    unique key uk_refund_channel_no (channel, channel_refund_no),
+    unique key uk_refund_channel_event (channel, channel_event_id),
+    key idx_refund_order (order_no),
+    key idx_refund_purchase (purchase_id),
+    key idx_refund_user_time (user_id, create_time),
+    key idx_refund_status_time (status, create_time)
+) default charset=utf8mb4 collate=utf8mb4_unicode_ci comment='退款申请和渠道处理记录';
+
+create table t_trade_status_log (
+    id bigint auto_increment,
+    business_type varchar(16) not null comment 'ORDER、PAYMENT或REFUND',
+    business_no varchar(64) not null,
+    event_key varchar(128) not null comment '触发状态变化的稳定事件标识',
+    from_status varchar(24) default null,
+    to_status varchar(24) not null,
+    operator_type varchar(16) not null comment 'USER、ADMIN、CHANNEL或SYSTEM',
+    operator_id bigint default null,
+    remark varchar(255) default null,
+    create_time datetime not null default current_timestamp,
+
+    primary key (id),
+    unique key uk_trade_status_event (business_type, business_no,event_key,to_status),
+    key idx_trade_status_business ( business_type,business_no, create_time)
+) default charset=utf8mb4 collate=utf8mb4_unicode_ci comment='交易状态转换流水';

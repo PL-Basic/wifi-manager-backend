@@ -1,216 +1,159 @@
 # Wifi Manager Backend
 
-Wifi Manager Backend 是一个面向家庭、小型商户和边缘设备场景的 WiFi 管控后端项目。项目目标是构建一套云边协同的 WiFi 管理系统：云端负责认证、用户、设备、规则、告警、审计等业务能力，边缘设备负责接入真实网络环境并执行控制指令。
+Wifi Manager Backend 是面向家庭和小型边缘网络场景的 WiFi 管理后端 Demo。
 
-当前版本主要作为开源基点项目，重点完成认证体系、验证码体系、登录安全保护、用户与设备管理基础能力，并为后续 ESP32 网关、Portal 认证和 SaaS 化管理能力打基础。
+当前版本定位为 Backend Demo 1.0：Java 微服务、Gateway、MySQL、Redis、Nacos、MQTT 与 ESP32 边缘节点组成的单实例或小规模本地系统。核心模块已完成，当前处于最终审计和可复现部署收尾阶段。
 
-## 项目定位
-
-项目设想中，系统由三部分组成：
-
-- 云端服务：负责统一认证、用户管理、设备管理、规则管理、告警审计和指令下发。
-- 边缘设备：例如 ESP32 网关或其他边缘节点，接收云端指令并控制实际网络访问。
-- 管理前端：供管理员或客户查看用户、设备、规则、会话、流量、告警等信息。
-
-后续目标是扩展为“客户可购买使用的云边协同 WiFi 管控 SaaS”，让非专业用户也能通过简单配置完成自家网络或设备系统的管理。
-
-## 技术栈
-
-- Java 8
-- Spring Boot
-- Spring Cloud
-- Spring Cloud Gateway
-- Spring Cloud Alibaba Nacos
-- MyBatis-Plus
-- MySQL
-- JWT
-- Spring Security
-- MQTT
-- Maven
-
-## 模块说明
+## 系统结构
 
 ```text
-Wifi_Manager
-├── gateway-service                  网关服务，负责路由与 JWT 鉴权
-├── auth-service                     认证服务，负责登录、注册、验证码、重置密码
-├── user-service                     用户服务，负责用户资料、头像、状态管理等
-├── device-service                   设备服务，负责 ESP32 节点、会话、黑名单、流量、MQTT 指令
-├── monitor-service                  监控服务，负责规则、告警、审计、定位、WebSocket 推送
-├── admin-service                    管理后台 BFF，聚合用户、设备、监控等服务
-├── wifi-common-api                  通用 API、DTO、工具类
-├── wifi-common-mybatis              通用 MyBatis 实体与配置
-├── wifi-audit-spring-boot-starter   审计 starter
-└── sql                              数据库初始化脚本
+Vue 管理端 -> gateway-service :8080
+                 |-> auth-service    :8381
+                 |-> user-service    :8382
+                 |-> device-service  :8383
+                 |-> monitor-service :8384
+                 |-> admin-service   :8385
+                         |-> MySQL / Redis / Nacos / MQTT Broker
+                                                   |-> ESP32 边缘节点
 ```
 
-## 已完成功能
+Gateway 是外部客户端唯一入口。业务服务之间通过 Feign 和受保护的内部请求通信。
 
-### 认证与账号
+## Maven 模块
 
-- 用户名密码登录
-- 手机号/邮箱登录
-- 邮箱验证码发送
-- 验证码登录
-- 注册账号
-- 注册时必须至少绑定手机号或邮箱
-- 忘记密码 / 重置密码
-- JWT token 签发与校验
-- 网关接口放行与鉴权
+```text
+wifi-common-api                       共享 DTO、VO 和响应结构
+wifi-common-mybatis                   共享实体、Mapper 基础能力
+wifi-audit-spring-boot-starter        可选审计能力
+wifi-service-security-spring-boot-starter  内部请求安全
+wifi-gen                              MyBatis-Plus 代码生成器
+gateway-service                      路由、JWT、来源限制、WebSocket、限流
+auth-service                         注册、登录、验证码、密码重置、OAuth
+user-service                         用户、头像、权益、订单、支付、退款
+device-service                       ESP32、Session、MQTT、命令、流量
+monitor-service                      规则、告警、审计、GPS/GIS、分析
+admin-service                        管理端 BFF
+database-migration                   Flyway 数据库迁移入口
+```
 
-### 验证码体系
+`admin-service` 只聚合下游服务，不直接拥有业务数据。
 
-- 验证码记录表 `t_verify_code`
-- 按手机号/邮箱区分接收方
-- 按业务场景区分验证码用途
-- 验证码过期时间
-- 验证码状态：未使用、已使用、已过期
-- 发送 IP 与验证 IP 记录
-- 发送状态记录：待发送、发送成功、发送失败
-- 发送失败原因记录
-- 发送频率限制
-- 定时清理验证码记录
+## 已完成能力
 
-### 登录失败保护
+### 认证、OAuth 和验证码
 
-- 登录失败记录表 `t_login_fail_record`
-- 以“账号 + 登录类型 + IP”为保护维度
-- 连续密码错误次数统计
-- 失败统计时间窗口
-- 临时锁定
-- 锁定过期后自动重置
-- 正确登录后清理失败记录
-- 登录失败记录定时清理
-- 最大失败次数、锁定时间、统计窗口、记录保留天数配置化
+- 用户名密码、手机或邮箱验证码登录，注册和密码重置。
+- 验证码场景、过期、使用状态、发送记录、登录失败和临时锁定。
+- Redis 多实例原子限流。
+- GitHub、QQ、微信 OAuth，身份绑定、重复回调幂等和已有账号绑定。
+- JWT 签发和 Gateway 统一校验。
 
-### 设备与监控基础能力
+### 用户、权益和支付
 
-- ESP32 节点管理
-- 黑名单管理
-- 会话管理
-- 流量日志
-- MQTT 指令主题规划
-- 访问规则
-- 告警事件
-- 审计记录
-- WebSocket 告警推送
-- GPS/定位数据接口基础能力
+- 用户资料、头像、状态和管理员操作。
+- 本人资料 PUT 只允许修改昵称；邮箱和手机号必须经过验证码绑定；头像使用独立上传接口。
+- 权益快照、时长订单、本地 Demo 支付回调、退款审核、权益流水和余额扣减。
+- 支付回调幂等，重复回调不会重复增加权益。
 
-## 环境要求
+### ESP32、Session 和 MQTT
 
-- JDK 8
-- Maven 3.x
-- MySQL 8.x
-- Nacos 2.x
-- MQTT Broker，例如 Mosquitto
+- ESP32 节点、Portal Session、名额限制、续租、心跳、断线和关闭。
+- `ALLOW`、`REVOKE_ACCESS`、`DISCONNECT_MAC`、`BLOCK_TRAFFIC`、`KICK` 命令。
+- MQTT 设备身份校验、命令 Outbox、发布状态、重试、超时和执行结果回传。
+- `requestId` 幂等、旧命令并发保护和设备执行失败状态。
+
+### 流量、规则、告警和 GIS
+
+- 流量事件接收、`eventId` 幂等、设备/Session/MAC 归属校验。
+- SNI、目标 IP、端口、协议、上下行流量和访问规则匹配。
+- 告警生成、抑制、审计和 WebSocket 推送基础能力。
+- GPS 基础上报，和真实用户、ACTIVE Session、节点、MAC 关联。
+- 轨迹、停留点、热力图和围栏基础查询与分析接口。
+
+## 访问入口和接口语义
+
+Gateway 默认地址：`http://localhost:8080`。
+
+```text
+/auth/**          认证、注册、验证码、OAuth
+/users/**         本人资料、头像和个人操作
+/entitlements/**  权益、订单、支付、退款
+/sessions/**      Portal Session 和授权状态
+/admin/**         管理端 BFF
+/internal/**      仅供服务间调用
+```
+
+状态码约定：`400` 参数或业务前置条件错误；`401` 未认证；`403` 无权访问；`404` 资源不存在；`409` 状态冲突或设备离线；`429` 限流；`502` 下游或 MQTT 调用失败；`503` 外部 Provider 不可用；`500` 未预期内部错误。
+
+完整接口见 [docs/backend-api-index.md](docs/backend-api-index.md)。
 
 ## 环境变量
 
-为了避免敏感信息提交到仓库，项目使用环境变量覆盖本地配置。
-
-| 变量名 | 说明 | 默认值 |
-| --- | --- | --- |
-| `MYSQL_USERNAME` | MySQL 用户名 | `root` |
-| `MYSQL_PASSWORD` | MySQL 密码 | 空 |
-| `JWT_SECRET` | JWT 签名密钥，auth-service 和 gateway-service 必须一致 | 本地开发默认值 |
-| `MAIL_HOST` | 邮箱 SMTP 地址 | `smtp.qq.com` |
-| `MAIL_PORT` | SMTP 端口 | `587` |
-| `MAIL_USERNAME` | 发件邮箱账号 | 空 |
-| `MAIL_PASSWORD` | 邮箱 SMTP 授权码 | 空 |
-| `MQTT_BROKER_URL` | MQTT Broker 地址 | `tcp://localhost:1883` |
-| `MQTT_CLIENT_ID` | MQTT 客户端 ID | `device-service` |
-| `WIFI_AVATAR_DIR` | 头像上传目录 | `uploads/avatars` |
-
-PowerShell 示例：
-
-```powershell
-$env:MYSQL_USERNAME="root"
-$env:MYSQL_PASSWORD="your_mysql_password"
-$env:JWT_SECRET="your-jwt-secret-at-least-32-bytes-long"
-$env:MAIL_USERNAME="your_email@qq.com"
-$env:MAIL_PASSWORD="your_smtp_auth_code"
-```
-
-## 数据库初始化
-
-先创建数据库：
-
-```sql
-create database if not exists wifi default charset utf8mb4 collate utf8mb4_unicode_ci;
-```
-
-然后按需执行 `sql` 目录下的脚本：
+生产环境至少配置：
 
 ```text
-sql/init-database.sql
-sql/auth-service.sql
-sql/user-service.sql
-sql/device-service.sql
-sql/monitor-service.sql
-sql/user-operation-request.sql
+MYSQL_URL MYSQL_USERNAME MYSQL_PASSWORD
+JWT_SECRET WIFI_GATEWAY_TOKEN WIFI_INTERNAL_TOKEN
+NACOS_SERVER_ADDR NACOS_USERNAME NACOS_PASSWORD NACOS_NAMESPACE NACOS_GROUP
+REDIS_HOST REDIS_PORT REDIS_PASSWORD REDIS_DATABASE REDIS_SSL
+MQTT_BROKER_URL MQTT_CLIENT_ID MQTT_USERNAME MQTT_PASSWORD
+WIFI_COMMAND_SECRET_KEY WIFI_ALLOWED_ORIGIN WIFI_TRUST_PROXY_HEADERS WIFI_AVATAR_DIR
 ```
+
+OAuth、短信、邮件和本地 Demo 支付配置见 [deploy/backend.env.example](deploy/backend.env.example)。真实环境必须更换 JWT、内部请求、Redis、MQTT 和 WiFi 命令密钥。
+
+## 数据库迁移
+
+新环境只创建空数据库：
+
+```sql
+CREATE DATABASE wifi CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
+
+执行 Flyway：
+
+```powershell
+D:\java\maven\apache-maven-3.9.13\bin\mvn.cmd -pl database-migration -am package
+java -jar database-migration\target\database-migration-0.0.1-SNAPSHOT.jar
+```
+
+新库执行全部迁移版本。已有开发库首次接管时按 [docs/backend-deployment.md](docs/backend-deployment.md) 登记基线，不能用历史 SQL 覆盖现有数据。`sql` 目录仅用于基线核对。
 
 ## 启动顺序
 
-建议先启动基础设施：
+先启动：`MySQL`、`Redis`、`Nacos`、`MQTT Broker`；再启动：`auth-service`、`user-service`、`device-service`、`monitor-service`、`admin-service`、`gateway-service`。
 
-```text
-MySQL
-Nacos
-MQTT Broker
-```
-
-再启动后端服务：
-
-```text
-auth-service
-user-service
-device-service
-monitor-service
-admin-service
-gateway-service
-```
-
-网关默认端口：
-
-```text
-http://localhost:8080
-```
-
-## 编译
-
-编译主要服务：
+## 编译与测试
 
 ```powershell
-.\mvnw.cmd -pl auth-service,user-service,monitor-service -am compile
+D:\java\maven\apache-maven-3.9.13\bin\mvn.cmd compile
+D:\java\maven\apache-maven-3.9.13\bin\mvn.cmd -pl gateway-service,device-service,user-service -am test
 ```
 
-完整编译：
-
-```powershell
-.\mvnw.cmd compile
-```
-
-## 前端项目
-
-前端仓库位于：
+部署说明、接口清单和配置模板：
 
 ```text
-F:\MyProject\vue\wifi
+docs/backend-deployment.md
+docs/backend-api-index.md
+deploy/backend.env.example
 ```
 
-前端基于 Vue 3 + Vite，负责登录、注册、个人中心、用户管理、设备管理、规则、告警、审计、定位展示等页面。
+## Demo 边界
 
-## 后续规划
+当前 Demo 已完成单实例主流程和本地可复现验证。多地域容灾、OAuth Provider 熔断、短信 PENDING 长期恢复、大规模归档、极端并发最终一致性、MQTT TLS/ACL/密钥轮换、JWT 在线轮换、真实支付渠道和 SaaS 多租户属于后续生产化边界，不影响当前 Demo 主流程。
 
-- 完善 ESP32 Portal 认证流程
-- 完善云端到边缘设备的指令确认机制
-- 扩展客户/租户管理能力
-- 增加设备绑定、客户开通、套餐或授权控制
-- 完善 README、接口文档和部署文档
-- 增加自动化测试
-- 完善前端管理台交互体验
+当前范围不包含 OTA。
 
-## 说明
+## 代码与数据边界
 
-该项目仍处于持续开发阶段，当前版本更偏向学习、实践和开源基点建设。项目重点不只是完成单个功能，而是逐步形成一个包含认证、网关、数据库设计、前端联调、设备接入规划和安全保护策略的完整系统。
+- `auth-service` 负责认证、验证码和 OAuth。
+- `user-service` 负责用户和权益数据。
+- `device-service` 负责设备、Session、黑名单、命令和流量接入。
+- `monitor-service` 负责规则、告警、审计和 GIS。
+- `admin-service` 只作为 BFF 聚合接口。
+- 用户身份必须来自 JWT，不能通过伪造 `X-User-*` 请求头获得。
+- 设备事件必须使用 `deviceCode`、`sessionId`、`mac`、`eventId` 或 `requestId` 进行可信关联。
+
+## 当前状态
+
+Backend Demo 1.0 的核心模块已经完成。当前收尾内容是最终代码审计、最小回归、数据库迁移、部署文档和 README 核对；完成后后端开发结束，进入前端联调和项目文档整理。

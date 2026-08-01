@@ -53,7 +53,7 @@ public class AdminUserController {
     public ApiResponse<UserVO> updateUser(@PathVariable Long userId,
                                           @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
                                           @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole,
-                                          @RequestBody UserUpdateDTO updateDTO) {
+                                          @Valid @RequestBody UserUpdateDTO updateDTO) {
         return userServiceClient.updateUser(userId, operatorId, operatorRole, updateDTO);
     }
 
@@ -61,7 +61,7 @@ public class AdminUserController {
     public ApiResponse<Void> updateStatus(@PathVariable Long userId,
                                           @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
                                           @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole,
-                                          @RequestBody UserStatusDTO statusDTO) {
+                                          @Valid @RequestBody UserStatusDTO statusDTO) {
         return userServiceClient.updateStatus(userId, operatorId, operatorRole, statusDTO);
     }
 

@@ -1,0 +1,4 @@
+mybatis-plus:
+  configuration:
+    # 生产环境禁止输出 SQL 参数，避免邮箱、手机号和业务数据进入日志。
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
