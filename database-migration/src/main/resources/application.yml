@@ -1,0 +1,24 @@
+spring:
+  application:
+    name: database-migration
+
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: "${DB_MIGRATION_URL:jdbc:mysql://localhost:3306/wifi?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&useSSL=false}"
+    username: "${DB_MIGRATION_USERNAME:${MYSQL_USERNAME:root}}"
+    password: "${DB_MIGRATION_PASSWORD:${MYSQL_PASSWORD:}}"
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    encoding: UTF-8
+    validate-on-migrate: true
+    out-of-order: false
+    clean-disabled: true
+    connect-retries: 3
+
+    # 空库保持 false，依次执行 V1.1 到 V1.6。
+    # 已存在的当前开发库首次接管时设为 true，登记为 1.6。
+    baseline-on-migrate: ${DB_MIGRATION_BASELINE_ON_MIGRATE:false}
+    baseline-version: "1.6"
+    baseline-description: Existing Wifi Manager schema

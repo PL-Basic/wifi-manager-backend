@@ -15,9 +15,9 @@ public class Main {
         DataSourceConfig dsc = new DataSourceConfig();
         dsc.setDbType(DbType.MYSQL);
         dsc.setDriverName("com.mysql.cj.jdbc.Driver");
-        dsc.setUsername("root");
-        dsc.setPassword("20040903");
-        dsc.setUrl("jdbc:mysql://localhost:3306/wifi?useUnicode=true&characterEncoding=utf8");
+        dsc.setUsername(requireEnvironment("MYSQL_USERNAME"));
+        dsc.setPassword(requireEnvironment("MYSQL_PASSWORD"));
+        dsc.setUrl(requireEnvironment("MYSQL_URL"));
         mpg.setDataSource(dsc);
 
         GlobalConfig gc = new GlobalConfig();
@@ -40,5 +40,15 @@ public class Main {
         mpg.setStrategy(strategy);
 
         mpg.execute();
+    }
+
+    private static String requireEnvironment(String name) {
+        String value = System.getenv(name);
+
+        if (value == null || value.trim().isEmpty()) {
+            throw new IllegalStateException("缺少代码生成器环境变量：" + name);
+        }
+
+        return value.trim();
     }
 }

@@ -5,4 +5,8 @@ spring:
     nacos:
       discovery:
         server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
-        ip: 127.0.0.1
+        username: ${NACOS_USERNAME:}
+        password: ${NACOS_PASSWORD:}
+        namespace: ${NACOS_NAMESPACE:}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
+        ip: ${NACOS_DISCOVERY_IP:}

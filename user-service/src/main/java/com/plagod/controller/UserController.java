@@ -12,6 +12,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.validation.Valid;
+
 @RestController
 @RequestMapping("/users")
 public class UserController {
@@ -24,6 +26,7 @@ public class UserController {
 
     @Autowired
     private AvatarStorageService avatarStorageService;
+
 
     @GetMapping("/{userId}")
     public ApiResponse<UserVO> getOwnUser(@PathVariable Long userId,
@@ -38,7 +41,7 @@ public class UserController {
     public ApiResponse<UserVO> updateOwnUser(@PathVariable Long userId,
                                              @RequestHeader("X-User-Id") Long currentUserId,
                                              @RequestHeader("X-User-Role") Integer currentRole,
-                                             @RequestBody UserUpdateDTO updateDTO) {
+                                             @Valid @RequestBody UserUpdateDTO updateDTO) {
 
         requireSelf(userId, currentUserId);
 
@@ -46,7 +49,11 @@ public class UserController {
             throw new IllegalArgumentException("用户修改参数不能为空");
         }
 
-        // 本人资料入口不能修改角色、连接策略、配额和到期时间。
+        // 本人资料接口只允许修改昵称。
+        // 邮箱和手机号必须通过验证码绑定流程修改，头像必须通过上传接口修改。
+        updateDTO.setEmail(null);
+        updateDTO.setPhone(null);
+        updateDTO.setAvatar(null);
         updateDTO.setRole(null);
         updateDTO.setMaxConnections(null);
         updateDTO.setDailyQuotaMinutes(null);

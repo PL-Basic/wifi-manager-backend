@@ -48,7 +48,7 @@ public class InternalAdminUserController {
     public ApiResponse<UserVO> updateUser(@PathVariable Long userId,
                                           @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
                                           @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole,
-                                          @RequestBody UserUpdateDTO updateDTO) {
+                                          @Valid @RequestBody UserUpdateDTO updateDTO) {
 
         if (updateDTO == null) {
             throw new IllegalArgumentException("用户修改参数不能为空");

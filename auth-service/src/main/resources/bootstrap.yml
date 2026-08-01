@@ -4,14 +4,20 @@ spring:
   cloud:
     nacos:
       discovery:
-        server-addr: localhost:8848
-        ip: 127.0.0.1
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        username: ${NACOS_USERNAME:}
+        password: ${NACOS_PASSWORD:}
+        namespace: ${NACOS_NAMESPACE:}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
+        ip: ${NACOS_DISCOVERY_IP:}
       config:
-        server-addr: localhost:8848
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        username: ${NACOS_USERNAME:}
+        password: ${NACOS_PASSWORD:}
+        namespace: ${NACOS_NAMESPACE:}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
         file-extension: yml
-        # 共享配置：Nacos 控制台必须先建 wifi-jwt.yml（DEFAULT_GROUP），否则启动会 warn 但不致命。
-        # auth-service 与 gateway-service 拉同一份，保证 jwt.secret 在签发端与解析端一致。
         extension-configs:
           - data-id: wifi-jwt.yml
-            group: DEFAULT_GROUP
+            group: ${NACOS_GROUP:DEFAULT_GROUP}
             refresh: true
