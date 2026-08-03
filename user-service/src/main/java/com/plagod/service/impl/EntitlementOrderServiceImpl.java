@@ -77,7 +77,20 @@ public class EntitlementOrderServiceImpl implements EntitlementOrderService {
             vo.setEntitlementMode(productProperties.normalizeMode(product.getMode()));
             vo.setGrantSeconds(product.getGrantSeconds());
             vo.setAmountCents(product.getAmountCents());
+            vo.setCustomAmountAllowed(false);
             result.add(vo);
+        }
+
+        if (productProperties.isCustomDurationEnabled()) {
+            EntitlementProductVO custom = new EntitlementProductVO();
+            custom.setProductCode(EntitlementProductProperties.CUSTOM_DURATION_PRODUCT_CODE);
+            custom.setName("自定义网络时长");
+            custom.setEntitlementMode(EntitlementTradeConstants.MODE_DURATION);
+            custom.setCustomAmountAllowed(true);
+            custom.setMinAmountCents(productProperties.getCustomDurationMinAmountCents());
+            custom.setMaxAmountCents(productProperties.getCustomDurationMaxAmountCents());
+            custom.setSecondsPerCent(productProperties.getCustomDurationSecondsPerCent());
+            result.add(custom);
         }
 
         return result;
@@ -95,7 +108,10 @@ public class EntitlementOrderServiceImpl implements EntitlementOrderService {
 
         String clientRequestId = normalizeRequestId(request.getClientRequestId());
 
-        EntitlementProductProperties.Product product = productProperties.requireEnabledProduct(request.getProductCode());
+        EntitlementProductProperties.Product product = productProperties.requireOrderProduct(
+                request.getProductCode(),
+                request.getCustomAmountCents()
+        );
 
         LocalDateTime now = LocalDateTime.now();
 
@@ -104,6 +120,7 @@ public class EntitlementOrderServiceImpl implements EntitlementOrderService {
         candidate.setUserId(userId);
         candidate.setClientRequestId(clientRequestId);
         candidate.setProductCode(productProperties.normalizeProductCode(product.getCode()));
+        candidate.setOrderType("PURCHASE");
         candidate.setEntitlementMode(productProperties.normalizeMode(product.getMode()));
         candidate.setGrantSeconds(product.getGrantSeconds());
         candidate.setAmountCents(product.getAmountCents());
@@ -123,8 +140,10 @@ public class EntitlementOrderServiceImpl implements EntitlementOrderService {
             throw new IllegalStateException("订单创建结果无法确认");
         }
 
-        if (!candidate.getProductCode().equals(stored.getProductCode())) {
-            throw new IllegalArgumentException("clientRequestId 已被其他商品订单使用");
+        if (!candidate.getProductCode().equals(stored.getProductCode())
+                || !candidate.getAmountCents().equals(stored.getAmountCents())
+                || !candidate.getGrantSeconds().equals(stored.getGrantSeconds())) {
+            throw new IllegalArgumentException("clientRequestId 已被其他订单参数使用");
         }
 
         appendStatusLog(EntitlementTradeConstants.BUSINESS_ORDER, stored.getOrderNo(), "CREATE:" + stored.getClientRequestId(), null, EntitlementTradeConstants.ORDER_PENDING_PAYMENT, EntitlementTradeConstants.OPERATOR_USER, userId, "用户创建权益订单");
@@ -352,6 +371,7 @@ public class EntitlementOrderServiceImpl implements EntitlementOrderService {
         vo.setOrderNo(order.getOrderNo());
         vo.setUserId(order.getUserId());
         vo.setProductCode(order.getProductCode());
+        vo.setOrderType(order.getOrderType());
         vo.setEntitlementMode(order.getEntitlementMode());
         vo.setGrantSeconds(order.getGrantSeconds());
         vo.setAmountCents(order.getAmountCents());
@@ -363,6 +383,7 @@ public class EntitlementOrderServiceImpl implements EntitlementOrderService {
         vo.setFulfilledTime(order.getFulfilledTime());
         vo.setCloseTime(order.getCloseTime());
         vo.setCloseReason(order.getCloseReason());
+        vo.setRemark(order.getRemark());
         vo.setCreateTime(order.getCreateTime());
 
         return vo;

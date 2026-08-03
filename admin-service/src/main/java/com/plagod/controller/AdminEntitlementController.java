@@ -42,4 +42,9 @@ public class AdminEntitlementController {
 
         return userServiceClient.pageRefunds(current, size, userId, status);
     }
+
+    @GetMapping("/refunds/{refundNo}")
+    public ApiResponse<RefundVO> getRefund(@PathVariable String refundNo) {
+        return userServiceClient.getRefund(refundNo);
+    }
 }

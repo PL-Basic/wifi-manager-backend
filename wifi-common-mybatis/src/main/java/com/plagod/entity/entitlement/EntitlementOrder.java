@@ -21,6 +21,7 @@ public class EntitlementOrder implements Serializable {
     private Long userId;
     private String clientRequestId;
     private String productCode;
+    private String orderType;
     private String entitlementMode;
     private Long grantSeconds;
     private Long amountCents;
@@ -32,6 +33,7 @@ public class EntitlementOrder implements Serializable {
     private LocalDateTime fulfilledTime;
     private LocalDateTime closeTime;
     private String closeReason;
+    private String remark;
     private Integer version;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;

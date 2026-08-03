@@ -29,7 +29,8 @@ POST /auth/register                         注册
 POST /auth/login                            密码登录
 POST /auth/code-login                       验证码登录
 POST /auth/codes                            发送验证码
-POST /auth/reset-password                   重置密码
+POST /auth/reset-password                   重置密码（新密码不能与当前密码相同）
+GET  /auth/oauth/providers                  查询 OAuth Provider 可用性
 
 GET  /auth/oauth/{provider}/authorize       发起社交登录
 GET  /auth/oauth/{provider}/callback        OAuth Provider 回调
@@ -45,7 +46,7 @@ GET  /users/avatars/{filename}              读取公开头像文件
 GET    /users/{userId}                                      查询本人资料
 PUT    /users/{userId}                                      修改本人资料
 POST   /users/{userId}/avatar                               上传本人头像
-POST   /users/{userId}/purge-requests                       申请彻底删除账号
+POST   /users/{userId}/purge-requests                       非超管用户申请彻底删除本人账号
 GET    /users/{userId}/social-identities                    查询已绑定社交身份
 DELETE /users/{userId}/social-identities/{identityId}       解绑社交身份
 GET    /auth/oauth/{provider}/bind                           发起社交身份绑定
@@ -121,7 +122,10 @@ GET /admin/users/{userId}/entitlement
 GET /admin/users/{userId}/entitlement/purchases
 GET /admin/users/{userId}/entitlement/usage-logs
 POST /admin/users/{userId}/entitlement/adjustments
+POST /admin/users/{userId}/entitlement/reward-orders
 ```
+
+账号删除规则：role=0 超级管理员不能通过逻辑删除、直接物理删除、删除申请或审批路径删除；role=1 普通管理员允许被 role=0 删除，也可为自己的账号提交删除申请，但不能删除 role=0/1 管理员；role=2 普通用户按现有管理员权限删除。删除申请审批仅允许 role=0，批准时会再次核验目标当前角色。
 
 ### 设备、黑名单与命令
 
@@ -134,6 +138,7 @@ POST /admin/devices/{deviceCode}/kick
 POST /admin/devices/{deviceCode}/disconnect-mac
 POST /admin/devices/{deviceCode}/block-traffic
 POST /admin/devices/{deviceCode}/wifi-config/candidate
+GET  /admin/devices/{deviceCode}/wifi-config/latest
 GET  /admin/devices/{deviceCode}/wifi-config/{requestId}
 GET /admin/devices/blacklist; POST /admin/devices/blacklist
 DELETE /admin/devices/blacklist/{mac}
@@ -158,6 +163,7 @@ GET /admin/locations
 
 ```text
 GET /admin/entitlements/refunds
+GET /admin/entitlements/refunds/{refundNo}
 PUT /admin/entitlements/refunds/{refundNo}/review
 POST /admin/entitlements/refunds/{refundNo}/demo-result
 
@@ -183,13 +189,27 @@ GET /admin/geofences/events
 WS /ws/alerts
 ```
 
-只允许管理员连接。浏览器通过子协议携带 JWT：
+只允许管理员连接。浏览器必须经 Gateway `8080` 连接，不能直连 monitor-service `8384`；浏览器通过子协议向 Gateway 携带 JWT：
 
 ```text
 Sec-WebSocket-Protocol: access_token, {JWT}
 ```
 
-## 9. 内部接口边界
+Gateway 校验 JWT 和管理员角色后删除原始 JWT，只向 monitor-service 转发 `access_token` 子协议标记、可信身份头和 Gateway Token。monitor-service 先验证服务凭据，再使用 Gateway 注入的身份建立连接。
+
+退款申请的 `purchaseId` 是字符串业务标识，对应购买记录的唯一 `order_no`。请求体字段为 `requestId`、`purchaseId`、`reason`；数据库 `purchase_id` 仅是内部关联主键，不作为用户输入或公开购买 ID。
+
+服务端使用应用层 `PING`，客户端回复 `PONG`；长期无响应的连接会被关闭并由客户端退避重连。
+
+## 9. Gateway 健康检查
+
+```text
+GET /health/gateway
+```
+
+该端点只检查 Gateway 自身是否可响应，不依赖 user-service 或其他业务服务。
+
+## 10. 内部接口边界
 
 所有 `/internal/**` 接口只供微服务之间调用，不属于前端或设备公开 API。
 

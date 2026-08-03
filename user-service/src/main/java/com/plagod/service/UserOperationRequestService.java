@@ -8,5 +8,5 @@ public interface UserOperationRequestService {
 
     Long requestPurge(Long targetUserId, Long requesterId, String requesterName, String reason);
 
-    void review(Long id, Long approverId, String approverName, UserOperationReviewDTO dto);
+    void review(Long id, Long approverId, String approverName, Integer approverRole, UserOperationReviewDTO dto);
 }

@@ -96,12 +96,13 @@ oauth:
   connect-timeout-millis: 5000
   read-timeout-millis: 8000
   allowed-return-origins:
-    - http://localhost:5173
+    - ${OAUTH_ALLOWED_RETURN_ORIGIN:${WIFI_ALLOWED_ORIGIN:http://localhost:5173}}
+    - ${OAUTH_ALLOWED_RETURN_ORIGIN_ALT:${WIFI_ALLOWED_ORIGIN_ALT:http://127.0.0.1:5173}}
 
   github:
     client-id: ${GITHUB_OAUTH_CLIENT_ID:}
     client-secret: ${GITHUB_OAUTH_CLIENT_SECRET:}
-    redirect-uri: ${GITHUB_OAUTH_REDIRECT_URI:http://localhost:8080/auth/oauth/github/callback}
+    redirect-uri: ${GITHUB_OAUTH_REDIRECT_URI:http://localhost:5173/oauth-complete/github}
     scope: "read:user user:email"
     authorization-uri: https://github.com/login/oauth/authorize
     token-uri: https://github.com/login/oauth/access_token
@@ -111,7 +112,7 @@ oauth:
   qq:
     client-id: ${QQ_OAUTH_CLIENT_ID:}
     client-secret: ${QQ_OAUTH_CLIENT_SECRET:}
-    redirect-uri: ${QQ_OAUTH_REDIRECT_URI:http://localhost:8080/auth/oauth/qq/callback}
+    redirect-uri: ${QQ_OAUTH_REDIRECT_URI:http://localhost:5173/oauth-complete/qq}
     scope: get_user_info
     authorization-uri: https://graph.qq.com/oauth2.0/authorize
     token-uri: https://graph.qq.com/oauth2.0/token
@@ -121,7 +122,7 @@ oauth:
   wechat:
     client-id: ${WECHAT_OAUTH_CLIENT_ID:}
     client-secret: ${WECHAT_OAUTH_CLIENT_SECRET:}
-    redirect-uri: ${WECHAT_OAUTH_REDIRECT_URI:http://localhost:8080/auth/oauth/wechat/callback}
+    redirect-uri: ${WECHAT_OAUTH_REDIRECT_URI:http://localhost:5173/oauth-complete/wechat}
     scope: snsapi_login
     authorization-uri: https://open.weixin.qq.com/connect/qrconnect
     token-uri: https://api.weixin.qq.com/sns/oauth2/access_token

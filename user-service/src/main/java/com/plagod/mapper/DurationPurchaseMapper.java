@@ -21,6 +21,9 @@ public interface DurationPurchaseMapper extends BaseMapper<DurationPurchase> {
     @Select("select * from t_duration_purchase where purchase_id = #{purchaseId} limit 1 for update")
     DurationPurchase selectByIdForUpdate(@Param("purchaseId") Long purchaseId);
 
+    @Select("select * from t_duration_purchase where order_no = #{orderNo} limit 1")
+    DurationPurchase selectByOrderNo(@Param("orderNo") String orderNo);
+
     @Select("select * from t_duration_purchase " +
             "where user_id = #{userId} and status = 4 " +
             "order by purchase_id limit 1 for update")

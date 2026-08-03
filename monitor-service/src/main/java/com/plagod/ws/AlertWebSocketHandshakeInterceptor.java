@@ -1,7 +1,8 @@
 package com.plagod.ws;
 
-import com.plagod.utils.JwtUtils;
-import io.jsonwebtoken.Claims;
+import com.plagod.configuration.AlertWebSocketProperties;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -15,15 +16,15 @@ import org.springframework.web.socket.server.HandshakeInterceptor;
 import javax.annotation.PostConstruct;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 @Component
 public class AlertWebSocketHandshakeInterceptor
         implements HandshakeInterceptor {
+
+    private static final Logger log = LoggerFactory.getLogger(AlertWebSocketHandshakeInterceptor.class);
 
     private static final String GATEWAY_TOKEN_HEADER = "X-Gateway-Token";
 
@@ -37,17 +38,11 @@ public class AlertWebSocketHandshakeInterceptor
 
     private static final String PROTOCOL_HEADER = "Sec-WebSocket-Protocol";
 
-    @Autowired
-    private JwtUtils jwtUtils;
-
     @Value("${wifi.security.gateway-token}")
     private String expectedGatewayToken;
 
-    @Value("${wifi.websocket.allowed-origin:http://localhost:5173}")
-    private String allowedOrigin;
-
-    @Value("${wifi.websocket.allowed-origin-alt:http://127.0.0.1:5173}")
-    private String allowedOriginAlt;
+    @Autowired
+    private AlertWebSocketProperties webSocketProperties;
 
     private Set<String> allowedOrigins;
 
@@ -60,8 +55,9 @@ public class AlertWebSocketHandshakeInterceptor
 
         allowedOrigins = new HashSet<>();
 
-        addAllowedOrigin(allowedOrigin);
-        addAllowedOrigin(allowedOriginAlt);
+        for (String origin : webSocketProperties.getAllowedOrigins()) {
+            addAllowedOrigin(origin);
+        }
 
         if (allowedOrigins.isEmpty()) {
             throw new IllegalStateException("WebSocket 至少需要配置一个允许的 Origin");
@@ -73,83 +69,63 @@ public class AlertWebSocketHandshakeInterceptor
 
         if (!isAllowedOrigin(request.getHeaders().getFirst(ORIGIN_HEADER))) {
 
-            return reject(response, HttpStatus.FORBIDDEN);
+            return reject(response, HttpStatus.FORBIDDEN, "ORIGIN_NOT_ALLOWED", request, null, null);
         }
 
         String suppliedGatewayToken = request.getHeaders().getFirst(GATEWAY_TOKEN_HEADER);
 
         if (!constantTimeEquals(suppliedGatewayToken, expectedGatewayToken)) {
 
-            return reject(response, HttpStatus.UNAUTHORIZED);
+            return reject(response, HttpStatus.UNAUTHORIZED, "GATEWAY_TOKEN_MISMATCH", request, null, null);
         }
 
-        String jwt = extractProtocolToken(request);
-
-        if (!StringUtils.hasText(jwt)) {
-            return reject(response, HttpStatus.UNAUTHORIZED);
+        if (!hasAccessTokenProtocol(request)) {
+            return reject(response, HttpStatus.UNAUTHORIZED, "ACCESS_TOKEN_PROTOCOL_MISSING", request, null, null);
         }
+
+        Long headerUserId;
+        Integer headerRole;
 
         try {
-            Claims claims = jwtUtils.parseToken(jwt);
-
-            Long jwtUserId = JwtUtils.getUserId(claims);
-            String jwtUsername = claims.get("username", String.class);
-            Integer jwtRole = parseInteger(claims.get("role"));
-
-            Long headerUserId = parseLong(request.getHeaders().getFirst(USER_ID_HEADER));
-
-            String headerUsername = request.getHeaders().getFirst(USER_NAME_HEADER);
-
-            Integer headerRole = parseInteger(request.getHeaders().getFirst(USER_ROLE_HEADER));
-
-            if (jwtUserId == null || jwtUserId <= 0 || !StringUtils.hasText(jwtUsername) || !isAdmin(jwtRole)) {
-
-                return reject(response, HttpStatus.FORBIDDEN);
-            }
-
-            // JWT 与 Gateway 注入身份必须完全一致。
-            if (!jwtUserId.equals(headerUserId) || !jwtUsername.equals(headerUsername) || !jwtRole.equals(headerRole)) {
-
-                return reject(response, HttpStatus.UNAUTHORIZED);
-            }
-
-            attributes.put("userId", jwtUserId);
-            attributes.put("username", jwtUsername);
-            attributes.put("role", jwtRole);
-
-            return true;
+            headerUserId = parseLong(request.getHeaders().getFirst(USER_ID_HEADER));
+            headerRole = parseInteger(request.getHeaders().getFirst(USER_ROLE_HEADER));
         } catch (Exception exception) {
-            return reject(response, HttpStatus.UNAUTHORIZED);
+            return reject(response, HttpStatus.UNAUTHORIZED, "IDENTITY_HEADER_INVALID", request, null, null);
         }
+
+        String headerUsername = request.getHeaders().getFirst(USER_NAME_HEADER);
+
+        if (headerUserId == null || headerUserId <= 0 || !StringUtils.hasText(headerUsername) || headerRole == null) {
+            return reject(response, HttpStatus.UNAUTHORIZED, "IDENTITY_HEADER_INVALID", request, headerUserId, headerRole);
+        }
+
+        if (!isAdmin(headerRole)) {
+            return reject(response, HttpStatus.FORBIDDEN, "IDENTITY_ROLE_FORBIDDEN", request, headerUserId, headerRole);
+        }
+
+        // JWT 已由 Gateway 验证；这里只接收 Gateway 注入且经过服务凭据保护的身份。
+        attributes.put("userId", headerUserId);
+        attributes.put("username", headerUsername);
+        attributes.put("role", headerRole);
+
+        return true;
     }
 
     @Override
     public void afterHandshake(ServerHttpRequest request, ServerHttpResponse response, WebSocketHandler wsHandler, Exception exception) {
-        // 握手后不需要额外处理。？？
+        // 握手完成后的连接生命周期由 Handler 统一维护。
     }
 
-    private String extractProtocolToken(ServerHttpRequest request) {
-
-        List<String> protocols = new ArrayList<>();
-
+    private boolean hasAccessTokenProtocol(ServerHttpRequest request) {
         for (String header : request.getHeaders().getOrEmpty(PROTOCOL_HEADER)) {
-
             for (String item : header.split(",")) {
-                if (StringUtils.hasText(item)) {
-                    protocols.add(item.trim());
+                if ("access_token".equals(item.trim())) {
+                    return true;
                 }
             }
         }
 
-        for (int index = 0; index + 1 < protocols.size(); index++) {
-
-            if ("access_token".equals(protocols.get(index))) {
-
-                return protocols.get(index + 1);
-            }
-        }
-
-        return null;
+        return false;
     }
 
     private boolean isAllowedOrigin(String origin) {
@@ -186,10 +162,44 @@ public class AlertWebSocketHandshakeInterceptor
         return MessageDigest.isEqual(supplied.getBytes(StandardCharsets.UTF_8), expected.getBytes(StandardCharsets.UTF_8));
     }
 
-    private boolean reject(ServerHttpResponse response, HttpStatus status) {
+    private boolean reject(
+            ServerHttpResponse response,
+            HttpStatus status,
+            String reason,
+            ServerHttpRequest request,
+            Long trustedUserId,
+            Integer trustedRole) {
 
         response.setStatusCode(status);
+
+        log.warn(
+                "alert websocket handshake rejected: reason={}, status={}, path={}, origin={}, gatewayTokenPresent={}, accessTokenProtocolPresent={}, identityHeadersPresent={}, trustedUserId={}, trustedRole={}",
+                reason,
+                status.value(),
+                request.getURI().getPath(),
+                safeLogValue(request.getHeaders().getFirst(ORIGIN_HEADER)),
+                StringUtils.hasText(request.getHeaders().getFirst(GATEWAY_TOKEN_HEADER)),
+                hasAccessTokenProtocol(request),
+                hasIdentityHeaders(request),
+                trustedUserId,
+                trustedRole);
+
         return false;
+    }
+
+    private boolean hasIdentityHeaders(ServerHttpRequest request) {
+        return StringUtils.hasText(request.getHeaders().getFirst(USER_ID_HEADER))
+                && StringUtils.hasText(request.getHeaders().getFirst(USER_NAME_HEADER))
+                && StringUtils.hasText(request.getHeaders().getFirst(USER_ROLE_HEADER));
+    }
+
+    private String safeLogValue(String value) {
+        if (!StringUtils.hasText(value)) {
+            return "<missing>";
+        }
+
+        String normalized = value.replace('\r', '_').replace('\n', '_').trim();
+        return normalized.length() <= 160 ? normalized : normalized.substring(0, 160);
     }
 
     private void addAllowedOrigin(String origin) {

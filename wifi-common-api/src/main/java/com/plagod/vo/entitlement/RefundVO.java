@@ -10,7 +10,7 @@ public class RefundVO {
     private String refundNo;
     private String orderNo;
     private String paymentNo;
-    private Long purchaseId;
+    private String purchaseId;
     private Long userId;
     private String requestId;
     private String channel;

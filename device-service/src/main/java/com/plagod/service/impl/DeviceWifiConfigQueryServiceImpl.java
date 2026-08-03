@@ -2,7 +2,9 @@ package com.plagod.service.impl;
 
 import com.plagod.constant.DeviceWifiConfigStatus;
 import com.plagod.entity.device.DeviceWifiConfigRecord;
+import com.plagod.entity.device.Esp32Node;
 import com.plagod.mapper.DeviceWifiConfigRecordMapper;
+import com.plagod.mapper.Esp32NodeMapper;
 import com.plagod.service.DeviceWifiConfigQueryService;
 import com.plagod.vo.device.WifiConfigTaskVO;
 import org.springframework.beans.BeanUtils;
@@ -15,6 +17,8 @@ public class DeviceWifiConfigQueryServiceImpl implements DeviceWifiConfigQuerySe
 
     @Autowired
     private DeviceWifiConfigRecordMapper wifiConfigRecordMapper;
+    @Autowired
+    private Esp32NodeMapper esp32NodeMapper;
 
     @Override
     public WifiConfigTaskVO getTask(String deviceCode, String requestId) {
@@ -28,10 +32,21 @@ public class DeviceWifiConfigQueryServiceImpl implements DeviceWifiConfigQuerySe
             throw new IllegalArgumentException("候选 WiFi 配置任务不存在");
         }
 
-        WifiConfigTaskVO vo = new WifiConfigTaskVO();
-        BeanUtils.copyProperties(record, vo);
-        vo.setStatusName(DeviceWifiConfigStatus.nameOf(record.getStatus()));
-        return vo;
+        return toVO(record);
+    }
+
+    @Override
+    public WifiConfigTaskVO getLatestTask(String deviceCode) {
+
+        String cleanDeviceCode = cleanRequired(deviceCode, 64, "deviceCode 不能为空");
+        Esp32Node node = esp32NodeMapper.selectByDeviceCodeIncludeDeleted(cleanDeviceCode);
+
+        if (node == null || !cleanDeviceCode.equals(node.getDeviceCode())) {
+            throw new IllegalArgumentException("目标 ESP32 不存在");
+        }
+
+        DeviceWifiConfigRecord record = wifiConfigRecordMapper.selectLatestByNodeId(node.getNodeId());
+        return record == null ? null : toVO(record);
     }
 
     private String cleanRequired(String value, int maxLength, String message) {
@@ -45,5 +60,12 @@ public class DeviceWifiConfigQueryServiceImpl implements DeviceWifiConfigQuerySe
             throw new IllegalArgumentException(message + "，长度超限");
         }
         return cleaned;
+    }
+
+    private WifiConfigTaskVO toVO(DeviceWifiConfigRecord record) {
+        WifiConfigTaskVO vo = new WifiConfigTaskVO();
+        BeanUtils.copyProperties(record, vo);
+        vo.setStatusName(DeviceWifiConfigStatus.nameOf(record.getStatus()));
+        return vo;
     }
 }

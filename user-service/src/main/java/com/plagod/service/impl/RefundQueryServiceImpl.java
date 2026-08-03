@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.plagod.constant.EntitlementTradeConstants;
 import com.plagod.entity.entitlement.RefundRecord;
+import com.plagod.exception.ApiStatusException;
 import com.plagod.mapper.RefundRecordMapper;
 import com.plagod.service.RefundQueryService;
 import com.plagod.vo.entitlement.RefundPageResult;
@@ -69,6 +70,16 @@ public class RefundQueryServiceImpl implements RefundQueryService {
         }
 
         return page(current, size, userId, status);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public RefundVO getForAdmin(String refundNo) {
+        RefundRecord refund = refundMapper.selectByRefundNo(normalizeRefundNo(refundNo));
+        if (refund == null) {
+            throw ApiStatusException.notFound("退款单不存在");
+        }
+        return toVO(refund);
     }
 
     private RefundPageResult page(long current, long size, Long userId, String status) {
@@ -137,6 +148,7 @@ public class RefundQueryServiceImpl implements RefundQueryService {
     private RefundVO toVO(RefundRecord refund) {
         RefundVO vo = new RefundVO();
         BeanUtils.copyProperties(refund, vo);
+        vo.setPurchaseId(refund.getOrderNo());
         return vo;
     }
 }

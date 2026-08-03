@@ -29,6 +29,7 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
                         "/auth/codes",
                         "/auth/code-login",
                         "/auth/reset-password",
+                        "/auth/oauth/providers",
                         "/auth/oauth/*/authorize",
                         "/auth/oauth/*/bind",
                         "/auth/oauth/*/callback"

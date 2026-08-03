@@ -12,8 +12,8 @@ spring:
         cors-configurations:
           '[/**]':
             allowed-origins:
-              - ${WIFI_ALLOWED_ORIGIN:http://localhost:5173}
-              - ${WIFI_ALLOWED_ORIGIN_ALT:http://127.0.0.1:5173}
+              - ${WIFI_ALLOWED_ORIGIN:http://portal.test:5173}
+              - ${WIFI_ALLOWED_ORIGIN_ALT:http://localhost:5173}
             allowed-methods:
               - GET
               - POST
@@ -86,4 +86,4 @@ wifi:
     commerce-write-per-minute: 30
     redis-fallback-cooldown-millis: 30000
     fallback-max-keys: 4096
-    redis-enabled: ${REDIS_RATE_LIMIT_ENABLED:true}
+    redis-enabled: ${REDIS_RATE_LIMIT_ENABLED:false}

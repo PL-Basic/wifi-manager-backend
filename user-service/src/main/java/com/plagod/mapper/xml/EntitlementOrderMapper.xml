@@ -3,14 +3,16 @@
 <mapper namespace="com.plagod.mapper.EntitlementOrderMapper">
     <insert id="insertOrResolveExisting">
         insert into t_entitlement_order (
-             order_no, user_id, client_request_id, product_code, entitlement_mode,
+             order_no, user_id, client_request_id, product_code, order_type, entitlement_mode,
              grant_seconds, amount_cents, paid_amount_cents, refunded_amount_cents,
-             status, expire_time, version, create_time, update_time
+             status, expire_time, paid_time, fulfilled_time, close_time, close_reason,
+             remark, version, create_time, update_time
         )
         values(
              #{orderNo}, #{userId}, #{clientRequestId}, #{productCode},
-             #{entitlementMode}, #{grantSeconds}, #{amountCents}, #{paidAmountCents},
-             #{refundedAmountCents}, #{status}, #{expireTime}, #{version},
+             #{orderType}, #{entitlementMode}, #{grantSeconds}, #{amountCents}, #{paidAmountCents},
+             #{refundedAmountCents}, #{status}, #{expireTime}, #{paidTime},
+             #{fulfilledTime}, #{closeTime}, #{closeReason}, #{remark}, #{version},
              #{createTime}, #{updateTime}
         )
          on duplicate key update order_id = last_insert_id(order_id)

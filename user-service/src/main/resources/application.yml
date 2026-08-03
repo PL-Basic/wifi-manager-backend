@@ -26,12 +26,35 @@ wifi:
   entitlement:
     order-expire-minutes: 15
     close-delay-ms: 60000
+    # 自定义时长按当前基础价换算：1 元 = 1 小时，即每 1 分 = 36 秒。
+    custom-duration-enabled: true
+    custom-duration-min-amount-cents: 100
+    custom-duration-max-amount-cents: 100000
+    custom-duration-seconds-per-cent: 36
     products:
       - code: DURATION_1H
         name: 1小时网络时长
         mode: DURATION
         grant-seconds: 3600
         amount-cents: 100
+        enabled: true
+      - code: DURATION_10H
+        name: 10小时网络时长
+        mode: DURATION
+        grant-seconds: 36000
+        amount-cents: 1000
+        enabled: true
+      - code: DURATION_50H
+        name: 50小时网络时长
+        mode: DURATION
+        grant-seconds: 180000
+        amount-cents: 5000
+        enabled: true
+      - code: DURATION_100H
+        name: 100小时网络时长
+        mode: DURATION
+        grant-seconds: 360000
+        amount-cents: 10000
         enabled: true
       - code: SUBSCRIPTION_30D
         name: 30天网络订阅

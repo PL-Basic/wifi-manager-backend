@@ -2,6 +2,7 @@ package com.plagod.client;
 
 import com.plagod.dto.ApiResponse;
 import com.plagod.dto.entitlement.EntitlementAdjustmentRequest;
+import com.plagod.dto.entitlement.EntitlementRewardOrderRequest;
 import com.plagod.dto.entitlement.LocalDemoRefundResultRequest;
 import com.plagod.dto.entitlement.RefundReviewRequest;
 import com.plagod.dto.user.UserOperationReviewDTO;
@@ -9,6 +10,7 @@ import com.plagod.dto.user.UserPurgeRequestDTO;
 import com.plagod.dto.user.UserStatusDTO;
 import com.plagod.dto.user.UserUpdateDTO;
 import com.plagod.vo.entitlement.DurationPurchasePageResult;
+import com.plagod.vo.entitlement.EntitlementOrderVO;
 import com.plagod.vo.entitlement.EntitlementUsagePageResult;
 import com.plagod.vo.entitlement.RefundPageResult;
 import com.plagod.vo.entitlement.RefundVO;
@@ -62,6 +64,7 @@ public interface UserServiceClient {
     ApiResponse<Long> requestPurgeUser(@PathVariable("userId") Long userId,
                                        @RequestHeader(value = "X-User-Id", required = false) Long requesterId,
                                        @RequestHeader(value = "X-User-Name", required = false) String requesterName,
+                                       @RequestHeader(value = "X-User-Role", required = false) Integer requesterRole,
                                        @RequestBody UserPurgeRequestDTO purgeRequestDTO);
 
     @GetMapping("/internal/admin/users/operation-requests")
@@ -73,6 +76,7 @@ public interface UserServiceClient {
     ApiResponse<Void> reviewOperationRequest(@PathVariable("id") Long id,
                                              @RequestHeader(value = "X-User-Id", required = false) Long approverId,
                                              @RequestHeader(value = "X-User-Name", required = false) String approverName,
+                                             @RequestHeader(value = "X-User-Role", required = false) Integer approverRole,
                                              @RequestBody UserOperationReviewDTO dto);
 
     @GetMapping("/internal/admin/users/stats")
@@ -97,6 +101,14 @@ public interface UserServiceClient {
                                                          @RequestHeader("X-User-Name") String operatorName,
                                                          @RequestBody EntitlementAdjustmentRequest request);
 
+    @PostMapping("/internal/admin/entitlements/users/{userId}/reward-orders")
+    ApiResponse<EntitlementOrderVO> createRewardOrder(
+            @PathVariable("userId") Long userId,
+            @RequestHeader("X-User-Id") Long operatorId,
+            @RequestHeader("X-User-Name") String operatorName,
+            @RequestHeader("X-User-Role") Integer operatorRole,
+            @RequestBody EntitlementRewardOrderRequest request);
+
     @PutMapping("/internal/admin/entitlements/refunds/{refundNo}/review")
     ApiResponse<RefundVO> reviewRefund(@PathVariable("refundNo") String refundNo,
                                        @RequestHeader("X-User-Id") Long reviewerId,
@@ -112,4 +124,7 @@ public interface UserServiceClient {
                                               @RequestParam("size") Long size,
                                               @RequestParam(value = "userId", required = false) Long userId,
                                               @RequestParam(value = "status", required = false) String status);
+
+    @GetMapping("/internal/admin/entitlements/refunds/{refundNo}")
+    ApiResponse<RefundVO> getRefund(@PathVariable("refundNo") String refundNo);
 }

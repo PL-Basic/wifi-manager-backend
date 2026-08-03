@@ -4,8 +4,10 @@ import com.plagod.constant.OAuthProvider;
 import org.springframework.stereotype.Component;
 
 import java.util.EnumMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import com.plagod.vo.OAuthProviderAvailabilityVO;
 
 @Component
 public class OAuthProviderRegistry {
@@ -35,5 +37,24 @@ public class OAuthProviderRegistry {
         }
 
         return adapter;
+    }
+
+    public List<OAuthProviderAvailabilityVO> listAvailability() {
+        List<OAuthProviderAvailabilityVO> result = new ArrayList<>();
+        addAvailability(result, OAuthProvider.GITHUB, "GitHub");
+        addAvailability(result, OAuthProvider.QQ, "QQ");
+        addAvailability(result, OAuthProvider.WECHAT, "微信");
+        return result;
+    }
+
+    private void addAvailability(List<OAuthProviderAvailabilityVO> result,
+                                 OAuthProvider provider,
+                                 String displayName) {
+        OAuthProviderAdapter adapter = adapters.get(provider);
+        result.add(new OAuthProviderAvailabilityVO(
+                provider.value(),
+                displayName,
+                adapter != null && adapter.isAvailable()
+        ));
     }
 }

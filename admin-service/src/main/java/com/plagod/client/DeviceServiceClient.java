@@ -123,5 +123,7 @@ public interface DeviceServiceClient {
     ApiResponse<WifiConfigTaskVO> getWifiConfigTask(@PathVariable("deviceCode") String deviceCode,
                                                     @PathVariable("requestId") String requestId);
 
+    @GetMapping("/internal/admin/devices/{deviceCode}/wifi-config/latest")
+    ApiResponse<WifiConfigTaskVO> getLatestWifiConfigTask(@PathVariable("deviceCode") String deviceCode);
 
 }

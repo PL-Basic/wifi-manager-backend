@@ -199,6 +199,10 @@ public class UserServiceImpl implements UserService {
             throw new IllegalArgumentException("账号已被禁用");
         }
 
+        if (PasswordUtils.matches(resetPasswordDTO.getNewPassword(), user.getPassword())) {
+            throw new IllegalArgumentException("新密码不能与当前密码相同");
+        }
+
         user.setPassword(PasswordUtils.encode(resetPasswordDTO.getNewPassword()));
         userMapper.updateById(user);
 

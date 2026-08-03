@@ -33,8 +33,8 @@ public interface RefundRecordMapper extends BaseMapper<RefundRecord> {
     RefundRecord selectOwnedRefund(@Param("refundNo") String refundNo, @Param("userId") Long userId);
 
     @Select("select * from t_refund_record " +
-            "where purchase_id = #{purchaseId} " +
+            "where order_no = #{orderNo} " +
             "and status in ('REQUESTED', 'PROCESSING') " +
             "order by refund_id desc limit 1 for update")
-    RefundRecord selectActiveByPurchaseForUpdate(@Param("purchaseId") Long purchaseId);
+    RefundRecord selectActiveByOrderForUpdate(@Param("orderNo") String orderNo);
 }

@@ -13,7 +13,7 @@
 
 ## 2. 准备配置
 
-`deploy/backend.env.example` 只是变量清单，Spring Boot 不会自动读取该文件。
+`deploy/backend.env.example` 是完整变量模板。Spring Boot 2.3 不会自动读取 `.env`，必须在启动 JAR 前加载，或者由系统服务使用 `EnvironmentFile` 注入。
 
 复制模板到仓库外的私密目录，例如：
 
@@ -23,22 +23,35 @@ D:\wifi-manager-config\backend.env
 
 替换所有 `CHANGE_ME`，不要把真实配置写回示例文件。
 
-`JWT_SECRET` 必须在 Gateway、Auth、Monitor 中保持一致。`WIFI_GATEWAY_TOKEN` 与 `WIFI_INTERNAL_TOKEN` 必须使用不同值，且均不少于 16 字节。
+`JWT_SECRET` 只由 Auth 和 Gateway 使用，两者必须保持一致并加载同一份 Nacos `wifi-jwt.yml`。Gateway 验证浏览器 JWT 后会剥离原始凭证，只向下游注入可信身份；monitor-service 不再加载或解析 JWT。`WIFI_GATEWAY_TOKEN` 必须在 Gateway 与下游服务中保持一致，且不能与 `WIFI_INTERNAL_TOKEN` 使用相同值；两者均不少于 16 字节。
 
-PowerShell 加载变量：
+Gateway/Auth 继续使用 `WIFI_ALLOWED_ORIGIN` 与 `WIFI_ALLOWED_ORIGIN_ALT`；monitor-service 的告警 WebSocket 使用逗号分隔的 `WIFI_ALLOWED_ORIGINS`。开发 LAN 必须显式加入手机实际访问的 Origin，生产只填写主站和 Portal 的正式 HTTPS Origin，禁止使用 `*`。告警 WebSocket 必须经 Gateway `8080` 转发，直连 monitor `8384` 会因缺少 Gateway 可信身份而被拒绝。
+
+Windows PowerShell 加载变量：
 
 ```powershell
-$envFile = "D:\wifi-manager-config\backend.env"
-
-Get-Content -LiteralPath $envFile |
-    Where-Object { $_ -and -not $_.TrimStart().StartsWith("#") } |
-    ForEach-Object {
-        $pair = $_.Split("=", 2)
-        [Environment]::SetEnvironmentVariable($pair[0], $pair[1], "Process")
-    }
+.\deploy\load-env.ps1 -Path "D:\wifi-manager-config\backend.env"
 ```
 
-这些变量只对当前 PowerShell 及其启动的进程生效。
+这些变量只对当前 PowerShell 及其启动的 JAR 生效。每个新终端都要先执行加载器，再启动对应服务。
+
+Linux Shell 加载变量：
+
+```sh
+. ./deploy/load-env.sh /etc/wifi-manager/backend.env
+```
+
+必须使用 `.` 或 `source`，直接执行脚本无法把环境变量留在当前 Shell。两个加载器都会拒绝 `CHANGE_ME`、示例域名、过短密钥以及相同的 Gateway/Internal Token。
+
+使用 systemd 时不需要运行加载器，可以在每个服务单元中直接配置：
+
+```ini
+[Service]
+EnvironmentFile=/etc/wifi-manager/backend.env
+ExecStart=/usr/bin/java -jar /opt/wifi-manager/gateway-service-0.0.1-SNAPSHOT.jar
+```
+
+每个微服务使用独立单元和独立 `ExecStart`，但可以共享同一份受限权限的 `backend.env`。
 
 ## 3. 构建
 
@@ -72,7 +85,7 @@ DB_MIGRATION_BASELINE_ON_MIGRATE=false
 java -jar database-migration\target\database-migration-0.0.1-SNAPSHOT.jar
 ```
 
-程序会依次执行 `V1.1` 至 `V1.6`，成功后自动退出。再次运行应显示数据库已是最新版本。
+程序会依次执行 `V1.1` 至当前最新版本，成功后自动退出。当前奖励订单功能要求数据库至少达到 `V1.7`；再次运行应显示数据库已是最新版本。
 
 ### 接管已有数据库
 
@@ -127,12 +140,16 @@ Admin 8385
 
 - 当前 Spring Boot 版本锁定 Flyway 6.4.4；在 MySQL 8.4 上已验证 V1.1 至 V1.6 迁移和重复运行成功，但会出现数据库版本尚未正式验证的警告。该警告不阻塞 Demo，正式生产升级前应重新验证兼容性或统一升级 Flyway 与 Spring Boot。
 - `SPRING_PROFILES_ACTIVE=prod` 会关闭 MyBatis SQL 参数输出。
-- Nacos 中的 `wifi-jwt.yml` 不得与环境变量中的 JWT 密钥冲突。
+- Auth 和 Gateway 使用的 Nacos `wifi-jwt.yml` 不得与各自进程环境变量中的 JWT 密钥冲突；两个服务必须从同一配置来源启动。
 - 多个 Device 实例必须使用不同的 `MQTT_CLIENT_ID`。
 - `WIFI_COMMAND_SECRET_KEY` 必须是 Base64 编码的 32 字节密钥；缺失时只禁用敏感 WiFi 配置命令，不阻止 Device 启动。
+- `GITHUB_OAUTH_REDIRECT_URI`、`QQ_OAUTH_REDIRECT_URI` 和 `WECHAT_OAUTH_REDIRECT_URI` 必须指向前端 `/oauth-complete/{provider}` 路由，并与 Provider 控制台登记值完全一致。
+- `OAUTH_ALLOWED_RETURN_ORIGIN` 和 `OAUTH_ALLOWED_RETURN_ORIGIN_ALT` 限制 OAuth 完成后的前端返回来源，通常与 `WIFI_ALLOWED_ORIGIN` 保持一致。
 - Redis 故障时限流会降级到单实例本地窗口，此时不再具备严格的全局限流能力。
 - `local-*-change-me` 和 `CHANGE_ME` 值只能用于本地占位，禁止用于正式环境。
 - 信任反向代理前必须确认代理会清除外部传入的转发头，再启用 `WIFI_TRUST_PROXY_HEADERS=true`。
+- 使用前端仓库 `deploy/nginx.conf.example` 时，保持 `FORWARD_HEADERS_STRATEGY=none`，由 Gateway 读取 Nginx 覆盖后的 `X-Forwarded-For`；不要同时让 Spring 重写远端地址。
+- Nginx 必须覆盖 `X-Forwarded-For`/`X-Real-IP`、清除外部 `X-Gateway-Token`/`X-Internal-Token`/`X-User-*`，并拒绝 `/api/internal/**`。
 - 头像目录必须持久化，并授予 User 服务写权限。
 
 ## 7. 最小部署检查

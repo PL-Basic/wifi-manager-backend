@@ -14,6 +14,7 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -65,6 +66,7 @@ public class UserOperationRequestServiceImpl implements UserOperationRequestServ
     @Override
     public Long requestPurge(Long targetUserId, Long requesterId, String requesterName, String reason) {
         User target = getExistingUser(targetUserId);
+        requireDeletableUser(target);
         UserOperationRequest request = new UserOperationRequest();
         request.setRequestType(TYPE_PURGE_USER);
         request.setTargetUserId(targetUserId);
@@ -79,7 +81,11 @@ public class UserOperationRequestServiceImpl implements UserOperationRequestServ
     }
 
     @Override
-    public void review(Long id, Long approverId, String approverName, UserOperationReviewDTO dto) {
+    @Transactional(rollbackFor = Exception.class)
+    public void review(Long id, Long approverId, String approverName, Integer approverRole, UserOperationReviewDTO dto) {
+        if (!Integer.valueOf(0).equals(approverRole)) {
+            throw new IllegalArgumentException("只有超级管理员可以审批账号删除申请");
+        }
         UserOperationRequest request = requestMapper.selectById(id);
         if (request == null) {
             throw new IllegalArgumentException("申请不存在");
@@ -88,6 +94,10 @@ public class UserOperationRequestServiceImpl implements UserOperationRequestServ
             throw new IllegalArgumentException("申请已处理");
         }
         boolean approved = Boolean.TRUE.equals(dto.getApproved());
+        if (approved && TYPE_PURGE_USER.equals(request.getRequestType())) {
+            // 目标角色可能在申请后发生变化，批准时必须再次失败关闭。
+            requireDeletableUser(getExistingUser(request.getTargetUserId()));
+        }
         request.setApproverId(approverId);
         request.setApproverName(approverName);
         request.setHandleTime(LocalDateTime.now());
@@ -106,5 +116,11 @@ public class UserOperationRequestServiceImpl implements UserOperationRequestServ
             throw new IllegalArgumentException("用户不存在");
         }
         return user;
+    }
+
+    private void requireDeletableUser(User user) {
+        if (user.getRole() == null || Integer.valueOf(0).equals(user.getRole())) {
+            throw new IllegalArgumentException("超级管理员账号不能通过产品功能删除");
+        }
     }
 }

@@ -59,6 +59,9 @@ public class InternalAdminUserController {
             throw new IllegalArgumentException("不能修改自己的角色");
         }
 
+        // 管理接口负责判断普通管理员能否修改目标用户。
+        rejectPeerAdminModification(userId, operatorRole);
+
         return ApiResponse.success("用户信息修改成功", userManageService.updateUser(userId, updateDTO, operatorRole));
     }
 
@@ -73,7 +76,10 @@ public class InternalAdminUserController {
             throw new IllegalArgumentException("不能禁用自己的账号");
         }
 
-        rejectPeerAdminModification(userId, operatorRole);
+        // 本人可以修改自己的普通资料；普通管理员不能修改其他管理员。
+        if (!isSelf(userId, operatorId)) {
+            rejectPeerAdminModification(userId, operatorRole);
+        }
 
         userManageService.updateStatus(userId, statusDTO);
 
@@ -89,6 +95,7 @@ public class InternalAdminUserController {
             throw new IllegalArgumentException("不能逻辑删除自己的账号");
         }
 
+        // 普通管理员只能删除普通用户；role=1 管理员只能由 role=0 超管删除。
         rejectPeerAdminModification(userId, operatorRole);
 
         userManageService.deleteUser(userId);
@@ -118,7 +125,11 @@ public class InternalAdminUserController {
     public ApiResponse<Long> requestPurgeUser(@PathVariable Long userId,
                                               @RequestHeader(value = "X-User-Id", required = false) Long requesterId,
                                               @RequestHeader(value = "X-User-Name", required = false) String requesterName,
+                                              @RequestHeader(value = "X-User-Role", required = false) Integer requesterRole,
                                               @RequestBody(required = false) UserPurgeRequestDTO purgeRequestDTO) {
+
+        // 普通管理员可以申请删除普通用户，但不能替其他管理员发起删除申请。
+        rejectPeerAdminModification(userId, requesterRole);
 
         String reason = purgeRequestDTO == null ? null : purgeRequestDTO.getReason();
 
@@ -140,19 +151,21 @@ public class InternalAdminUserController {
     public ApiResponse<Void> reviewOperationRequest(@PathVariable Long id,
                                                     @RequestHeader(value = "X-User-Id", required = false) Long approverId,
                                                     @RequestHeader(value = "X-User-Name", required = false) String approverName,
+                                                    @RequestHeader(value = "X-User-Role", required = false) Integer approverRole,
                                                     @RequestBody UserOperationReviewDTO dto) {
 
-        userOperationRequestService.review(id, approverId, approverName, dto);
+        userOperationRequestService.review(id, approverId, approverName, approverRole, dto);
 
         return ApiResponse.success("审批完成", null);
     }
 
     private void rejectPeerAdminModification(Long targetUserId, Integer operatorRole) {
 
-        // 超级管理员可以操作管理员；普通管理员不能操作管理员。
-        if (!Integer.valueOf(0).equals(operatorRole) && userManageService.getUser(targetUserId).getRole() <= 1) {
+        // 超级管理员可以操作普通管理员；普通管理员只能操作普通用户。
+        Integer targetRole = userManageService.getUser(targetUserId).getRole();
+        if (!Integer.valueOf(0).equals(operatorRole) && !Integer.valueOf(2).equals(targetRole)) {
 
-            throw new IllegalArgumentException("管理员之间不能互相修改");
+            throw new IllegalArgumentException("普通管理员不能操作其他管理员或超级管理员");
         }
     }
 

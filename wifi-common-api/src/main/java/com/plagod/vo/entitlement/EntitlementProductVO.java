@@ -10,4 +10,8 @@ public class EntitlementProductVO {
     private String entitlementMode;
     private Long grantSeconds;
     private Long amountCents;
+    private Boolean customAmountAllowed;
+    private Long minAmountCents;
+    private Long maxAmountCents;
+    private Long secondsPerCent;
 }
