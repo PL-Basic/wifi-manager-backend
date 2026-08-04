@@ -10,4 +10,5 @@ public class AuthResultDTO {
     private Integer role;
     private String nickname;
     private String avatar;
+    private String accountState;
 }

@@ -29,6 +29,7 @@
         <module>device-service</module>
         <module>admin-service</module>
         <module>monitor-service</module>
+        <module>tenant-service</module>
         <module>wifi-service-security-spring-boot-starter</module>
         <module>database-migration</module>
     </modules>
@@ -191,7 +192,6 @@
     </build>
 
 </project>
-
 
 
 

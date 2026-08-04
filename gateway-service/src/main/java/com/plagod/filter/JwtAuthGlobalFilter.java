@@ -219,6 +219,10 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
             return isAdmin(role);
         }
 
+        if ("/tenants/me".equals(path)) {
+            return HttpMethod.GET.equals(method);
+        }
+
         // 绑定入口必须先通过 JWT，随后由 Gateway 注入可信用户身份。
         if (HttpMethod.GET.equals(method) && OAUTH_BIND.matcher(path).matches()) {
             return true;

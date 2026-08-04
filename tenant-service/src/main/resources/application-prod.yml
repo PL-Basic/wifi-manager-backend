@@ -1,0 +1,17 @@
+spring:
+  datasource:
+    url: "${MYSQL_URL}"
+    username: "${MYSQL_USERNAME}"
+    password: "${MYSQL_PASSWORD}"
+
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
+
+wifi:
+  internal:
+    token: "${WIFI_INTERNAL_TOKEN}"
+  security:
+    gateway-token: "${WIFI_GATEWAY_TOKEN}"
+    internal-token: "${WIFI_INTERNAL_TOKEN}"
+    internal-token-required: true

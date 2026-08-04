@@ -10,6 +10,7 @@ import com.plagod.enums.ConflictFieldEnum;
 import com.plagod.enums.LoginStatusEnum;
 import com.plagod.mapper.UserMapper;
 import com.plagod.service.LoginFailProtectionService;
+import com.plagod.service.DefaultTenantMembershipOutboxService;
 import com.plagod.service.UserService;
 import com.plagod.service.VerificationCodeService;
 import com.plagod.utils.JwtUtils;
@@ -48,6 +49,9 @@ public class UserServiceImpl implements UserService {
 
     @Autowired
     private JwtUtils jwtUtils;
+
+    @Autowired
+    private DefaultTenantMembershipOutboxService defaultTenantMembershipOutboxService;
 
     @Override
     @Transactional
@@ -110,6 +114,9 @@ public class UserServiceImpl implements UserService {
             log.warn("注册并发冲突，用户信息：{}", registerDTO.getUsername(), e);
             return RegisterResult.conflict(EnumSet.noneOf(ConflictFieldEnum.class), "注册信息冲突，请稍后重试");
         }
+
+        // 用户和默认成员 Outbox 必须同事务提交，Outbox 失败时不能留下孤立用户。
+        defaultTenantMembershipOutboxService.enqueue(user.getUserId(), user.getRole());
 
         consumeRegisterContact(registerDTO,verifyIp);
 
@@ -254,18 +261,31 @@ public class UserServiceImpl implements UserService {
     }
 
     private LoginResult buildLoginResult(User user) {
+        if (!Integer.valueOf(0).equals(user.getRole())
+                && !defaultTenantMembershipOutboxService.isMembershipReady(user.getUserId())) {
+            AuthResultDTO pending = basicAuthResult(user);
+            pending.setAccountState("TENANT_MEMBERSHIP_PENDING");
+            return LoginResult.tenantMembershipPending(pending);
+        }
+
         //获取token，判断用的参数
         String token = jwtUtils.generateToken(user.getUserId(),user.getUsername(),user.getRole());
 
         //将该用户的信息取出并返回到controller
-        AuthResultDTO authResultDTO = new AuthResultDTO();
+        AuthResultDTO authResultDTO = basicAuthResult(user);
         authResultDTO.setToken(token);
-        authResultDTO.setUsername(user.getUsername());
-        authResultDTO.setRole(user.getRole());
-        authResultDTO.setNickname(user.getNickname());
-        authResultDTO.setAvatar(user.getAvatar());
+        authResultDTO.setAccountState("ACTIVE");
 
         return LoginResult.success(authResultDTO);
+    }
+
+    private AuthResultDTO basicAuthResult(User user) {
+        AuthResultDTO result = new AuthResultDTO();
+        result.setUsername(user.getUsername());
+        result.setRole(user.getRole());
+        result.setNickname(user.getNickname());
+        result.setAvatar(user.getAvatar());
+        return result;
     }
 
     //判断是否填入邮箱和手机号，并进行验证

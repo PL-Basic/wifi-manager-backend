@@ -39,6 +39,8 @@ public class AuthController {
         LoginResult loginResult = userService.login(loginDTO,RequestIpUtils.getClientIP(request));
         if (loginResult.getStatus() == LoginStatusEnum.SUCCESS) {
             return ApiResponse.success(loginResult.getMessage(), loginResult.getData());
+        } else if (loginResult.getStatus() == LoginStatusEnum.TENANT_MEMBERSHIP_PENDING) {
+            return ApiResponse.success(loginResult.getMessage(), loginResult.getData());
         }else {
             return ApiResponse.fail(400,loginResult.getMessage(),loginResult);
         }
@@ -50,6 +52,8 @@ public class AuthController {
                                                 HttpServletRequest request) {
         LoginResult loginResult = userService.loginByVerifyCode(loginByVerifyCodeDTO, RequestIpUtils.getClientIP(request));
         if (loginResult.getStatus() == LoginStatusEnum.SUCCESS) {
+            return ApiResponse.success(loginResult.getMessage(), loginResult.getData());
+        } else if (loginResult.getStatus() == LoginStatusEnum.TENANT_MEMBERSHIP_PENDING) {
             return ApiResponse.success(loginResult.getMessage(), loginResult.getData());
         }else {
             return ApiResponse.fail(400,loginResult.getMessage(),loginResult);

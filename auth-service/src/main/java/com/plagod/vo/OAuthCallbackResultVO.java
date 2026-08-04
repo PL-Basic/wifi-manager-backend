@@ -20,6 +20,7 @@ public class OAuthCallbackResultVO {
     private Integer role;
     private String nickname;
     private String avatar;
+    private String accountState;
     private SocialIdentityVO identity;
 
     private String returnUri;

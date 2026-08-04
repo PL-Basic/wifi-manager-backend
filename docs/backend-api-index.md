@@ -104,9 +104,33 @@ DELETE /locations/history                           删除本人位置历史
 
 位置上报必须同时满足本人 Session、ACTIVE 状态、节点、MAC 和定位授权约束。
 
+### 本人租户
+
+```text
+GET /tenants/me
+```
+
+新注册或 OAuth 首次创建用户的默认成员 Outbox 尚未成功时，密码登录、验证码登录和 OAuth 回调返回 `accountState=TENANT_MEMBERSHIP_PENDING` 且 `token=null`；前端只能进入受限账户页。补偿成功后重新登录才签发 JWT。role=0 平台登录不受该状态阻塞。
+
+P-1 只返回真实成员关系，不签发或切换租户上下文 JWT；租户上下文切换在 P-2 启用。
+
 ## 7. 管理员接口
 
 以下接口仅允许角色 `0`、`1` 访问。
+
+平台租户运营接口只允许 role=0，role=1 即使直接构造请求也返回 403：
+
+```text
+GET  /admin/platform/tenants
+POST /admin/platform/tenants
+GET  /admin/platform/tenants/{tenantId}
+PUT  /admin/platform/tenants/{tenantId}
+PUT  /admin/platform/tenants/{tenantId}/status
+GET  /admin/platform/tenants/{tenantId}/members
+GET  /admin/platform/saas-plans
+```
+
+租户编码创建后不可修改。`default-tenant` 在首版迁移期间不可停用；P-1 新建租户没有有效订阅时返回 `NO_ACTIVE_SUBSCRIPTION`，不能伪装为可用套餐。
 
 ### 概览与用户
 

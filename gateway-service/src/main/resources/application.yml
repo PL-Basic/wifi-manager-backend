@@ -40,6 +40,11 @@ spring:
           predicates:
             - Path=/users/**,/entitlements/**,/payment/**
 
+        - id: tenant-service-route
+          uri: lb://tenant-service
+          predicates:
+            - Path=/tenants/**
+
         # 这里只保留普通用户确实需要的自有资源接口。
         - id: device-user-route
           uri: lb://device-service
