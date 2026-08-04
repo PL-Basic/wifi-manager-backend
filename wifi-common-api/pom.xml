@@ -13,12 +13,6 @@
     <description>跨服务公用的 DTO、常量、工具类；不含 servlet / 持久层依赖，gateway 等 webflux 服务也可安全引用</description>
 
     <dependencies>
-        <!-- JwtUtils 用 @Component + @Value，需要 spring 容器 -->
-        <dependency>
-            <groupId>org.springframework</groupId>
-            <artifactId>spring-context</artifactId>
-        </dependency>
-
         <!-- DTO 参数校验 (@NotBlank 等) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -56,6 +50,18 @@
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.junit.vintage</groupId>
+                    <artifactId>junit-vintage-engine</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
     </dependencies>
 </project>

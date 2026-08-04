@@ -1,0 +1,7 @@
+spring:
+  datasource:
+    url: "${DB_MIGRATION_URL}"
+    username: "${DB_MIGRATION_USERNAME}"
+    password: "${DB_MIGRATION_PASSWORD}"
+  flyway:
+    baseline-on-migrate: "${DB_MIGRATION_BASELINE_ON_MIGRATE}"

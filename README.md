@@ -93,14 +93,15 @@ Gateway 默认地址：`http://localhost:8080`。
 
 ```text
 MYSQL_URL MYSQL_USERNAME MYSQL_PASSWORD
-JWT_SECRET WIFI_GATEWAY_TOKEN WIFI_INTERNAL_TOKEN
+WIFI_GATEWAY_TOKEN WIFI_INTERNAL_TOKEN
 NACOS_SERVER_ADDR NACOS_USERNAME NACOS_PASSWORD NACOS_NAMESPACE NACOS_GROUP
 REDIS_HOST REDIS_PORT REDIS_PASSWORD REDIS_DATABASE REDIS_SSL
 MQTT_BROKER_URL MQTT_CLIENT_ID MQTT_USERNAME MQTT_PASSWORD
-WIFI_COMMAND_SECRET_KEY WIFI_ALLOWED_ORIGIN WIFI_ALLOWED_ORIGINS WIFI_TRUST_PROXY_HEADERS WIFI_AVATAR_DIR
+WIFI_COMMAND_SECRET_KEY WIFI_ALLOWED_ORIGIN WIFI_ALLOWED_ORIGIN_ALT WIFI_ALLOWED_ORIGINS WIFI_ALERT_HEARTBEAT_INTERVAL_MILLIS
+WIFI_TRUST_PROXY_HEADERS REDIS_RATE_LIMIT_ENABLED WIFI_AVATAR_DIR
 ```
 
-OAuth、短信、邮件和本地 Demo 支付配置见 [deploy/backend.env.example](deploy/backend.env.example)。真实环境必须更换 JWT、内部请求、Redis、MQTT 和 WiFi 命令密钥。Windows 和 Linux 的直接 JAR 环境加载方式见 [docs/backend-deployment.md](docs/backend-deployment.md)。
+JWT 只由 Auth 和 Gateway 使用，并统一从受鉴权保护的 Nacos `wifi-jwt.yml` 加载；模板见 [deploy/nacos/wifi-jwt.example.yml](deploy/nacos/wifi-jwt.example.yml)。`deploy/generate-nacos-auth-properties.ps1` 在仓库外生成 Nacos 鉴权片段，`deploy/verify-nacos-auth.ps1` 在生产启动前证明匿名请求无法读取 JWT 配置。本地 IDEA 可使用 `deploy/start-idea-with-env.ps1 -EnvPath <仓库外环境文件>` 加载并校验配置，不依赖 EnvFile 插件。加载器不再隐式读取仓库 `.env`。每项安全配置的作用、修改位置、重启范围和故障影响见 [安全配置与密钥操作手册](docs/security-configuration-operations.md)。OAuth、短信、邮件和本地 Demo 支付配置见 [deploy/backend.env.example](deploy/backend.env.example)。真实环境必须更换 JWT、内部请求、Redis、MQTT 和 WiFi 命令密钥。Windows 和 Linux 的直接 JAR 环境加载方式见 [docs/backend-deployment.md](docs/backend-deployment.md)。
 
 ## 数据库迁移
 
@@ -113,7 +114,7 @@ CREATE DATABASE wifi CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 执行 Flyway：
 
 ```powershell
-D:\java\maven\apache-maven-3.9.13\bin\mvn.cmd -pl database-migration -am package
+.\mvnw.cmd -pl database-migration -am package
 java -jar database-migration\target\database-migration-0.0.1-SNAPSHOT.jar
 ```
 
@@ -126,8 +127,8 @@ java -jar database-migration\target\database-migration-0.0.1-SNAPSHOT.jar
 ## 编译与测试
 
 ```powershell
-D:\java\maven\apache-maven-3.9.13\bin\mvn.cmd compile
-D:\java\maven\apache-maven-3.9.13\bin\mvn.cmd -pl gateway-service,device-service,user-service -am test
+.\mvnw.cmd compile
+.\mvnw.cmd -pl gateway-service,device-service,user-service -am test
 ```
 
 部署说明、接口清单和配置模板：

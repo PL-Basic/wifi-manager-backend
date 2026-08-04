@@ -1,4 +1,21 @@
+spring:
+  datasource:
+    url: "${MYSQL_URL}"
+    username: "${MYSQL_USERNAME}"
+    password: "${MYSQL_PASSWORD}"
+
 mybatis-plus:
   configuration:
     # 生产环境禁止输出 SQL 参数，避免邮箱、手机号和业务数据进入日志。
     log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
+
+wifi:
+  internal:
+    token: "${WIFI_INTERNAL_TOKEN}"
+  security:
+    gateway-token: "${WIFI_GATEWAY_TOKEN}"
+    internal-token: "${WIFI_INTERNAL_TOKEN}"
+    internal-token-required: true
+  websocket:
+    allowed-origins: "${WIFI_ALLOWED_ORIGINS}"
+    heartbeat-interval-millis: "${WIFI_ALERT_HEARTBEAT_INTERVAL_MILLIS}"

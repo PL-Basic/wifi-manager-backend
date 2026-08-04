@@ -69,8 +69,6 @@ spring:
     timeout: 500ms
     lettuce:
       shutdown-timeout: 100ms
-jwt:
-  secret: ${JWT_SECRET:local-dev-secret-at-least-32-bytes-long-change-me}
 wifi:
   security:
     # 只证明请求经过 Gateway，不能与内部服务 Token 使用同一个值。

@@ -1,0 +1,5 @@
+wifi:
+  internal:
+    token: "${WIFI_INTERNAL_TOKEN}"
+  security:
+    gateway-token: "${WIFI_GATEWAY_TOKEN}"

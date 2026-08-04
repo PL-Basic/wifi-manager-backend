@@ -163,6 +163,8 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
         ServerHttpRequest request = exchange.getRequest().mutate()
                 .headers(headers -> {
                     TRUST_HEADERS.forEach(headers::remove);
+                    // 用户 JWT 已在 Gateway 完成验证，下游只接收受服务凭据保护的身份。
+                    headers.remove(HttpHeaders.AUTHORIZATION);
                     headers.set(GATEWAY_TOKEN_HEADER, gatewayToken);
                     headers.set(CLIENT_IP_HEADER, clientIp(exchange.getRequest()));
                     if (alertWebSocket) {
