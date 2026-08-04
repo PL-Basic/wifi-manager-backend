@@ -147,6 +147,13 @@ public class GisAnalyticsService {
 
         String normalizedMac = normalizeOptionalMac(mac);
 
+        if (userId == null
+                && sessionId == null
+                && nodeId == null
+                && !StringUtils.hasText(normalizedMac)) {
+            throw new IllegalArgumentException("用户ID、Session ID、节点ID或MAC至少填写一项");
+        }
+
         CleanResult cleanResult = loadAndClean(sessionId, userId, nodeId, normalizedMac, startTime, endTime, maximumAccuracyMeters);
 
         GisHeatmapVO result = new GisHeatmapVO();

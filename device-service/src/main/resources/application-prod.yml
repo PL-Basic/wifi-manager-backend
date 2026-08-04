@@ -1,9 +1,27 @@
+spring:
+  datasource:
+    url: "${MYSQL_URL}"
+    username: "${MYSQL_USERNAME}"
+    password: "${MYSQL_PASSWORD}"
+
 mybatis-plus:
   configuration:
     # 生产环境禁止输出 SQL 参数，避免邮箱、手机号和业务数据进入日志。
     log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
 
+mqtt:
+  broker-url: "${MQTT_BROKER_URL}"
+  client-id: "${MQTT_CLIENT_ID}"
+  username: "${MQTT_USERNAME}"
+  password: "${MQTT_PASSWORD}"
+
 wifi:
+  internal:
+    token: "${WIFI_INTERNAL_TOKEN}"
+  security:
+    gateway-token: "${WIFI_GATEWAY_TOKEN}"
+    internal-token: "${WIFI_INTERNAL_TOKEN}"
+    internal-token-required: true
   command:
     # 正式环境不允许回退到 application.yml 中的 Demo 密钥。
     # 留空时仅禁用敏感 WiFi 配置命令，其他设备能力仍可启动。

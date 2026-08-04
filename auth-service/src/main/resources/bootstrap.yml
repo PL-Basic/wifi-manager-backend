@@ -20,4 +20,4 @@ spring:
         extension-configs:
           - data-id: wifi-jwt.yml
             group: ${NACOS_GROUP:DEFAULT_GROUP}
-            refresh: true
+            refresh: false

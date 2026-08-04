@@ -118,6 +118,7 @@ class GatewaySecurityRegressionTest {
         assertEquals("alice", result.getRequest().getHeaders().getFirst("X-User-Name"));
         assertEquals("2", result.getRequest().getHeaders().getFirst("X-User-Role"));
         assertEquals("test-gateway-token", result.getRequest().getHeaders().getFirst("X-Gateway-Token"));
+        assertNull(result.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION));
     }
 
     @Test

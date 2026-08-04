@@ -1,5 +1,7 @@
 # Wifi Manager 后端部署说明
 
+安全配置后续如何修改、修改后影响哪些服务，以及各凭据保护的边界，统一参见 [安全配置与密钥操作手册](security-configuration-operations.md)。
+
 ## 1. 运行环境
 
 - JDK 8
@@ -13,27 +15,42 @@
 
 ## 2. 准备配置
 
-`deploy/backend.env.example` 是完整变量模板。Spring Boot 2.3 不会自动读取 `.env`，必须在启动 JAR 前加载，或者由系统服务使用 `EnvironmentFile` 注入。
+`deploy/backend.env.example` 是完整变量模板。Spring Boot 2.3 不会自动读取环境文件，必须在启动 JAR 前显式加载，或者由系统服务使用 `EnvironmentFile` 注入。加载器不再默认读取仓库 `.env`。本地 IDEA 的首选无插件入口是 `deploy/start-idea-with-env.ps1 -EnvPath <仓库外环境文件>`；EnvFile 插件只读取文件，不执行仓库校验脚本。
 
 复制模板到仓库外的私密目录，例如：
 
 ```text
-D:\wifi-manager-config\backend.env
+<安全配置目录>\backend.env
 ```
 
 替换所有 `CHANGE_ME`，不要把真实配置写回示例文件。
 
-`JWT_SECRET` 只由 Auth 和 Gateway 使用，两者必须保持一致并加载同一份 Nacos `wifi-jwt.yml`。Gateway 验证浏览器 JWT 后会剥离原始凭证，只向下游注入可信身份；monitor-service 不再加载或解析 JWT。`WIFI_GATEWAY_TOKEN` 必须在 Gateway 与下游服务中保持一致，且不能与 `WIFI_INTERNAL_TOKEN` 使用相同值；两者均不少于 16 字节。
+用户 JWT 只由 Auth 签发、Gateway 验证。两者必须位于相同 Nacos namespace/group，并加载同一个 Data ID `wifi-jwt.yml`。不要再设置 `JWT_SECRET` 环境变量，也不要把 JWT 密钥配置到其他微服务。生产 Nacos 必须先开启鉴权并修改默认管理员密码；鉴权关闭时 `NACOS_USERNAME/PASSWORD` 不会保护配置，匿名客户端可以读取 JWT 密钥。
+
+在 Nacos 创建或更新 `wifi-jwt.yml`，结构必须与 [wifi-jwt.example.yml](../deploy/nacos/wifi-jwt.example.yml) 一致：
+
+```yaml
+wifi:
+  jwt:
+    secret: 替换为至少32字节的高熵随机密钥
+    expiration-millis: 86400000
+```
+
+JWT 密钥不支持运行期热刷新。轮换时必须协调重启 Auth 和 Gateway，已有 JWT 会失效。缺少配置、长度不足、示例值或首尾空白都会令服务启动失败，避免静默回退到不同密钥。
+
+Gateway 验证浏览器 JWT 后会剥离原始凭证，只向下游注入可信身份；monitor-service 不加载或解析 JWT。`WIFI_GATEWAY_TOKEN` 必须在 Gateway 与下游服务中保持一致，且不能与 `WIFI_INTERNAL_TOKEN` 使用相同值；两者均不少于 16 字节。
 
 Gateway/Auth 继续使用 `WIFI_ALLOWED_ORIGIN` 与 `WIFI_ALLOWED_ORIGIN_ALT`；monitor-service 的告警 WebSocket 使用逗号分隔的 `WIFI_ALLOWED_ORIGINS`。开发 LAN 必须显式加入手机实际访问的 Origin，生产只填写主站和 Portal 的正式 HTTPS Origin，禁止使用 `*`。告警 WebSocket 必须经 Gateway `8080` 转发，直连 monitor `8384` 会因缺少 Gateway 可信身份而被拒绝。
 
 Windows PowerShell 加载变量：
 
 ```powershell
-.\deploy\load-env.ps1 -Path "D:\wifi-manager-config\backend.env"
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\deploy\load-env.ps1 -Path "<安全配置目录>\backend.env"
+.\deploy\verify-nacos-auth.ps1
 ```
 
-这些变量只对当前 PowerShell 及其启动的 JAR 生效。每个新终端都要先执行加载器，再启动对应服务。
+第一条命令加载并校验变量，第二条命令证明 `wifi-jwt.yml` 拒绝匿名读取且当前账号能够读取正确配置。生产环境两条命令都必须成功。变量只对当前 PowerShell 及其启动的 JAR 生效；每个新终端都要先执行加载器，再启动对应服务。IDEA/EnvFile 的具体设置、JBR 21 与项目 JDK 8 的区别见[安全配置与密钥操作手册](security-configuration-operations.md#11-intellij-idea-启动时加载-env)。
 
 Linux Shell 加载变量：
 
@@ -41,7 +58,7 @@ Linux Shell 加载变量：
 . ./deploy/load-env.sh /etc/wifi-manager/backend.env
 ```
 
-必须使用 `.` 或 `source`，直接执行脚本无法把环境变量留在当前 Shell。两个加载器都会拒绝 `CHANGE_ME`、示例域名、过短密钥以及相同的 Gateway/Internal Token。
+必须使用 `.` 或 `source`，直接执行脚本无法把环境变量留在当前 Shell。两个加载器都会拒绝 `JWT_SECRET`、`CHANGE_ME`、示例域名、过短密钥以及相同的 Gateway/Internal Token。
 
 使用 systemd 时不需要运行加载器，可以在每个服务单元中直接配置：
 
@@ -139,8 +156,10 @@ Admin 8385
 ## 6. 运行边界
 
 - 当前 Spring Boot 版本锁定 Flyway 6.4.4；在 MySQL 8.4 上已验证 V1.1 至 V1.6 迁移和重复运行成功，但会出现数据库版本尚未正式验证的警告。该警告不阻塞 Demo，正式生产升级前应重新验证兼容性或统一升级 Flyway 与 Spring Boot。
-- `SPRING_PROFILES_ACTIVE=prod` 会关闭 MyBatis SQL 参数输出。
-- Auth 和 Gateway 使用的 Nacos `wifi-jwt.yml` 不得与各自进程环境变量中的 JWT 密钥冲突；两个服务必须从同一配置来源启动。
+- `SPRING_PROFILES_ACTIVE=prod` 会关闭 MyBatis SQL 参数输出，并启用各服务 `application-prod.yml`、`bootstrap-prod.yml` 的必需环境变量覆盖和启动级安全校验。
+- 加载器会拒绝缺少关键键、空的必需值、重复键、`CHANGE_ME`、通配 Origin、`DB_MIGRATION_BASELINE_ON_MIGRATE` 非 `false` 和 `REDIS_RATE_LIMIT_ENABLED` 非 `true`。
+- Auth 和 Gateway 只加载相同 namespace/group 下的 Nacos `wifi-jwt.yml`；JWT 配置不再接受本地 YAML 默认值或 `JWT_SECRET` 环境变量。
+- 生产 Nacos 必须启用鉴权并拒绝匿名配置读取；所有集群节点的 server identity 与 token secret 必须一致，Nacos 管理端口不得暴露到公网。
 - 多个 Device 实例必须使用不同的 `MQTT_CLIENT_ID`。
 - `WIFI_COMMAND_SECRET_KEY` 必须是 Base64 编码的 32 字节密钥；缺失时只禁用敏感 WiFi 配置命令，不阻止 Device 启动。
 - `GITHUB_OAUTH_REDIRECT_URI`、`QQ_OAUTH_REDIRECT_URI` 和 `WECHAT_OAUTH_REDIRECT_URI` 必须指向前端 `/oauth-complete/{provider}` 路由，并与 Provider 控制台登记值完全一致。

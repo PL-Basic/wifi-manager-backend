@@ -4,34 +4,29 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
 
-import javax.annotation.PostConstruct;
 import java.nio.charset.StandardCharsets;
 import java.security.Key;
 import java.util.Date;
+import java.util.Locale;
 
 /**
- * 由 spring 管理；secret / 过期时间从配置项注入，默认值兜底以便老代码 / 单元测试无配置也能跑。
- * 之后接 Nacos 配置中心时只需在配置项里覆盖 jwt.secret，本类无需改动。
- *
- * 调用方在 auth-service（签发）与 gateway-service（解析）注入本类的实例方法；
+ * JWT 工具本身不注册为全局 Spring 组件，只有 Auth 和 Gateway 可以显式创建实例。
+ * 调用方在 auth-service（签发）与 gateway-service（解析）注入本类；
  * getUserId(Claims) 保留静态是因为它不依赖任何状态，纯函数。
  */
-@Component
 public class JwtUtils {
 
-    @Value("${jwt.secret:YourSecretKey-AtLeast256Bits-ChangeInProduction!}")
-    private String secret;
+    private final long expirationMillis;
+    private final Key key;
 
-    @Value("${jwt.expiration-millis:86400000}")
-    private long expirationMillis;
+    public JwtUtils(String secret, long expirationMillis) {
+        validateSecret(secret);
+        if (expirationMillis <= 0) {
+            throw new IllegalStateException("JWT 过期时间必须大于 0");
+        }
 
-    private Key key;
-
-    @PostConstruct
-    void init() {
+        this.expirationMillis = expirationMillis;
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }
 
@@ -65,5 +60,20 @@ public class JwtUtils {
 
     public static Long getUserId(Claims claims) {
         return Long.valueOf(claims.getSubject());
+    }
+
+    private void validateSecret(String secret) {
+        if (secret == null || secret.getBytes(StandardCharsets.UTF_8).length < 32) {
+            throw new IllegalStateException("JWT 密钥必须由 Nacos wifi-jwt.yml 提供且不少于 32 字节");
+        }
+
+        if (!secret.equals(secret.trim())) {
+            throw new IllegalStateException("JWT 密钥首尾不能包含空白字符");
+        }
+
+        String upperSecret = secret.toUpperCase(Locale.ROOT);
+        if (upperSecret.contains("CHANGE_ME") || upperSecret.contains("LOCAL-DEV") || upperSecret.contains("YOURSECRETKEY")) {
+            throw new IllegalStateException("JWT 密钥仍是示例值，拒绝启动");
+        }
     }
 }

@@ -1,0 +1,15 @@
+spring:
+  cloud:
+    nacos:
+      discovery:
+        server-addr: "${NACOS_SERVER_ADDR}"
+        username: "${NACOS_USERNAME}"
+        password: "${NACOS_PASSWORD}"
+        namespace: "${NACOS_NAMESPACE}"
+        group: "${NACOS_GROUP}"
+      config:
+        server-addr: "${NACOS_SERVER_ADDR}"
+        username: "${NACOS_USERNAME}"
+        password: "${NACOS_PASSWORD}"
+        namespace: "${NACOS_NAMESPACE}"
+        group: "${NACOS_GROUP}"
