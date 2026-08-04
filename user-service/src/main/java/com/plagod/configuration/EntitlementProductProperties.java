@@ -17,8 +17,67 @@ import java.util.stream.Collectors;
 @ConfigurationProperties(prefix = "wifi.entitlement")
 public class EntitlementProductProperties {
 
+    public static final String CUSTOM_DURATION_PRODUCT_CODE = "DURATION_CUSTOM";
+
     private int orderExpireMinutes = 15;
     private List<Product> products = new ArrayList<>();
+    private boolean customDurationEnabled = true;
+    private long customDurationMinAmountCents = 100L;
+    private long customDurationMaxAmountCents = 100000L;
+    private long customDurationSecondsPerCent = 36L;
+
+    public Product requireOrderProduct(String rawProductCode, Long customAmountCents) {
+        String productCode = normalizeProductCode(rawProductCode);
+
+        if (CUSTOM_DURATION_PRODUCT_CODE.equals(productCode)) {
+            return createCustomDurationProduct(customAmountCents);
+        }
+
+        if (customAmountCents != null) {
+            throw new IllegalArgumentException("固定商品不能指定自定义金额");
+        }
+
+        return requireEnabledProduct(productCode);
+    }
+
+    public Product createCustomDurationProduct(Long amountCents) {
+        validateCustomDurationConfiguration();
+
+        if (!customDurationEnabled) {
+            throw new IllegalArgumentException("自定义时长充值暂不可用");
+        }
+
+        if (amountCents == null) {
+            throw new IllegalArgumentException("自定义金额不能为空");
+        }
+
+        if (amountCents < customDurationMinAmountCents || amountCents > customDurationMaxAmountCents) {
+            throw new IllegalArgumentException("自定义金额超出可购买范围");
+        }
+
+        Product product = new Product();
+        product.setCode(CUSTOM_DURATION_PRODUCT_CODE);
+        product.setName("自定义网络时长");
+        product.setMode(EntitlementTradeConstants.MODE_DURATION);
+        product.setAmountCents(amountCents);
+
+        try {
+            product.setGrantSeconds(Math.multiplyExact(amountCents, customDurationSecondsPerCent));
+        } catch (ArithmeticException exception) {
+            throw new IllegalArgumentException("自定义金额对应时长超出范围");
+        }
+
+        product.setEnabled(true);
+        return product;
+    }
+
+    private void validateCustomDurationConfiguration() {
+        if (customDurationMinAmountCents <= 0
+                || customDurationMaxAmountCents < customDurationMinAmountCents
+                || customDurationSecondsPerCent <= 0) {
+            throw new IllegalStateException("自定义时长商品配置无效");
+        }
+    }
 
     public Product requireEnabledProduct(String rawProductCode) {
         String productCode = normalizeProductCode(rawProductCode);

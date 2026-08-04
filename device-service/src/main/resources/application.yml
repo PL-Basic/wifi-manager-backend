@@ -47,7 +47,8 @@ wifi:
     session-offline-timeout-seconds: ${WIFI_PORTAL_SESSION_OFFLINE_TIMEOUT_SECONDS:30}
     lease-scheduler-enabled: ${WIFI_PORTAL_LEASE_SCHEDULER_ENABLED:true}
     lease-scan-interval-ms: ${WIFI_PORTAL_LEASE_SCAN_INTERVAL_MS:10000}
-    lease-initial-delay-ms: ${WIFI_PORTAL_LEASE_INITIAL_DELAY_MS:60000}
+    # 必须早于 20 秒首次租约到期，否则首次扣减和续租都来不及执行。
+    lease-initial-delay-ms: ${WIFI_PORTAL_LEASE_INITIAL_DELAY_MS:10000}
   command:
     publish-max-attempts: ${WIFI_COMMAND_PUBLISH_MAX_ATTEMPTS:3}
     publish-retry-delay-seconds: ${WIFI_COMMAND_PUBLISH_RETRY_DELAY_SECONDS:3}

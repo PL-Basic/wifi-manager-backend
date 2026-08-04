@@ -1,7 +1,5 @@
 server:
   port: 8384
-jwt:
-  secret: ${JWT_SECRET:local-dev-secret-at-least-32-bytes-long-change-me}
 spring:
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -34,8 +32,8 @@ wifi:
     internal-path-prefixes:
       - /internal/
   websocket:
-    allowed-origin: ${WIFI_ALLOWED_ORIGIN:http://localhost:5173}
-    allowed-origin-alt: ${WIFI_ALLOWED_ORIGIN_ALT:http://127.0.0.1:5173}
+    allowed-origins: ${WIFI_ALLOWED_ORIGINS:http://portal.test:5173,http://localhost:5173}
+    heartbeat-interval-millis: ${WIFI_ALERT_HEARTBEAT_INTERVAL_MILLIS:25000}
   location:
     # 同一用户的成功位置上报最小间隔。
     minimum-report-interval-seconds: ${WIFI_LOCATION_MINIMUM_REPORT_INTERVAL_SECONDS:3}

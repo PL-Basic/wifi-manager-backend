@@ -43,7 +43,8 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
 
     private static final Set<String> AUTH_WHITE_PATHS = new HashSet<>(Arrays.asList(
             "/auth/login", "/auth/register", "/auth/codes",
-            "/auth/code-login", "/auth/reset-password"
+            "/auth/code-login", "/auth/reset-password",
+            "/auth/oauth/providers", "/health/gateway"
     ));
 
     private static final Pattern USER_SELF = Pattern.compile("^/users/(\\d+)$");
@@ -157,11 +158,17 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     }
 
     private ServerWebExchange addTrustedHeaders(ServerWebExchange exchange, Long userId, String username, Integer role) {
+        boolean alertWebSocket = "/ws/alerts".equals(exchange.getRequest().getURI().getPath());
+
         ServerHttpRequest request = exchange.getRequest().mutate()
                 .headers(headers -> {
                     TRUST_HEADERS.forEach(headers::remove);
                     headers.set(GATEWAY_TOKEN_HEADER, gatewayToken);
                     headers.set(CLIENT_IP_HEADER, clientIp(exchange.getRequest()));
+                    if (alertWebSocket) {
+                        // JWT 只在 Gateway 完成验证，下游只接收已选择的子协议标记。
+                        headers.set(SEC_WEBSOCKET_PROTOCOL_HEADER, "access_token");
+                    }
                     if (userId != null) {
                         headers.set("X-User-Id", String.valueOf(userId));
                         headers.set("X-User-Name", username);

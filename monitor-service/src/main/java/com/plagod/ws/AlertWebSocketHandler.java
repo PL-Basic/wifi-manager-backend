@@ -1,6 +1,7 @@
 package com.plagod.ws;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,10 +30,17 @@ public class AlertWebSocketHandler extends TextWebSocketHandler implements SubPr
 
     private static final int SEND_BUFFER_LIMIT_BYTES = 512 * 1024;
 
+    private static final long HEARTBEAT_TIMEOUT_MILLIS = 75_000L;
+
+    private static final CloseStatus HEARTBEAT_TIMEOUT_STATUS =
+            new CloseStatus(4000, "Heartbeat timeout");
+
     /**
      * 按连接 ID 保存并发安全的 Session 包装器。
      */
     private final Map<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
+
+    private final Map<String, Long> lastPongTimes = new ConcurrentHashMap<>();
 
     /**
      * 使用 Spring Boot 配置好的 ObjectMapper，
@@ -67,6 +75,7 @@ public class AlertWebSocketHandler extends TextWebSocketHandler implements SubPr
         WebSocketSession concurrentSession = new ConcurrentWebSocketSessionDecorator(session, SEND_TIME_LIMIT_MILLIS, SEND_BUFFER_LIMIT_BYTES);
 
         sessions.put(session.getId(), concurrentSession);
+        lastPongTimes.put(session.getId(), System.currentTimeMillis());
 
         log.info("alert websocket connected: sessionId={}, userId={}, total={}", session.getId(), session.getAttributes().get("userId"), sessions.size());
     }
@@ -75,6 +84,7 @@ public class AlertWebSocketHandler extends TextWebSocketHandler implements SubPr
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
 
         sessions.remove(session.getId());
+        lastPongTimes.remove(session.getId());
 
         log.info("alert websocket closed: sessionId={}, status={}, total={}", session.getId(), status, sessions.size());
     }
@@ -83,6 +93,7 @@ public class AlertWebSocketHandler extends TextWebSocketHandler implements SubPr
     public void handleTransportError(WebSocketSession session, Throwable exception) throws Exception {
 
         sessions.remove(session.getId());
+        lastPongTimes.remove(session.getId());
 
         log.warn("alert websocket transport error: sessionId={}, message={}", session.getId(), exception.getMessage());
 
@@ -123,6 +134,49 @@ public class AlertWebSocketHandler extends TextWebSocketHandler implements SubPr
                 log.warn("alert websocket send failed: sessionId={}, message={}", session.getId(), exception.getMessage());
 
                 closeQuietly(session);
+            }
+        }
+    }
+
+    @Override
+    protected void handleTextMessage(WebSocketSession session, TextMessage message) {
+        try {
+            JsonNode payload = objectMapper.readTree(message.getPayload());
+            if ("PONG".equals(payload.path("type").asText())) {
+                lastPongTimes.put(session.getId(), System.currentTimeMillis());
+            }
+        } catch (Exception exception) {
+            log.debug("ignored invalid alert websocket client message: sessionId={}", session.getId());
+        }
+    }
+
+    public void sendHeartbeat() {
+        long now = System.currentTimeMillis();
+        TextMessage ping = new TextMessage("{\"type\":\"PING\",\"time\":" + now + "}");
+
+        for (WebSocketSession session : sessions.values()) {
+            Long lastPong = lastPongTimes.get(session.getId());
+            if (!session.isOpen() || lastPong == null || now - lastPong > HEARTBEAT_TIMEOUT_MILLIS) {
+                removeAndClose(session, HEARTBEAT_TIMEOUT_STATUS);
+                continue;
+            }
+
+            try {
+                session.sendMessage(ping);
+            } catch (Exception exception) {
+                log.warn("alert websocket heartbeat failed: sessionId={}, message={}", session.getId(), exception.getMessage());
+                removeAndClose(session, CloseStatus.SERVER_ERROR);
+            }
+        }
+    }
+
+    private void removeAndClose(WebSocketSession session, CloseStatus status) {
+        sessions.remove(session.getId());
+        lastPongTimes.remove(session.getId());
+        if (session.isOpen()) {
+            try {
+                session.close(status);
+            } catch (IOException ignored) {
             }
         }
     }

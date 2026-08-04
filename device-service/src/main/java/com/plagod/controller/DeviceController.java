@@ -109,4 +109,9 @@ public class DeviceController {
 
         return ApiResponse.success(deviceWifiConfigQueryService.getTask(deviceCode, requestId));
     }
+
+    @GetMapping("/{deviceCode}/wifi-config/latest")
+    public ApiResponse<WifiConfigTaskVO> getLatestWifiConfigTask(@PathVariable String deviceCode) {
+        return ApiResponse.success(deviceWifiConfigQueryService.getLatestTask(deviceCode));
+    }
 }

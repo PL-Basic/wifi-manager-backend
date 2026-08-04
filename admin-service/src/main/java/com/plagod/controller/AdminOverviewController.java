@@ -8,6 +8,10 @@ import com.plagod.vo.AdminDashboardVO;
 import com.plagod.vo.AdminOverviewVO;
 import com.plagod.vo.device.DevicePageResult;
 import com.plagod.vo.device.DeviceStatsVO;
+import com.plagod.vo.device.TrafficAnalyticsSourceVO;
+import com.plagod.vo.monitor.AccessRulePageResult;
+import com.plagod.vo.monitor.AlertEventPageResult;
+import com.plagod.vo.monitor.ClientLocationPageResult;
 import com.plagod.vo.user.UserPageResult;
 import com.plagod.vo.user.UserStatsVO;
 import org.slf4j.Logger;
@@ -20,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.function.Supplier;
+import java.time.LocalDateTime;
 
 @RestController
 @RequestMapping("/admin")
@@ -72,6 +77,10 @@ public class AdminOverviewController {
         dashboard.setDeviceStats(safeDeviceStats());
         dashboard.setRecentUsers(safeRecentUsers());
         dashboard.setRecentDevices(safeRecentDevices());
+        dashboard.setTrafficSummary(safeTrafficSummary());
+        dashboard.setUnhandledAlertCount(safeUnhandledAlertCount());
+        dashboard.setEnabledRuleCount(safeEnabledRuleCount());
+        dashboard.setLocationCount(safeLocationCount());
 
         return ApiResponse.success(dashboard);
     }
@@ -90,6 +99,43 @@ public class AdminOverviewController {
 
     private DevicePageResult safeRecentDevices() {
         return callDependency("device-service", () -> deviceServiceClient.pageDevices(1L, 5L, null)).getData();
+    }
+
+    private TrafficAnalyticsSourceVO.Summary safeTrafficSummary() {
+        LocalDateTime endTime = LocalDateTime.now();
+        LocalDateTime startTime = endTime.minusHours(24);
+        DependencyResult<TrafficAnalyticsSourceVO> result = callDependency(
+                "monitor-service traffic analytics",
+                () -> monitorServiceClient.queryTrafficAnalytics(
+                        null, null, null, null, null,
+                        startTime.toString(), endTime.toString(), 60, 5
+                )
+        );
+        return result.getData() == null ? null : result.getData().getSummary();
+    }
+
+    private Long safeUnhandledAlertCount() {
+        DependencyResult<AlertEventPageResult> result = callDependency(
+                "monitor-service alerts",
+                () -> monitorServiceClient.pageAlerts(1L, 1L, null, 0, null, null, null)
+        );
+        return result.getData() == null ? null : result.getData().getTotal();
+    }
+
+    private Long safeEnabledRuleCount() {
+        DependencyResult<AccessRulePageResult> result = callDependency(
+                "monitor-service rules",
+                () -> monitorServiceClient.pageRules(1L, 1L, null, 1, null)
+        );
+        return result.getData() == null ? null : result.getData().getTotal();
+    }
+
+    private Long safeLocationCount() {
+        DependencyResult<ClientLocationPageResult> result = callDependency(
+                "monitor-service locations",
+                () -> monitorServiceClient.pageLocations(1L, 1L, null, null, null, null)
+        );
+        return result.getData() == null ? null : result.getData().getTotal();
     }
 
     private <T> DependencyResult<T> callDependency(String serviceName, Supplier<ApiResponse<T>> invocation) {

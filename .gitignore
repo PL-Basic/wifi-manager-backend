@@ -4,6 +4,7 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 /deploy/backend.env
+/.env
 
 ### STS ###
 .apt_generated
@@ -33,3 +34,5 @@ build/
 
 ### VS Code ###
 .vscode/
+# Added by code-review-graph
+.code-review-graph/

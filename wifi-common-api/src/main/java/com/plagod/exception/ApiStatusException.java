@@ -32,6 +32,10 @@ public class ApiStatusException extends RuntimeException {
         return new ApiStatusException(404, 404, message);
     }
 
+    public static ApiStatusException forbidden(String message) {
+        return new ApiStatusException(403, 403, message);
+    }
+
     public static ApiStatusException conflict(String message) {
         return new ApiStatusException(409, 409, message);
     }

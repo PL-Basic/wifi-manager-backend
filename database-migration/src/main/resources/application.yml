@@ -17,8 +17,8 @@ spring:
     clean-disabled: true
     connect-retries: 3
 
-    # 空库保持 false，依次执行 V1.1 到 V1.6。
-    # 已存在的当前开发库首次接管时设为 true，登记为 1.6。
+    # 空库保持 false，依次执行 V1.1 到当前最新版本。
+    # 已存在的旧开发库首次接管时设为 true，登记为 1.6 后继续执行 V1.7 及后续迁移。
     baseline-on-migrate: ${DB_MIGRATION_BASELINE_ON_MIGRATE:false}
     baseline-version: "1.6"
     baseline-description: Existing Wifi Manager schema

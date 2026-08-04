@@ -10,4 +10,6 @@ public interface RefundQueryService {
     RefundVO getOwnRefund(Long userId, String refundNo);
 
     RefundPageResult pageForAdmin(long current, long size, Long userId, String status);
+
+    RefundVO getForAdmin(String refundNo);
 }

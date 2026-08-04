@@ -8,8 +8,11 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.logging.Logger;
 
 public class TrustedRequestFilter extends OncePerRequestFilter {
+
+    private static final Logger log = Logger.getLogger(TrustedRequestFilter.class.getName());
 
     private static final String GATEWAY_HEADER = "X-Gateway-Token";
     private static final String INTERNAL_HEADER = "X-Internal-Token";
@@ -44,6 +47,19 @@ public class TrustedRequestFilter extends OncePerRequestFilter {
         }
 
         if (!trusted) {
+            String reason = properties.isInternalPath(path)
+                    ? "INTERNAL_TOKEN_MISMATCH"
+                    : "TRUSTED_TOKEN_MISMATCH";
+
+            log.warning(String.format(
+                    "trusted request rejected: reason=%s, method=%s, path=%s, internalPath=%s, gatewayTokenPresent=%s, internalTokenPresent=%s",
+                    reason,
+                    request.getMethod(),
+                    path,
+                    properties.isInternalPath(path),
+                    StringUtils.hasText(gatewayToken),
+                    StringUtils.hasText(internalToken)));
+
             reject(response);
             return;
         }

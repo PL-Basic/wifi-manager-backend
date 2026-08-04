@@ -3,11 +3,14 @@ package com.plagod.controller;
 import com.plagod.client.UserServiceClient;
 import com.plagod.dto.ApiResponse;
 import com.plagod.dto.entitlement.EntitlementAdjustmentRequest;
+import com.plagod.dto.entitlement.EntitlementRewardOrderRequest;
 import com.plagod.dto.user.UserOperationReviewDTO;
 import com.plagod.dto.user.UserPurgeRequestDTO;
 import com.plagod.dto.user.UserStatusDTO;
 import com.plagod.dto.user.UserUpdateDTO;
+import com.plagod.exception.ApiStatusException;
 import com.plagod.vo.entitlement.DurationPurchasePageResult;
+import com.plagod.vo.entitlement.EntitlementOrderVO;
 import com.plagod.vo.entitlement.EntitlementUsagePageResult;
 import com.plagod.vo.user.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -83,8 +86,14 @@ public class AdminUserController {
     public ApiResponse<Long> requestPurgeUser(@PathVariable Long userId,
                                               @RequestHeader(value = "X-User-Id", required = false) Long requesterId,
                                               @RequestHeader(value = "X-User-Name", required = false) String requesterName,
+                                              @RequestHeader(value = "X-User-Role", required = false) Integer requesterRole,
                                               @RequestBody(required = false)UserPurgeRequestDTO userPurgeRequestDTO) {
-        return userServiceClient.requestPurgeUser(userId, requesterId, requesterName, userPurgeRequestDTO);
+        return userServiceClient.requestPurgeUser(
+                userId,
+                requesterId,
+                requesterName,
+                requesterRole,
+                userPurgeRequestDTO);
     }
 
     @GetMapping("/operation-requests")
@@ -98,8 +107,9 @@ public class AdminUserController {
     public ApiResponse<Void> reviewOperationRequest(@PathVariable Long id,
                                                     @RequestHeader(value = "X-User-Id", required = false) Long approverId,
                                                     @RequestHeader(value = "X-User-Name", required = false) String approverName,
+                                                    @RequestHeader(value = "X-User-Role", required = false) Integer approverRole,
                                                     @RequestBody UserOperationReviewDTO dto) {
-        return userServiceClient.reviewOperationRequest(id, approverId, approverName, dto);
+        return userServiceClient.reviewOperationRequest(id, approverId, approverName, approverRole, dto);
     }
 
     @GetMapping("/{userId}/entitlement")
@@ -128,5 +138,20 @@ public class AdminUserController {
                                                                 @Valid @RequestBody EntitlementAdjustmentRequest request) {
 
         return userServiceClient.adjustEntitlement(userId, operatorId, operatorName, request);
+    }
+
+    @PostMapping("/{userId}/entitlement/reward-orders")
+    public ApiResponse<EntitlementOrderVO> createRewardOrder(
+            @PathVariable Long userId,
+            @RequestHeader("X-User-Id") Long operatorId,
+            @RequestHeader("X-User-Name") String operatorName,
+            @RequestHeader("X-User-Role") Integer operatorRole,
+            @Valid @RequestBody EntitlementRewardOrderRequest request) {
+
+        if (!Integer.valueOf(0).equals(operatorRole)) {
+            throw ApiStatusException.forbidden("仅超级管理员可以创建奖励订单");
+        }
+
+        return userServiceClient.createRewardOrder(userId, operatorId, operatorName, operatorRole, request);
     }
 }

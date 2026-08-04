@@ -10,6 +10,7 @@ public class EntitlementOrderVO {
     private String orderNo;
     private Long userId;
     private String productCode;
+    private String orderType;
     private String entitlementMode;
     private Long grantSeconds;
     private Long amountCents;
@@ -21,5 +22,6 @@ public class EntitlementOrderVO {
     private LocalDateTime fulfilledTime;
     private LocalDateTime closeTime;
     private String closeReason;
+    private String remark;
     private LocalDateTime createTime;
 }

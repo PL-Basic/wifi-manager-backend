@@ -129,7 +129,7 @@ public class EntitlementQueryServiceImpl implements EntitlementQueryService {
     private DurationPurchaseVO toPurchaseVO(DurationPurchase purchase) {
 
         DurationPurchaseVO vo = new DurationPurchaseVO();
-        vo.setPurchaseId(purchase.getPurchaseId());
+        vo.setPurchaseId(purchase.getOrderNo());
         vo.setOrderNo(purchase.getOrderNo());
         vo.setPurchasedSeconds(purchase.getPurchasedSeconds());
         vo.setRemainingSeconds(purchase.getRemainingSeconds());

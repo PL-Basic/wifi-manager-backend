@@ -5,7 +5,7 @@ import java.time.LocalDateTime;
 
 @Data
 public class DurationPurchaseVO {
-    private Long purchaseId;
+    private String purchaseId;
     private String orderNo;
     private Long purchasedSeconds;
     private Long remainingSeconds;

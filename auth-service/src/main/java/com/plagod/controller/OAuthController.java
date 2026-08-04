@@ -3,6 +3,7 @@ package com.plagod.controller;
 import com.plagod.dto.ApiResponse;
 import com.plagod.vo.*;
 import com.plagod.service.OAuthService;
+import com.plagod.service.oauth.OAuthProviderRegistry;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
@@ -13,6 +14,14 @@ public class OAuthController {
 
     @Autowired
     private OAuthService oauthService;
+
+    @Autowired
+    private OAuthProviderRegistry providerRegistry;
+
+    @GetMapping("/providers")
+    public ApiResponse<java.util.List<OAuthProviderAvailabilityVO>> providers() {
+        return ApiResponse.success(providerRegistry.listAvailability());
+    }
 
     @GetMapping("/{provider}/authorize")
     public ApiResponse<OAuthAuthorizationVO> authorize(@PathVariable String provider,

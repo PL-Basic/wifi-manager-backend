@@ -87,9 +87,6 @@ public class UserManageServiceImpl implements UserManageService {
         updateDTO.setAvatar(cleanText(updateDTO.getAvatar()));
 
         if (!Integer.valueOf(0).equals(operatorRole)) {
-            if (user.getRole() != null && user.getRole() <= 1) {
-                throw new IllegalArgumentException("管理员之间不能互相修改");
-            }
             updateDTO.setRole(null);
         }
         UpdateWrapper<User> updateWrapper = new UpdateWrapper<>();
@@ -134,7 +131,7 @@ public class UserManageServiceImpl implements UserManageService {
     @Override
     @Audited(action = "user.delete")
     public void deleteUser(Long userId) {
-        getExistingUser(userId);
+        requireDeletableUser(getExistingUser(userId));
         userMapper.deleteById(userId);
     }
 
@@ -145,6 +142,8 @@ public class UserManageServiceImpl implements UserManageService {
         if (userId == null || userId <= 0) {
             throw new IllegalArgumentException("用户 ID 无效");
         }
+
+        requireDeletableUser(getExistingUser(userId));
 
         socialIdentityMapper.physicalDeleteByUserId(userId);
         jdbcTemplate.update("DELETE FROM sys_user WHERE user_id = ?", userId);
@@ -201,6 +200,12 @@ public class UserManageServiceImpl implements UserManageService {
             throw new IllegalArgumentException("用户不存在");
         }
         return user;
+    }
+
+    private void requireDeletableUser(User user) {
+        if (user.getRole() == null || Integer.valueOf(0).equals(user.getRole())) {
+            throw new IllegalArgumentException("超级管理员账号不能通过产品功能删除");
+        }
     }
 
     private UserVO toVO(User user) {

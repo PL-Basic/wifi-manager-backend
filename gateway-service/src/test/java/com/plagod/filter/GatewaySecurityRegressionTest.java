@@ -121,6 +121,35 @@ class GatewaySecurityRegressionTest {
     }
 
     @Test
+    void alertWebSocketTerminatesJwtAtGatewayAndForwardsTrustedIdentity() {
+        when(jwtUtils.parseToken("browser.jwt.value"))
+                .thenReturn(claims(1L, "admin", 0));
+        when(gatewayRateLimiter.acquire("websocket", "1", 3, Duration.ofMinutes(1)))
+                .thenReturn(Mono.just(GatewayRateLimiter.Decision.allowed(60L, false)));
+
+        MockServerHttpRequest request = MockServerHttpRequest
+                .get("/ws/alerts")
+                .header("Sec-WebSocket-Protocol", "access_token, browser.jwt.value")
+                .header("X-User-Id", "999")
+                .header("X-User-Role", "2")
+                .build();
+
+        AtomicReference<ServerWebExchange> forwarded = new AtomicReference<>();
+
+        filter.filter(MockServerWebExchange.from(request), capture(forwarded)).block();
+
+        ServerWebExchange result = forwarded.get();
+
+        assertNotNull(result);
+        assertEquals("access_token", result.getRequest().getHeaders().getFirst("Sec-WebSocket-Protocol"));
+        assertFalse(result.getRequest().getHeaders().getFirst("Sec-WebSocket-Protocol").contains("browser.jwt.value"));
+        assertEquals("1", result.getRequest().getHeaders().getFirst("X-User-Id"));
+        assertEquals("admin", result.getRequest().getHeaders().getFirst("X-User-Name"));
+        assertEquals("0", result.getRequest().getHeaders().getFirst("X-User-Role"));
+        assertEquals("test-gateway-token", result.getRequest().getHeaders().getFirst("X-Gateway-Token"));
+    }
+
+    @Test
     void otherUsersResourceIsForbidden() {
         when(jwtUtils.parseToken("valid-token"))
                 .thenReturn(claims(7L, "alice", 2));

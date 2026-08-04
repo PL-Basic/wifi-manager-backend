@@ -97,10 +97,10 @@ JWT_SECRET WIFI_GATEWAY_TOKEN WIFI_INTERNAL_TOKEN
 NACOS_SERVER_ADDR NACOS_USERNAME NACOS_PASSWORD NACOS_NAMESPACE NACOS_GROUP
 REDIS_HOST REDIS_PORT REDIS_PASSWORD REDIS_DATABASE REDIS_SSL
 MQTT_BROKER_URL MQTT_CLIENT_ID MQTT_USERNAME MQTT_PASSWORD
-WIFI_COMMAND_SECRET_KEY WIFI_ALLOWED_ORIGIN WIFI_TRUST_PROXY_HEADERS WIFI_AVATAR_DIR
+WIFI_COMMAND_SECRET_KEY WIFI_ALLOWED_ORIGIN WIFI_ALLOWED_ORIGINS WIFI_TRUST_PROXY_HEADERS WIFI_AVATAR_DIR
 ```
 
-OAuth、短信、邮件和本地 Demo 支付配置见 [deploy/backend.env.example](deploy/backend.env.example)。真实环境必须更换 JWT、内部请求、Redis、MQTT 和 WiFi 命令密钥。
+OAuth、短信、邮件和本地 Demo 支付配置见 [deploy/backend.env.example](deploy/backend.env.example)。真实环境必须更换 JWT、内部请求、Redis、MQTT 和 WiFi 命令密钥。Windows 和 Linux 的直接 JAR 环境加载方式见 [docs/backend-deployment.md](docs/backend-deployment.md)。
 
 ## 数据库迁移
 

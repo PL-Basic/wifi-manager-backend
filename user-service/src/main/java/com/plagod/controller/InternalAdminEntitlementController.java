@@ -2,15 +2,19 @@ package com.plagod.controller;
 
 import com.plagod.dto.ApiResponse;
 import com.plagod.dto.entitlement.EntitlementAdjustmentRequest;
+import com.plagod.dto.entitlement.EntitlementRewardOrderRequest;
 import com.plagod.dto.entitlement.LocalDemoRefundResultRequest;
 import com.plagod.dto.entitlement.RefundReviewRequest;
 import com.plagod.dto.entitlement.VerifiedRefundResult;
+import com.plagod.exception.ApiStatusException;
 import com.plagod.service.EntitlementAdjustmentService;
+import com.plagod.service.EntitlementRewardOrderService;
 import com.plagod.service.EntitlementQueryService;
 import com.plagod.service.RefundQueryService;
 import com.plagod.service.RefundService;
 import com.plagod.service.payment.LocalDemoRefundChannelAdapter;
 import com.plagod.vo.entitlement.DurationPurchasePageResult;
+import com.plagod.vo.entitlement.EntitlementOrderVO;
 import com.plagod.vo.entitlement.EntitlementUsagePageResult;
 import com.plagod.vo.entitlement.RefundPageResult;
 import com.plagod.vo.entitlement.RefundVO;
@@ -28,6 +32,8 @@ public class InternalAdminEntitlementController {
     private EntitlementQueryService queryService;
     @Autowired
     private EntitlementAdjustmentService adjustmentService;
+    @Autowired
+    private EntitlementRewardOrderService rewardOrderService;
     @Autowired
     private RefundService refundService;
     @Autowired
@@ -64,6 +70,24 @@ public class InternalAdminEntitlementController {
         return ApiResponse.success("权益调整完成", adjustmentService.adjust(userId, operatorId, operatorName, request));
     }
 
+    @PostMapping("/users/{userId}/reward-orders")
+    public ApiResponse<EntitlementOrderVO> createRewardOrder(
+            @PathVariable Long userId,
+            @RequestHeader("X-User-Id") Long operatorId,
+            @RequestHeader("X-User-Name") String operatorName,
+            @RequestHeader("X-User-Role") Integer operatorRole,
+            @Valid @RequestBody EntitlementRewardOrderRequest request) {
+
+        if (!Integer.valueOf(0).equals(operatorRole)) {
+            throw ApiStatusException.forbidden("仅超级管理员可以创建奖励订单");
+        }
+
+        return ApiResponse.success(
+                "奖励订单创建并生效",
+                rewardOrderService.create(userId, operatorId, operatorName, request)
+        );
+    }
+
     @PutMapping("/refunds/{refundNo}/review")
     public ApiResponse<RefundVO> reviewRefund(@PathVariable String refundNo,
                                               @RequestHeader("X-User-Id") Long reviewerId,
@@ -89,5 +113,10 @@ public class InternalAdminEntitlementController {
                                                      @RequestParam(required = false) String status) {
 
         return ApiResponse.success(refundQueryService.pageForAdmin(current, size, userId, status));
+    }
+
+    @GetMapping("/refunds/{refundNo}")
+    public ApiResponse<RefundVO> getRefund(@PathVariable String refundNo) {
+        return ApiResponse.success(refundQueryService.getForAdmin(refundNo));
     }
 }

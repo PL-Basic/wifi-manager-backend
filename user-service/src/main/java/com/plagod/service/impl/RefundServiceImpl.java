@@ -51,11 +51,13 @@ public class RefundServiceImpl implements RefundService {
     public RefundVO apply(Long userId, RefundApplyRequest request) {
 
         requireUserId(userId);
-        if (request == null || request.getPurchaseId() == null || request.getPurchaseId() <= 0) {
+        if (request == null || !StringUtils.hasText(request.getPurchaseId())) {
             throw new IllegalArgumentException("退款参数无效");
         }
 
         String requestId = normalize(request.getRequestId(), "退款请求号", 56);
+        String requestedPurchaseId = normalize(request.getPurchaseId(), "购买 ID", 64)
+                .toUpperCase(Locale.ROOT);
         String reason = normalize(request.getReason(), "退款原因", 255);
 
         /*
@@ -70,11 +72,11 @@ public class RefundServiceImpl implements RefundService {
         if (existingHint != null) {
             orderNo = existingHint.getOrderNo();
         } else {
-            purchaseHint = purchaseMapper.selectById(request.getPurchaseId());
+            purchaseHint = purchaseMapper.selectByOrderNo(requestedPurchaseId);
 
             if (purchaseHint == null || !userId.equals(purchaseHint.getUserId())) {
                 throw new IllegalArgumentException(
-                        "购买批次不存在或不属于当前用户");
+                        "购买订单不存在或不属于当前用户");
             }
             orderNo = purchaseHint.getOrderNo();
         }
@@ -95,11 +97,11 @@ public class RefundServiceImpl implements RefundService {
         RefundRecord existing = refundMapper.selectByUserRequestForUpdate(userId, requestId);
 
         if (existing != null) {
-            validateDuplicate(existing, request.getPurchaseId(), reason);
+            validateDuplicate(existing, requestedPurchaseId, reason);
             return toVO(existing);
         }
 
-        RefundRecord active = refundMapper.selectActiveByPurchaseForUpdate(request.getPurchaseId());
+        RefundRecord active = refundMapper.selectActiveByOrderForUpdate(requestedPurchaseId);
 
         if (active != null) {
             throw new IllegalArgumentException("该购买批次已有正在处理的退款");
@@ -132,7 +134,8 @@ public class RefundServiceImpl implements RefundService {
 
             lotTotal = Math.addExact(lotTotal, remaining);
 
-            if (Objects.equals(request.getPurchaseId(), item.getPurchaseId())) {purchase = item;
+            if (requestedPurchaseId.equalsIgnoreCase(item.getOrderNo())) {
+                purchase = item;
             }
         }
 
@@ -185,7 +188,7 @@ public class RefundServiceImpl implements RefundService {
          * 此时不再冻结第二次，只验证请求语义并返回已有结果。
          */
         if (!candidate.getRefundNo().equals(stored.getRefundNo())) {
-            validateDuplicate(stored, request.getPurchaseId(), reason);
+            validateDuplicate(stored, requestedPurchaseId, reason);
             return toVO(stored);
         }
 
@@ -457,8 +460,8 @@ public class RefundServiceImpl implements RefundService {
         statusLogMapper.insertIgnore(log);
     }
 
-    private void validateDuplicate(RefundRecord refund, Long purchaseId, String reason) {
-        if (!Objects.equals(purchaseId, refund.getPurchaseId()) || !reason.equals(refund.getReason())) {
+    private void validateDuplicate(RefundRecord refund, String orderNo, String reason) {
+        if (!orderNo.equalsIgnoreCase(refund.getOrderNo()) || !reason.equals(refund.getReason())) {
             throw new IllegalArgumentException("退款请求号已被其他请求使用");
         }
     }
@@ -468,7 +471,7 @@ public class RefundServiceImpl implements RefundService {
         vo.setRefundNo(refund.getRefundNo());
         vo.setOrderNo(refund.getOrderNo());
         vo.setPaymentNo(refund.getPaymentNo());
-        vo.setPurchaseId(refund.getPurchaseId());
+        vo.setPurchaseId(refund.getOrderNo());
         vo.setUserId(refund.getUserId());
         vo.setRequestId(refund.getRequestId());
         vo.setChannel(refund.getChannel());
