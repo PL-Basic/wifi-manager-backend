@@ -28,6 +28,9 @@ import org.springframework.util.StringUtils;
 public class OAuthService {
 
     @Autowired
+    private DefaultTenantMembershipOutboxService defaultTenantMembershipOutboxService;
+
+    @Autowired
     private OAuthProviderRegistry providerRegistry;
 
     @Autowired
@@ -178,7 +181,17 @@ public class OAuthService {
                 throw new IllegalStateException("社交登录结果缺少用户身份");
             }
 
-            result.setToken(jwtUtils.generateToken(principal.getUserId(), principal.getUsername(), principal.getRole()));
+            if (!Integer.valueOf(0).equals(principal.getRole())) {
+                defaultTenantMembershipOutboxService.dispatchForUser(principal.getUserId());
+            }
+            if (!Integer.valueOf(0).equals(principal.getRole())
+                    && !defaultTenantMembershipOutboxService.isMembershipReady(principal.getUserId())) {
+                result.setAccountState("TENANT_MEMBERSHIP_PENDING");
+                result.setMessage("默认租户成员关系正在恢复");
+            } else {
+                result.setAccountState("ACTIVE");
+                result.setToken(jwtUtils.generateToken(principal.getUserId(), principal.getUsername(), principal.getRole()));
+            }
         }
 
         return result;

@@ -19,6 +19,11 @@ public class LoginResult {
         return new LoginResult(LoginStatusEnum.SUCCESS,"登录成功",data);
     }
 
+    public static LoginResult tenantMembershipPending(AuthResultDTO data) {
+        return new LoginResult(LoginStatusEnum.TENANT_MEMBERSHIP_PENDING,
+                "默认租户成员关系正在恢复", data);
+    }
+
     public static LoginResult fail(LoginStatusEnum status, String message) {
         return new LoginResult(status,message,null);
     }

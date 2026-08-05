@@ -82,6 +82,12 @@ wifi:
     gateway-token: ${WIFI_GATEWAY_TOKEN:local-gateway-token-change-me}
   internal:
     token: ${WIFI_INTERNAL_TOKEN:local-internal-token-change-me}
+  tenant-membership-outbox:
+    scan-delay-ms: 5000
+    executor:
+      core-size: 1
+      max-size: 2
+      queue-capacity: 100
   rate-limit:
     redis-enabled: ${REDIS_RATE_LIMIT_ENABLED:true}
     redis-fallback-cooldown-millis: 30000

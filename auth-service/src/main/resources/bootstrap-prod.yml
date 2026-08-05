@@ -7,6 +7,7 @@ spring:
         password: "${NACOS_PASSWORD}"
         namespace: "${NACOS_NAMESPACE}"
         group: "${NACOS_GROUP}"
+        ip: "${NACOS_DISCOVERY_IP}"
       config:
         server-addr: "${NACOS_SERVER_ADDR}"
         username: "${NACOS_USERNAME}"

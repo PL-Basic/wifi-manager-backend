@@ -11,6 +11,7 @@ import com.plagod.vo.user.UserStatsVO;
 import com.plagod.dto.user.UserStatusDTO;
 import com.plagod.dto.user.UserUpdateDTO;
 import com.plagod.vo.user.UserVO;
+import com.plagod.vo.user.UserRoleSnapshotVO;
 import com.plagod.entity.user.User;
 import com.plagod.mapper.UserMapper;
 import com.plagod.service.UserManageService;
@@ -69,6 +70,29 @@ public class UserManageServiceImpl implements UserManageService {
     public UserVO getUser(Long userId) {
         User user = getExistingUser(userId);
         return toVO(user);
+    }
+
+    @Override
+    public List<UserRoleSnapshotVO> getRoleSnapshots(List<Long> userIds) {
+        if (userIds == null || userIds.isEmpty() || userIds.size() > 100) {
+            throw new IllegalArgumentException("用户ID列表数量必须在1到100之间");
+        }
+        for (Long userId : userIds) {
+            if (userId == null || userId <= 0) {
+                throw new IllegalArgumentException("用户ID必须大于0");
+            }
+        }
+        List<UserRoleSnapshotVO> result = new ArrayList<>();
+        for (User user : userMapper.selectBatchIds(userIds)) {
+            UserRoleSnapshotVO snapshot = new UserRoleSnapshotVO();
+            snapshot.setUserId(String.valueOf(user.getUserId()));
+            snapshot.setUsername(user.getUsername());
+            snapshot.setNickname(user.getNickname());
+            snapshot.setRole(user.getRole());
+            snapshot.setStatus(user.getStatus());
+            result.add(snapshot);
+        }
+        return result;
     }
 
     @Override

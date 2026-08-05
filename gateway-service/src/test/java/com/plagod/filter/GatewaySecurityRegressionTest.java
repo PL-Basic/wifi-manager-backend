@@ -122,6 +122,33 @@ class GatewaySecurityRegressionTest {
     }
 
     @Test
+    void ownTenantListAllowsNormalUserAndUsesClaimsInsteadOfForgedHeaders() {
+        when(jwtUtils.parseToken("valid-token"))
+                .thenReturn(claims(7L, "alice", 2));
+
+        MockServerHttpRequest request = MockServerHttpRequest
+                .method(HttpMethod.GET, "/tenants/me")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer valid-token")
+                .header("X-User-Id", "1")
+                .header("X-User-Name", "admin")
+                .header("X-User-Role", "0")
+                .build();
+
+        AtomicReference<ServerWebExchange> forwarded = new AtomicReference<>();
+
+        filter.filter(MockServerWebExchange.from(request), capture(forwarded)).block();
+
+        ServerWebExchange result = forwarded.get();
+
+        assertNotNull(result);
+        assertEquals("7", result.getRequest().getHeaders().getFirst("X-User-Id"));
+        assertEquals("alice", result.getRequest().getHeaders().getFirst("X-User-Name"));
+        assertEquals("2", result.getRequest().getHeaders().getFirst("X-User-Role"));
+        assertEquals("test-gateway-token", result.getRequest().getHeaders().getFirst("X-Gateway-Token"));
+        assertNull(result.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION));
+    }
+
+    @Test
     void alertWebSocketTerminatesJwtAtGatewayAndForwardsTrustedIdentity() {
         when(jwtUtils.parseToken("browser.jwt.value"))
                 .thenReturn(claims(1L, "admin", 0));

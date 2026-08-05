@@ -13,6 +13,7 @@ Vue 管理端 -> gateway-service :8080
                  |-> device-service  :8383
                  |-> monitor-service :8384
                  |-> admin-service   :8385
+                 |-> tenant-service  :8386
                          |-> MySQL / Redis / Nacos / MQTT Broker
                                                    |-> ESP32 边缘节点
 ```
@@ -33,6 +34,7 @@ user-service                         用户、头像、权益、订单、支付�
 device-service                       ESP32、Session、MQTT、命令、流量
 monitor-service                      规则、告警、审计、GPS/GIS、分析
 admin-service                        管理端 BFF
+tenant-service                       租户、成员、SaaS 套餐与订阅基础
 database-migration                   Flyway 数据库迁移入口
 ```
 
@@ -94,7 +96,7 @@ Gateway 默认地址：`http://localhost:8080`。
 ```text
 MYSQL_URL MYSQL_USERNAME MYSQL_PASSWORD
 WIFI_GATEWAY_TOKEN WIFI_INTERNAL_TOKEN
-NACOS_SERVER_ADDR NACOS_USERNAME NACOS_PASSWORD NACOS_NAMESPACE NACOS_GROUP
+NACOS_SERVER_ADDR NACOS_USERNAME NACOS_PASSWORD NACOS_NAMESPACE NACOS_GROUP NACOS_DISCOVERY_IP
 REDIS_HOST REDIS_PORT REDIS_PASSWORD REDIS_DATABASE REDIS_SSL
 MQTT_BROKER_URL MQTT_CLIENT_ID MQTT_USERNAME MQTT_PASSWORD
 WIFI_COMMAND_SECRET_KEY WIFI_ALLOWED_ORIGIN WIFI_ALLOWED_ORIGIN_ALT WIFI_ALLOWED_ORIGINS WIFI_ALERT_HEARTBEAT_INTERVAL_MILLIS
@@ -102,6 +104,8 @@ WIFI_TRUST_PROXY_HEADERS REDIS_RATE_LIMIT_ENABLED WIFI_AVATAR_DIR
 ```
 
 JWT 只由 Auth 和 Gateway 使用，并统一从受鉴权保护的 Nacos `wifi-jwt.yml` 加载；模板见 [deploy/nacos/wifi-jwt.example.yml](deploy/nacos/wifi-jwt.example.yml)。`deploy/generate-nacos-auth-properties.ps1` 在仓库外生成 Nacos 鉴权片段，`deploy/verify-nacos-auth.ps1` 在生产启动前证明匿名请求无法读取 JWT 配置。本地 IDEA 可使用 `deploy/start-idea-with-env.ps1 -EnvPath <仓库外环境文件>` 加载并校验配置，不依赖 EnvFile 插件。加载器不再隐式读取仓库 `.env`。每项安全配置的作用、修改位置、重启范围和故障影响见 [安全配置与密钥操作手册](docs/security-configuration-operations.md)。OAuth、短信、邮件和本地 Demo 支付配置见 [deploy/backend.env.example](deploy/backend.env.example)。真实环境必须更换 JWT、内部请求、Redis、MQTT 和 WiFi 命令密钥。Windows 和 Linux 的直接 JAR 环境加载方式见 [docs/backend-deployment.md](docs/backend-deployment.md)。
+
+`NACOS_DISCOVERY_IP` 必须显式填写：七个服务位于同一台开发机时使用 `127.0.0.1`；多节点部署时，每个节点填写能被其他服务访问的固定私网 IP。禁止留空依赖 Nacos 自动选择网卡，否则 `healthy=true` 仍可能对应一个实际不可达的注册地址。
 
 ## 数据库迁移
 
@@ -122,7 +126,7 @@ java -jar database-migration\target\database-migration-0.0.1-SNAPSHOT.jar
 
 ## 启动顺序
 
-先启动：`MySQL`、`Redis`、`Nacos`、`MQTT Broker`；再启动：`auth-service`、`user-service`、`device-service`、`monitor-service`、`admin-service`、`gateway-service`。
+先启动：`MySQL`、`Redis`、`Nacos`、`MQTT Broker`；再启动：`user-service`、`tenant-service`、`auth-service`、`device-service`、`monitor-service`、`admin-service`、`gateway-service`。
 
 ## 编译与测试
 
@@ -152,6 +156,7 @@ deploy/backend.env.example
 - `device-service` 负责设备、Session、黑名单、命令和流量接入。
 - `monitor-service` 负责规则、告警、审计和 GIS。
 - `admin-service` 只作为 BFF 聚合接口。
+- `tenant-service` 负责租户、成员和 SaaS 基础数据，admin-service 不直接访问这些表。
 - 用户身份必须来自 JWT，不能通过伪造 `X-User-*` 请求头获得。
 - 设备事件必须使用 `deviceCode`、`sessionId`、`mac`、`eventId` 或 `requestId` 进行可信关联。
 

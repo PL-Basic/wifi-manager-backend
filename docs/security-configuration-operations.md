@@ -56,7 +56,9 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\deploy\load-env.ps1 -P
 
 `application.yml` 是所有环境的基础配置。只有激活 `prod` profile 时，Spring Boot 才会额外加载同一服务的 `application-prod.yml`，并用其中同名配置覆盖基础值；未在生产文件中重复的配置继续继承基础文件。因此生产文件不应复制整份 `application.yml`。
 
-当前六个常驻服务都具有生产覆盖。Auth、User、Device、Monitor 在 `prod` 下要求显式数据库配置；Auth 和 Gateway 要求显式 Redis 配置；Device 要求显式 MQTT 配置；Gateway、Auth 和 Monitor 要求显式 Origin。Gateway 要求 Gateway Token；五个 Servlet 服务同时要求 Gateway Token 和出站 Internal Token。所有服务的 `bootstrap-prod.yml` 都要求显式 Nacos 连接配置，数据库迁移程序也有独立的生产覆盖。
+当前七个常驻服务都具有生产覆盖。Auth、User、Device、Monitor、Tenant 在 `prod` 下要求显式数据库配置；Auth 和 Gateway 要求显式 Redis 配置；Device 要求显式 MQTT 配置；Gateway、Auth 和 Monitor 要求显式 Origin。Gateway 要求 Gateway Token；六个 Servlet 服务同时要求 Gateway Token 和出站 Internal Token。所有服务的 `bootstrap-prod.yml` 都要求显式 Nacos 连接配置，数据库迁移程序也有独立的生产覆盖。
+
+七个服务的 `bootstrap-prod.yml` 还会把非空 `NACOS_DISCOVERY_IP` 绑定到 `spring.cloud.nacos.discovery.ip`。该变量决定其他微服务实际连接哪个网卡地址，不影响 `NACOS_SERVER_ADDR`。单机开发填写 `127.0.0.1`；多节点生产按节点填写可路由的固定私网 IP。禁止留空让框架自动选择网卡。
 
 生产覆盖仍然只写与基础配置不同或必须显式提供的键，不复制端口、路由、业务阈值等稳定基础配置。JWT 继续只由 Nacos `wifi-jwt.yml` 提供，不写入任何 `application-prod.yml`。
 
@@ -71,6 +73,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\deploy\load-env.ps1 -P
 Servlet 服务区分两种 Internal Token 用途：`wifi.internal.token` 用于出站 Feign；只有 User、Device、Monitor 拥有 `/internal/**` 入站接口并配置 `wifi.security.internal-token`。Auth 和 Admin 不接受 Internal Token 作为入站凭据，避免扩大信任边界。
 
 加载器要求 `DB_MIGRATION_BASELINE_ON_MIGRATE=false` 和 `REDIS_RATE_LIMIT_ENABLED=true`。Redis、MQTT 的用户名或密码允许显式留空，但对应键必须存在；这表示操作者已经明确选择无认证本地设施，而不是因为漏写配置而静默回退。OAuth、短信和邮件等可选 Provider 凭据可以缺省或留空，对应能力会保持不可用。
+
+修改 `NACOS_DISCOVERY_IP` 会影响当前节点上所有服务对外公布的实例地址。修改后停止并重新启动该节点的七个服务，检查 Nacos 实例列表中的 IP 和端口，再通过 Gateway 验证至少一条真实跨服务调用。`healthy=true` 只证明客户端仍向 Nacos 续约；当注册地址指向热点、虚拟网卡或已经失效的私网时，调用仍会超时，因此不能用 healthy 状态代替可达性检查。
 
 本地手机 Portal 联调建议使用：
 

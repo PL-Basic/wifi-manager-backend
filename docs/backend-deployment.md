@@ -11,7 +11,7 @@
 - MQTT Broker
 - Maven Wrapper
 
-对外只开放 Gateway 端口 `8080`。`8381` 至 `8385` 以及 MySQL、Redis、Nacos、MQTT 应限制在可信网络内。
+对外只开放 Gateway 端口 `8080`。`8381` 至 `8386` 以及 MySQL、Redis、Nacos、MQTT 应限制在可信网络内。
 
 ## 2. 准备配置
 
@@ -59,6 +59,10 @@ Linux Shell 加载变量：
 ```
 
 必须使用 `.` 或 `source`，直接执行脚本无法把环境变量留在当前 Shell。两个加载器都会拒绝 `JWT_SECRET`、`CHANGE_ME`、示例域名、过短密钥以及相同的 Gateway/Internal Token。
+
+`NACOS_DISCOVERY_IP` 是服务向 Nacos 注册并供其他服务调用的地址，不是 Nacos Server 地址。单机开发中七个服务和调用方都在同一台电脑时填 `127.0.0.1`；多节点生产中，每个节点必须使用当前节点可被其他节点访问的固定私网 IP，并为该节点上的所有服务注入同一个值。禁止留空依赖自动网卡选择，多网卡、热点或虚拟网卡切换会使服务注册到不可达地址。Nacos 显示 `healthy=true` 只代表实例仍在续约，不证明其他节点能够连接该 IP 和端口。
+
+修改 `NACOS_DISCOVERY_IP` 后必须重启该节点的全部 Wifi Manager 服务，并在 Nacos 服务列表逐一核对 `gateway-service`、`auth-service`、`user-service`、`device-service`、`monitor-service`、`admin-service` 和 `tenant-service` 的实例 IP、端口。随后至少通过 Gateway 执行一次真实的跨服务调用；仅检查进程启动或 Nacos healthy 状态不足以完成验收。
 
 使用 systemd 时不需要运行加载器，可以在每个服务单元中直接配置：
 
@@ -139,6 +143,7 @@ java -jar user-service\target\user-service-0.0.1-SNAPSHOT.jar
 java -jar device-service\target\device-service-0.0.1-SNAPSHOT.jar
 java -jar monitor-service\target\monitor-service-0.0.1-SNAPSHOT.jar
 java -jar admin-service\target\admin-service-0.0.1-SNAPSHOT.jar
+java -jar tenant-service\target\tenant-service-0.0.1-SNAPSHOT.jar
 java -jar gateway-service\target\gateway-service-0.0.1-SNAPSHOT.jar
 ```
 
@@ -151,13 +156,14 @@ User 8382
 Device 8383
 Monitor 8384
 Admin 8385
+Tenant 8386
 ```
 
 ## 6. 运行边界
 
 - 当前 Spring Boot 版本锁定 Flyway 6.4.4；在 MySQL 8.4 上已验证 V1.1 至 V1.6 迁移和重复运行成功，但会出现数据库版本尚未正式验证的警告。该警告不阻塞 Demo，正式生产升级前应重新验证兼容性或统一升级 Flyway 与 Spring Boot。
 - `SPRING_PROFILES_ACTIVE=prod` 会关闭 MyBatis SQL 参数输出，并启用各服务 `application-prod.yml`、`bootstrap-prod.yml` 的必需环境变量覆盖和启动级安全校验。
-- 加载器会拒绝缺少关键键、空的必需值、重复键、`CHANGE_ME`、通配 Origin、`DB_MIGRATION_BASELINE_ON_MIGRATE` 非 `false` 和 `REDIS_RATE_LIMIT_ENABLED` 非 `true`。
+- 加载器会拒绝缺少关键键、空的必需值（包括 `NACOS_DISCOVERY_IP`）、重复键、`CHANGE_ME`、通配 Origin、`DB_MIGRATION_BASELINE_ON_MIGRATE` 非 `false` 和 `REDIS_RATE_LIMIT_ENABLED` 非 `true`。
 - Auth 和 Gateway 只加载相同 namespace/group 下的 Nacos `wifi-jwt.yml`；JWT 配置不再接受本地 YAML 默认值或 `JWT_SECRET` 环境变量。
 - 生产 Nacos 必须启用鉴权并拒绝匿名配置读取；所有集群节点的 server identity 与 token secret 必须一致，Nacos 管理端口不得暴露到公网。
 - 多个 Device 实例必须使用不同的 `MQTT_CLIENT_ID`。
@@ -180,6 +186,7 @@ Test-NetConnection 127.0.0.1 -Port 8382
 Test-NetConnection 127.0.0.1 -Port 8383
 Test-NetConnection 127.0.0.1 -Port 8384
 Test-NetConnection 127.0.0.1 -Port 8385
+Test-NetConnection 127.0.0.1 -Port 8386
 ```
 
 随后通过 Gateway 验证登录、本人资源查询、管理员概览、Session 查询和一次受限接口拒绝。不要绕过 Gateway 直接把内部接口暴露给客户端。
