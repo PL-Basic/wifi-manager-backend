@@ -3,7 +3,11 @@ package com.plagod.filter;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.plagod.ratelimit.GatewayRateLimiter;
+import com.plagod.service.GatewayIdentityContext;
+import com.plagod.service.GatewayIdentityValidationService;
+import com.plagod.service.GatewayValidationException;
 import com.plagod.utils.JwtUtils;
+import com.plagod.vo.tenant.TenantContextVO;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,6 +33,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -40,6 +45,9 @@ class GatewaySecurityRegressionTest {
     @Mock
     private GatewayRateLimiter gatewayRateLimiter;
 
+    @Mock
+    private GatewayIdentityValidationService identityValidationService;
+
     private JwtAuthGlobalFilter filter;
 
     @BeforeEach
@@ -49,6 +57,7 @@ class GatewaySecurityRegressionTest {
         ReflectionTestUtils.setField(filter, "jwtUtils", jwtUtils);
         ReflectionTestUtils.setField(filter, "objectMapper", new ObjectMapper());
         ReflectionTestUtils.setField(filter, "gatewayRateLimiter", gatewayRateLimiter);
+        ReflectionTestUtils.setField(filter, "identityValidationService", identityValidationService);
 
         ReflectionTestUtils.setField(filter, "gatewayToken", "test-gateway-token");
         ReflectionTestUtils.setField(filter, "trustProxyHeaders", false);
@@ -59,6 +68,17 @@ class GatewaySecurityRegressionTest {
         ReflectionTestUtils.setField(filter, "websocketLimit", 3);
         ReflectionTestUtils.setField(filter, "paymentCallbackLimit", 3);
         ReflectionTestUtils.setField(filter, "commerceWriteLimit", 3);
+
+        lenient().when(identityValidationService.validate(
+                        any(Claims.class),
+                        anyLong(),
+                        anyString(),
+                        anyInt(),
+                        any(HttpMethod.class)))
+                .thenAnswer(invocation -> Mono.just(identity(
+                        invocation.getArgument(1),
+                        invocation.getArgument(2),
+                        invocation.getArgument(3))));
     }
 
     @Test
@@ -132,6 +152,9 @@ class GatewaySecurityRegressionTest {
                 .header("X-User-Id", "1")
                 .header("X-User-Name", "admin")
                 .header("X-User-Role", "0")
+                .header("X-Tenant-Id", "999")
+                .header("X-Context-Type", "PLATFORM_TENANT")
+                .header("X-Tenant-Context-Version", "999")
                 .build();
 
         AtomicReference<ServerWebExchange> forwarded = new AtomicReference<>();
@@ -144,6 +167,9 @@ class GatewaySecurityRegressionTest {
         assertEquals("7", result.getRequest().getHeaders().getFirst("X-User-Id"));
         assertEquals("alice", result.getRequest().getHeaders().getFirst("X-User-Name"));
         assertEquals("2", result.getRequest().getHeaders().getFirst("X-User-Role"));
+        assertEquals("11", result.getRequest().getHeaders().getFirst("X-Tenant-Id"));
+        assertEquals("TENANT", result.getRequest().getHeaders().getFirst("X-Context-Type"));
+        assertEquals("3", result.getRequest().getHeaders().getFirst("X-Tenant-Context-Version"));
         assertEquals("test-gateway-token", result.getRequest().getHeaders().getFirst("X-Gateway-Token"));
         assertNull(result.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION));
     }
@@ -262,6 +288,48 @@ class GatewaySecurityRegressionTest {
         assertTrue(windows.size() <= 64);
     }
 
+    @Test
+    void contextValidationDependencyFailureFailsClosed() {
+        when(jwtUtils.parseToken("valid-token")).thenReturn(claims(7L, "alice", 2));
+        when(identityValidationService.validate(
+                any(Claims.class), eq(7L), eq("alice"), eq(2), eq(HttpMethod.POST)))
+                .thenReturn(Mono.error(new GatewayValidationException(
+                        503, 503, "租户上下文校验服务暂时不可用")));
+
+        MockServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.post("/entitlements/orders")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer valid-token")
+                        .build());
+
+        filter.filter(exchange, capture(new AtomicReference<>())).block();
+
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, exchange.getResponse().getStatusCode());
+        assertTrue(exchange.getResponse().getBodyAsString().block().contains("\"code\":503"));
+    }
+
+    @Test
+    void sameAccessTokenCanBeUsedForTwoNormalRequests() {
+        when(jwtUtils.parseToken("valid-token")).thenReturn(claims(7L, "alice", 2));
+
+        AtomicReference<ServerWebExchange> first = new AtomicReference<>();
+        AtomicReference<ServerWebExchange> second = new AtomicReference<>();
+        filter.filter(
+                MockServerWebExchange.from(MockServerHttpRequest.get("/users/7")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer valid-token")
+                        .build()),
+                capture(first)).block();
+        filter.filter(
+                MockServerWebExchange.from(MockServerHttpRequest.get("/users/7")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer valid-token")
+                        .build()),
+                capture(second)).block();
+
+        assertNotNull(first.get());
+        assertNotNull(second.get());
+        verify(identityValidationService, times(2)).validate(
+                any(Claims.class), eq(7L), eq("alice"), eq(2), eq(HttpMethod.GET));
+    }
+
     private GatewayFilterChain capture(
             AtomicReference<ServerWebExchange> forwarded) {
 
@@ -276,6 +344,25 @@ class GatewaySecurityRegressionTest {
         claims.put("username", username);
         claims.put("role", role);
         return claims;
+    }
+
+    private GatewayIdentityContext identity(Long userId, String username, Integer role) {
+        TenantContextVO context = new TenantContextVO();
+        context.setContextType(Integer.valueOf(0).equals(role) ? "PLATFORM" : "TENANT");
+        context.setTenantId(Integer.valueOf(0).equals(role) ? null : "11");
+        context.setTenantCode(Integer.valueOf(0).equals(role) ? null : "default-tenant");
+        context.setTenantRole(Integer.valueOf(1).equals(role) ? "TENANT_ADMIN" : "MEMBER");
+        context.setContextVersion(Integer.valueOf(0).equals(role) ? null : 3L);
+        context.setMemberContextVersion(Integer.valueOf(0).equals(role) ? null : 5L);
+
+        GatewayIdentityContext identity = new GatewayIdentityContext();
+        identity.setUserId(userId);
+        identity.setUsername(username);
+        identity.setRole(role);
+        identity.setSessionId("session-id");
+        identity.setTokenId("token-id");
+        identity.setTenantContext(context);
+        return identity;
     }
 
     @SuppressWarnings("unchecked")

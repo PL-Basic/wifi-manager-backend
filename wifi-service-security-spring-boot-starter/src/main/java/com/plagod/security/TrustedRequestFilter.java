@@ -14,9 +14,6 @@ public class TrustedRequestFilter extends OncePerRequestFilter {
 
     private static final Logger log = Logger.getLogger(TrustedRequestFilter.class.getName());
 
-    private static final String GATEWAY_HEADER = "X-Gateway-Token";
-    private static final String INTERNAL_HEADER = "X-Internal-Token";
-
     private final TrustedRequestProperties properties;
 
     public TrustedRequestFilter(TrustedRequestProperties properties) {
@@ -33,17 +30,24 @@ public class TrustedRequestFilter extends OncePerRequestFilter {
         }
 
         String path = request.getRequestURI();
-        String gatewayToken = request.getHeader(GATEWAY_HEADER);
-        String internalToken = request.getHeader(INTERNAL_HEADER);
+        String gatewayToken = request.getHeader(TrustedHeaderNames.GATEWAY_TOKEN);
+        String internalToken = request.getHeader(TrustedHeaderNames.INTERNAL_TOKEN);
 
         boolean trusted;
+        String trustedSource;
 
         if (properties.isInternalPath(path)) {
             // 内部路径只能使用内部凭据，Gateway 凭据不能越权调用。
             trusted = tokenMatches(internalToken, properties.getInternalToken());
+            trustedSource = TrustedHeaderNames.SOURCE_INTERNAL;
         } else {
             // 迁移期间允许 Gateway 或可信 Feign 调用现有业务路径。
-            trusted = tokenMatches(gatewayToken, properties.getGatewayToken()) || tokenMatches(internalToken, properties.getInternalToken());
+            boolean gatewayTrusted = tokenMatches(gatewayToken, properties.getGatewayToken());
+            boolean internalTrusted = tokenMatches(internalToken, properties.getInternalToken());
+            trusted = gatewayTrusted || internalTrusted;
+            trustedSource = gatewayTrusted
+                    ? TrustedHeaderNames.SOURCE_GATEWAY
+                    : TrustedHeaderNames.SOURCE_INTERNAL;
         }
 
         if (!trusted) {
@@ -64,6 +68,7 @@ public class TrustedRequestFilter extends OncePerRequestFilter {
             return;
         }
 
+        request.setAttribute(TrustedHeaderNames.TRUSTED_SOURCE_ATTRIBUTE, trustedSource);
         chain.doFilter(request, response);
     }
 

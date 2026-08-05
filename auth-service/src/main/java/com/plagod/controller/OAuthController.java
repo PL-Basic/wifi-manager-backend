@@ -1,12 +1,17 @@
 package com.plagod.controller;
 
 import com.plagod.dto.ApiResponse;
+import com.plagod.service.RefreshCookieService;
+import com.plagod.utils.RequestIpUtils;
 import com.plagod.vo.*;
 import com.plagod.service.OAuthService;
 import com.plagod.service.oauth.OAuthProviderRegistry;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
+
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 
 @RestController
 @RequestMapping("/auth/oauth")
@@ -17,6 +22,9 @@ public class OAuthController {
 
     @Autowired
     private OAuthProviderRegistry providerRegistry;
+
+    @Autowired
+    private RefreshCookieService refreshCookieService;
 
     @GetMapping("/providers")
     public ApiResponse<java.util.List<OAuthProviderAvailabilityVO>> providers() {
@@ -42,7 +50,10 @@ public class OAuthController {
     public ApiResponse<OAuthCallbackResultVO> callback(@PathVariable String provider,
                                                        @RequestParam String state,
                                                        @RequestParam(value = "code", required = false) String code,
-                                                       @RequestParam(value = "error", required = false) String error) {
+                                                       @RequestParam(value = "error", required = false) String error,
+                                                       @RequestHeader(value = "X-Client-Instance-Id", required = false) String clientInstanceId,
+                                                       HttpServletRequest request,
+                                                       HttpServletResponse response) {
 
         if (StringUtils.hasText(error)) {
             oauthService.deny(provider, state);
@@ -53,6 +64,20 @@ public class OAuthController {
             throw new IllegalArgumentException("OAuth 回调缺少授权码");
         }
 
-        return ApiResponse.success(oauthService.callback(provider, state, code));
+        OAuthCallbackIssue callbackIssue = oauthService.callback(
+                provider,
+                state,
+                code,
+                clientInstanceId,
+                request.getHeader("User-Agent"),
+                RequestIpUtils.getClientIP(request));
+        if (callbackIssue.getSessionIssue() != null) {
+            AuthSessionIssue issue = callbackIssue.getSessionIssue();
+            refreshCookieService.write(
+                    response,
+                    issue.getRefreshToken(),
+                    issue.getCookieMaxAge());
+        }
+        return ApiResponse.success(callbackIssue.getResult());
     }
 }

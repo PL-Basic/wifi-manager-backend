@@ -77,9 +77,20 @@ login:
     fail-window-minutes: 10
     record-keep-days: 30
 wifi:
+  auth-session:
+    refresh-absolute-ttl: ${WIFI_REFRESH_ABSOLUTE_TTL:7d}
+    operation-token-ttl: ${WIFI_OPERATION_TOKEN_TTL:5m}
+    cookie-name: ${WIFI_REFRESH_COOKIE_NAME:wifi_refresh}
+    cookie-path: ${WIFI_REFRESH_COOKIE_PATH:/}
+    same-site: ${WIFI_REFRESH_COOKIE_SAME_SITE:Lax}
+    secure-cookie: ${WIFI_REFRESH_COOKIE_SECURE:false}
   security:
     enabled: true
     gateway-token: ${WIFI_GATEWAY_TOKEN:local-gateway-token-change-me}
+    internal-token: ${WIFI_INTERNAL_TOKEN:local-internal-token-change-me}
+    internal-token-required: true
+    internal-path-prefixes:
+      - /internal/
   internal:
     token: ${WIFI_INTERNAL_TOKEN:local-internal-token-change-me}
   tenant-membership-outbox:

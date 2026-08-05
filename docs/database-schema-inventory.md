@@ -49,6 +49,30 @@ Flyway 历史为 baseline 1.6 与成功执行的 V1.7。数据库记录的 V1.7 
 - `t_session_user_guard` 和 `t_client_access_guard` 故意不创建 Entity，由专用 Mapper 的原生 SQL承担并发锁行；它们不是遗漏。
 - `t_audit_log` 的 Mapper 位于公共 MyBatis 模块，写入由 audit starter 负责，查询由 monitor-service 负责。
 
-## 4. 后续迁移门禁
+## 4. V2.1 已执行租户基础对象
 
-创建任何 V2.x 前必须依次完成：数据库备份/恢复点、V1.7 文件与历史 checksum 核对、用户执行 Flyway validate、重新查询真实对象集合并与本清单逐项比对。禁止用“31 个 Entity 与 31 张业务表数量相等”替代集合核对，也禁止对当前业务库执行 Flyway clean。
+P-1 已由用户执行 V2.1 并完成验收。以下对象加入源码、Entity/Mapper 和真实库核对范围：
+
+- `t_tenant`；V2.1；`Tenant`；`TenantMapper`；tenant-service；tenant code 全局唯一。
+- `t_tenant_member`；V2.1；`TenantMember`；`TenantMemberMapper`；tenant-service；tenant + user 唯一、每个用户最多一个有效默认成员。
+- `t_platform_staff`；V2.1；`PlatformStaff`；`PlatformStaffMapper`；tenant-service；user + authority 唯一。
+- `t_saas_plan`；V2.1；`SaasPlan`；`SaasPlanMapper`；tenant-service；plan code 唯一。
+- `t_saas_plan_version`；V2.1；当前 P-1 仅建表；tenant-service；plan + version no 唯一。
+- `t_tenant_subscription`；V2.1；`TenantSubscription`；`TenantSubscriptionMapper`；tenant-service；每个租户最多一个有效订阅。
+- `t_tenant_quota`；V2.1；当前 P-1 仅建表；tenant-service；tenant + quota type 唯一。
+- `t_tenant_usage_daily`；V2.1；当前 P-1 仅建表；tenant-service；tenant + date + usage type 唯一。
+- `t_default_tenant_membership_outbox`；V2.1；`DefaultTenantMembershipOutbox`；auth-service `DefaultTenantMembershipOutboxMapper`；user id 与 event id 唯一。
+
+## 5. V2.2 待执行认证会话对象
+
+以下对象已经进入 P-2 源码，但在用户执行 V2.2 和真实 schema 核对前不得写成“数据库已存在”：
+
+- `t_auth_refresh_session`；V2.2；`AuthRefreshSession`；`AuthRefreshSessionMapper` + XML；auth-service；session id 主键，保存 family 状态、7 天绝对期限、当前可信租户上下文和只在安全事件后递增的 security_version。
+- `t_auth_refresh_token`；V2.2；`AuthRefreshToken`；`AuthRefreshTokenMapper` + XML；auth-service；只保存 refresh token SHA-256 哈希，哈希唯一并保留旋转/重放状态。
+- `t_auth_refresh_risk_event`；V2.2；`AuthRefreshRiskEvent`；`AuthRefreshRiskEventMapper`；auth-service；记录 IP 网段、User-Agent、client instance 和 STEP_UP_REQUIRED/STEP_UP_COMPLETED 的弱风险信号哈希历史。
+
+V2.2 不创建 Access JWT “每请求已使用”表。Access `jti` 只用于唯一标识、审计和显式撤销；普通请求不会消费 `jti`。session family 的持久撤销以 `sid` 和上述会话表为准，短时单个 `jti` 撤销使用 Redis TTL。
+
+## 6. 后续迁移门禁
+
+执行任何后续 V2.x 前必须依次完成：数据库备份/恢复点、已执行迁移文件与历史 checksum 核对、用户执行 Flyway validate、重新查询真实对象集合并与本清单逐项比对。禁止用 Entity 与业务表数量相等替代集合核对，也禁止对当前业务库执行 Flyway clean。

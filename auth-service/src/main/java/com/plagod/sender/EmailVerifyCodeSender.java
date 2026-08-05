@@ -39,6 +39,9 @@ public class EmailVerifyCodeSender {
         if ("bind_contact".equals(scene)){
             return "绑定邮箱验证码";
         }
+        if ("step_up".equals(scene)) {
+            return "高风险操作身份复核验证码";
+        }
 
         return "验证码";
     }

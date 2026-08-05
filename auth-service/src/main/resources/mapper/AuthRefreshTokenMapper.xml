@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.plagod.mapper.AuthRefreshTokenMapper">
+
+    <select id="selectByHashForUpdate" resultType="com.plagod.entity.auth.AuthRefreshToken">
+        select *
+        from t_auth_refresh_token
+        where token_hash = #{tokenHash}
+        for update
+    </select>
+
+    <update id="markRotated">
+        update t_auth_refresh_token
+        set status = 'ROTATED',
+            consumed_at = #{now},
+            replaced_by_token_id = #{replacementTokenId}
+        where token_id = #{tokenId}
+          and status = 'ACTIVE'
+    </update>
+
+    <update id="markReplayed">
+        update t_auth_refresh_token
+        set status = 'REPLAYED',
+            consumed_at = coalesce(consumed_at, #{now})
+        where token_id = #{tokenId}
+          and status in ('ROTATED', 'REVOKED', 'EXPIRED')
+    </update>
+
+    <update id="revokeActiveForSession">
+        update t_auth_refresh_token
+        set status = 'REVOKED',
+            consumed_at = coalesce(consumed_at, #{now})
+        where session_id = #{sessionId}
+          and status = 'ACTIVE'
+    </update>
+
+    <update id="revokeActiveForUser">
+        update t_auth_refresh_token token
+        join t_auth_refresh_session session on session.session_id = token.session_id
+        set token.status = 'REVOKED',
+            token.consumed_at = coalesce(token.consumed_at, #{now})
+        where session.user_id = #{userId}
+          and token.status = 'ACTIVE'
+    </update>
+</mapper>

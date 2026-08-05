@@ -2,6 +2,8 @@ package com.plagod.configuration;
 
 import com.plagod.dto.ApiResponse;
 import com.plagod.exception.VerificationDeliveryException;
+import com.plagod.exception.ApiStatusException;
+import com.plagod.exception.RefreshSessionException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -88,6 +90,22 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleVerificationDeliveryException(VerificationDeliveryException exception) {
         String message = exception.getMessage() == null ? "验证码服务暂时不可用" : exception.getMessage();
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(ApiResponse.fail(503, message));
+    }
+
+    @ExceptionHandler(ApiStatusException.class)
+    public ResponseEntity<ApiResponse<Void>> handleApiStatusException(ApiStatusException exception) {
+        HttpStatus status = HttpStatus.resolve(exception.getHttpStatus());
+        return ResponseEntity
+                .status(status == null ? HttpStatus.INTERNAL_SERVER_ERROR : status)
+                .body(ApiResponse.fail(exception.getCode(), exception.getMessage()));
+    }
+
+    @ExceptionHandler(RefreshSessionException.class)
+    public ResponseEntity<ApiResponse<String>> handleRefreshSessionException(RefreshSessionException exception) {
+        HttpStatus status = HttpStatus.resolve(exception.getHttpStatus());
+        return ResponseEntity
+                .status(status == null ? HttpStatus.UNAUTHORIZED : status)
+                .body(ApiResponse.fail(exception.getHttpStatus(), exception.getMessage(), exception.getCode()));
     }
 
 

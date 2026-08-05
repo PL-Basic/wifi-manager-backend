@@ -1,6 +1,7 @@
 package com.plagod.vo;
 
 import com.plagod.vo.user.SocialIdentityVO;
+import com.plagod.vo.tenant.TenantContextVO;
 import lombok.Data;
 
 @Data
@@ -21,6 +22,7 @@ public class OAuthCallbackResultVO {
     private String nickname;
     private String avatar;
     private String accountState;
+    private TenantContextVO context;
     private SocialIdentityVO identity;
 
     private String returnUri;
