@@ -16,6 +16,9 @@ mybatis-plus:
     log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
 
 wifi:
+  auth-session:
+    secure-cookie: true
+    same-site: Strict
   internal:
     token: "${WIFI_INTERNAL_TOKEN}"
   security:

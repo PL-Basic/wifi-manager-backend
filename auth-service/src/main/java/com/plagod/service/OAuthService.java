@@ -7,11 +7,13 @@ import com.plagod.constant.OAuthProvider;
 import com.plagod.constant.OAuthPurpose;
 import com.plagod.constant.SocialIdentityResolveStatus;
 import com.plagod.dto.*;
+import com.plagod.dto.auth.AuthResultDTO;
 import com.plagod.dto.user.SocialIdentityResolveDTO;
 import com.plagod.service.oauth.OAuthProviderAdapter;
 import com.plagod.service.oauth.OAuthProviderRegistry;
-import com.plagod.utils.JwtUtils;
+import com.plagod.vo.AuthSessionIssue;
 import com.plagod.vo.OAuthAuthorizationVO;
+import com.plagod.vo.OAuthCallbackIssue;
 import com.plagod.vo.OAuthCallbackResultVO;
 import com.plagod.vo.user.SocialIdentityResolveResultVO;
 import com.plagod.vo.user.SocialLoginPrincipalVO;
@@ -40,7 +42,7 @@ public class OAuthService {
     private UserSocialIdentityClient userClient;
 
     @Autowired
-    private JwtUtils jwtUtils;
+    private AuthSessionService authSessionService;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -66,7 +68,12 @@ public class OAuthService {
         return stateService.issue(adapter, OAuthPurpose.BIND, userId, returnUri);
     }
 
-    public OAuthCallbackResultVO callback(String providerValue, String rawState, String authorizationCode) {
+    public OAuthCallbackIssue callback(String providerValue,
+                                       String rawState,
+                                       String authorizationCode,
+                                       String clientInstanceId,
+                                       String userAgent,
+                                       String clientIp) {
 
         OAuthProvider provider = OAuthProvider.parse(providerValue);
 
@@ -78,9 +85,10 @@ public class OAuthService {
         }
 
         if (context.isReplayed()) {
-            return buildReplayResult(context);
+            return new OAuthCallbackIssue(buildReplayResult(context), null);
         }
 
+        AuthSessionIssue sessionIssue = null;
         try {
             OAuthProviderAdapter adapter = providerRegistry.require(provider.value());
 
@@ -93,6 +101,11 @@ public class OAuthService {
             SocialIdentityResolveResultVO resolved = requireResolveResult(response);
 
             OAuthCallbackResultVO result = buildCallbackResult(resolved, context);
+            sessionIssue = openLoginSession(
+                    result,
+                    clientInstanceId,
+                    userAgent,
+                    clientIp);
 
             Long resultUserId = resolved.getPrincipal() == null ? null : resolved.getPrincipal().getUserId();
 
@@ -100,7 +113,7 @@ public class OAuthService {
 
             stateService.complete(context, resolved.getStatus().name(), resultUserId, resultMessage);
 
-            return result;
+            return new OAuthCallbackIssue(result, sessionIssue);
         } catch (FeignException exception) {
             String message = resolveFeignFailureMessage(exception);
 
@@ -114,9 +127,50 @@ public class OAuthService {
             // 内部认证失败、服务异常等不能伪装成用户参数错误。
             throw new IllegalStateException(message);
         } catch (RuntimeException exception) {
+            revokeIssuedSessionQuietly(sessionIssue);
             String message = safeFailureMessage(exception);
             failQuietly(context, message);
             throw exception;
+        }
+    }
+
+    private AuthSessionIssue openLoginSession(OAuthCallbackResultVO result,
+                                              String clientInstanceId,
+                                              String userAgent,
+                                              String clientIp) {
+        if (!"LOGIN_READY".equals(result.getStatus())
+                || !"ACTIVE".equals(result.getAccountState())
+                || result.getUserId() == null) {
+            return null;
+        }
+        AuthResultDTO identity = new AuthResultDTO();
+        identity.setUserId(String.valueOf(result.getUserId()));
+        identity.setUsername(result.getUsername());
+        identity.setRole(result.getRole());
+        identity.setNickname(result.getNickname());
+        identity.setAvatar(result.getAvatar());
+        AuthSessionIssue issue = authSessionService.open(
+                identity,
+                clientInstanceId,
+                userAgent,
+                clientIp);
+        result.setToken(issue.getAuthResult().getToken());
+        result.setContext(issue.getAuthResult().getContext());
+        return issue;
+    }
+
+    private void revokeIssuedSessionQuietly(AuthSessionIssue sessionIssue) {
+        if (sessionIssue == null || !StringUtils.hasText(sessionIssue.getSessionId())) {
+            return;
+        }
+        try {
+            authSessionService.revokeSession(
+                    sessionIssue.getSessionId(),
+                    "OAUTH_CALLBACK_FAILED");
+        } catch (RuntimeException exception) {
+            log.warn(
+                    "OAuth 回调失败后的会话撤销未完成，sessionId={}",
+                    sessionIssue.getSessionId());
         }
     }
 
@@ -190,7 +244,6 @@ public class OAuthService {
                 result.setMessage("默认租户成员关系正在恢复");
             } else {
                 result.setAccountState("ACTIVE");
-                result.setToken(jwtUtils.generateToken(principal.getUserId(), principal.getUsername(), principal.getRole()));
             }
         }
 

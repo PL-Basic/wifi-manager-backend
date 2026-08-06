@@ -20,6 +20,13 @@ http://{gateway-host}:8080
 Authorization: Bearer {JWT}
 ```
 
+P-2 起 Access JWT 固定约 15 分钟，包含 `jti`、`sid`、`sessionSecurityVersion`
+和当前租户上下文；同一个有效 Access JWT 可以重复调用普通 API，不是每请求一次性
+Token。7 天免登录由服务端 Refresh Session 承担，浏览器只通过 HttpOnly/SameSite
+Cookie 持有高熵 Refresh Token，服务端只保存哈希。普通 refresh 不递增
+`sessionSecurityVersion`；风险 step-up 成功后递增，使风险事件前签发的 Access 和
+operation token 永久失效。
+
 角色 `0`、`1` 可访问管理员接口，角色 `2` 只能访问本人资源。HTTP `429` 表示限流拒绝，并返回 `Retry-After`。
 
 ## 2. 匿名认证接口
@@ -28,6 +35,9 @@ Authorization: Bearer {JWT}
 POST /auth/register                         注册
 POST /auth/login                            密码登录
 POST /auth/code-login                       验证码登录
+POST /auth/refresh                          通过 HttpOnly Cookie 旋转 Refresh Token 并续发 Access JWT
+POST /auth/refresh/step-up                  环境风险命中后使用当前账号验证码复核并旋转会话
+POST /auth/logout                           撤销当前 Refresh family 并清除 Cookie
 POST /auth/codes                            发送验证码
 POST /auth/reset-password                   重置密码（新密码不能与当前密码相同）
 GET  /auth/oauth/providers                  查询 OAuth Provider 可用性
@@ -40,9 +50,18 @@ GET  /users/avatars/{filename}              读取公开头像文件
 
 `provider` 当前支持 `github`、`qq`、`wechat`。支付回调虽然允许匿名进入 Gateway，但仍由签名和幂等规则保护。
 
+Refresh 风险信号组合命中时返回 HTTP 403，错误标识
+`REFRESH_STEP_UP_REQUIRED`，服务端保留 HttpOnly Refresh Cookie。客户端先通过
+`POST /auth/codes`、`scene=step_up` 向当前账号联系方式发送验证码，再调用
+`POST /auth/refresh/step-up`；只有复核成功才清除风险态并旋转 Refresh Token。
+401 类 Refresh 拒绝才清除 Cookie。
+
 ## 3. 登录用户与社交身份
 
 ```text
+POST   /auth/account-switch                                  验证历史账号并撤销旧 family 后建立新会话
+POST   /auth/account-switch/codes                            按历史 userId 和 phone/email 渠道发送验证码
+POST   /auth/operation-tokens                                签发短时、限定 purpose 的高风险一次性凭证
 GET    /users/{userId}                                      查询本人资料
 PUT    /users/{userId}                                      修改本人资料
 POST   /users/{userId}/avatar                               上传本人头像
@@ -53,6 +72,10 @@ GET    /auth/oauth/{provider}/bind                           发起社交身份�
 ```
 
 路径中的 `userId` 必须与 JWT 中的用户一致，不能通过修改路径访问他人资源。
+
+历史账号切换接口不接收或返回完整手机号/邮箱。前端只保存 `userId`、脱敏账号标识和可用渠道；后端按 `userId + channel` 定位真实联系方式并执行现有验证码频率限制。
+账号切换同时校验 Bearer Access JWT 的 `sid` 与 HttpOnly Cookie 所属 family，
+不一致时返回 409，不能撤销另一个标签页或旧身份的会话。
 
 ## 4. 权益、订单、支付与退款
 
@@ -104,15 +127,19 @@ DELETE /locations/history                           删除本人位置历史
 
 位置上报必须同时满足本人 Session、ACTIVE 状态、节点、MAC 和定位授权约束。
 
-### 本人租户
+### 本人租户与上下文
 
 ```text
-GET /tenants/me
+GET  /tenants/me
+GET  /tenants/current
+POST /auth/tenant-context/switch
+POST /auth/platform-context
+POST /auth/platform-context/tenants/{tenantId}
 ```
 
 新注册或 OAuth 首次创建用户的默认成员 Outbox 尚未成功时，密码登录、验证码登录和 OAuth 回调返回 `accountState=TENANT_MEMBERSHIP_PENDING` 且 `token=null`；前端只能进入受限账户页。补偿成功后重新登录才签发 JWT。role=0 平台登录不受该状态阻塞。
 
-P-1 只返回真实成员关系，不签发或切换租户上下文 JWT；租户上下文切换在 P-2 启用。
+role=0 默认登录进入 `PLATFORM`，通过专用接口显式进入 `PLATFORM_TENANT` 并提供审计原因；普通用户只能切换到自己的 ACTIVE 成员关系。租户切换会签发新的 Access JWT 并更新服务端 session 当前上下文，旧上下文 Access JWT 不再被 Gateway 接受。
 
 ## 7. 管理员接口
 
@@ -245,6 +272,12 @@ GET /health/gateway
 /internal/analytics/**
 /internal/monitor/**
 /internal/admin/**
+/internal/auth/sessions/**
+/internal/auth/operation-tokens/consume
+/internal/tenants/context/resolve
+/internal/tenants/context/validate
 ```
 
 这些接口依赖 `WIFI_INTERNAL_TOKEN` 或可信 Gateway 请求机制。禁止在 Gateway 增加 `/internal/**` 路由，也禁止客户端自行构造 `X-User-*`、`X-Gateway-Token` 或内部 Token。
+
+Gateway 会先删除外部请求伪造的 `X-Session-Id`、`X-Token-Id`、`X-Context-Type`、`X-Tenant-*` 和 `X-Platform-Authorities`，完成 session、`jti` 与 tenant/member 双版本校验后再注入可信值。业务写请求在下游服务再次实时调用 tenant-service 校验；校验依赖不可用时 fail closed 返回 503。

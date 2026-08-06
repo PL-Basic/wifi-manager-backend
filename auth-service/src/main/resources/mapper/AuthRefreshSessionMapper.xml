@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.plagod.mapper.AuthRefreshSessionMapper">
+
+    <select id="selectForUpdate" resultType="com.plagod.entity.auth.AuthRefreshSession">
+        select *
+        from t_auth_refresh_session
+        where session_id = #{sessionId}
+        for update
+    </select>
+
+    <update id="rotate">
+        update t_auth_refresh_session
+        set current_token_id = #{currentTokenId},
+            context_type = #{contextType},
+            tenant_id = #{tenantId},
+            tenant_code = #{tenantCode},
+            tenant_role = #{tenantRole},
+            tenant_context_version = #{tenantContextVersion},
+            member_context_version = #{memberContextVersion},
+            security_version = #{securityVersion},
+            authorities_json = #{authoritiesJson},
+            client_instance_id = #{clientInstanceId},
+            user_agent_hash = #{userAgentHash},
+            last_ip_network_hash = #{ipNetworkHash},
+            ip_change_count = ip_change_count + case when #{ipChanged} then 1 else 0 end,
+            user_agent_change_count = user_agent_change_count + case when #{userAgentChanged} then 1 else 0 end,
+            step_up_required = 0,
+            version = version + 1
+        where session_id = #{sessionId}
+          and status = 'ACTIVE'
+          and version = #{expectedVersion}
+    </update>
+
+    <update id="revokeFamily">
+        update t_auth_refresh_session
+        set status = 'REVOKED',
+            revoked_at = coalesce(revoked_at, #{now}),
+            revoke_reason = coalesce(revoke_reason, #{reason}),
+            version = version + 1
+        where session_id = #{sessionId}
+          and status = 'ACTIVE'
+    </update>
+
+    <update id="updateContext">
+        update t_auth_refresh_session
+        set context_type = #{contextType},
+            tenant_id = #{tenantId},
+            tenant_code = #{tenantCode},
+            tenant_role = #{tenantRole},
+            tenant_context_version = #{tenantContextVersion},
+            member_context_version = #{memberContextVersion},
+            authorities_json = #{authoritiesJson},
+            version = version + 1
+        where session_id = #{sessionId}
+          and user_id = #{userId}
+          and status = 'ACTIVE'
+          and absolute_expires_at > current_timestamp
+    </update>
+
+    <update id="revokeAllForUser">
+        update t_auth_refresh_session
+        set status = 'REVOKED',
+            revoked_at = coalesce(revoked_at, #{now}),
+            revoke_reason = coalesce(revoke_reason, #{reason}),
+            version = version + 1
+        where user_id = #{userId}
+          and status = 'ACTIVE'
+    </update>
+
+    <update id="markStepUpRequired">
+        update t_auth_refresh_session
+        set step_up_required = 1,
+            version = version + 1
+        where session_id = #{sessionId}
+          and status = 'ACTIVE'
+          and version = #{expectedVersion}
+    </update>
+</mapper>

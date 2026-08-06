@@ -18,6 +18,10 @@ spring:
     ssl: "${REDIS_SSL}"
 
 wifi:
+  internal:
+    token: "${WIFI_INTERNAL_TOKEN}"
+  jwt:
+    legacy-accept-until: "${WIFI_JWT_LEGACY_ACCEPT_UNTIL:1970-01-01T00:00:00Z}"
   security:
     gateway-token: "${WIFI_GATEWAY_TOKEN}"
     trust-proxy-headers: "${WIFI_TRUST_PROXY_HEADERS}"

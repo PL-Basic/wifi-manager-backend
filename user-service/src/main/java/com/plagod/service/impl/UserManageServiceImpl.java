@@ -4,6 +4,9 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.plagod.audit.Audited;
+import com.plagod.client.AuthSessionClient;
+import com.plagod.dto.ApiResponse;
+import com.plagod.exception.ApiStatusException;
 import com.plagod.mapper.SocialIdentityMapper;
 import com.plagod.vo.user.UserConnectionPolicyVO;
 import com.plagod.vo.user.UserPageResult;
@@ -17,6 +20,7 @@ import com.plagod.mapper.UserMapper;
 import com.plagod.service.UserManageService;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +40,12 @@ public class UserManageServiceImpl implements UserManageService {
 
     @Autowired
     private SocialIdentityMapper socialIdentityMapper;
+
+    @Autowired
+    private AuthSessionClient authSessionClient;
+
+    @Value("${wifi.internal.token}")
+    private String internalToken;
 
     @Override
     public UserPageResult pageUsers(long current, long size, String keyword) {
@@ -128,6 +138,9 @@ public class UserManageServiceImpl implements UserManageService {
             updateWrapper.set("nickname", updateDTO.getNickname());
         }
         if (updateDTO.getRole() != null) {
+            if (!updateDTO.getRole().equals(user.getRole())) {
+                revokeAuthSessions(userId, "ROLE_CHANGED");
+            }
             updateWrapper.set("role", updateDTO.getRole());
         }
         if (updateDTO.getMaxConnections() != null) {
@@ -145,17 +158,24 @@ public class UserManageServiceImpl implements UserManageService {
     }
 
     @Override
+    @Transactional
     @Audited(action = "user.status")
     public void updateStatus(Long userId, UserStatusDTO statusDTO) {
         User user = getExistingUser(userId);
+        if (Integer.valueOf(0).equals(statusDTO.getStatus())
+                && !Integer.valueOf(0).equals(user.getStatus())) {
+            revokeAuthSessions(userId, "ACCOUNT_DISABLED");
+        }
         user.setStatus(statusDTO.getStatus());
         userMapper.updateById(user);
     }
 
     @Override
+    @Transactional
     @Audited(action = "user.delete")
     public void deleteUser(Long userId) {
         requireDeletableUser(getExistingUser(userId));
+        revokeAuthSessions(userId, "ACCOUNT_DELETED");
         userMapper.deleteById(userId);
     }
 
@@ -169,6 +189,7 @@ public class UserManageServiceImpl implements UserManageService {
 
         requireDeletableUser(getExistingUser(userId));
 
+        revokeAuthSessions(userId, "ACCOUNT_PURGED");
         socialIdentityMapper.physicalDeleteByUserId(userId);
         jdbcTemplate.update("DELETE FROM sys_user WHERE user_id = ?", userId);
     }
@@ -224,6 +245,18 @@ public class UserManageServiceImpl implements UserManageService {
             throw new IllegalArgumentException("用户不存在");
         }
         return user;
+    }
+
+    private void revokeAuthSessions(Long userId, String reason) {
+        ApiResponse<Void> response;
+        try {
+            response = authSessionClient.revokeAll(internalToken, userId, reason);
+        } catch (RuntimeException exception) {
+            throw ApiStatusException.serviceUnavailable("认证会话撤销服务暂时不可用");
+        }
+        if (response == null || response.getCode() != 200) {
+            throw ApiStatusException.serviceUnavailable("认证会话撤销服务返回无效结果");
+        }
     }
 
     private void requireDeletableUser(User user) {

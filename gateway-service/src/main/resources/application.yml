@@ -25,6 +25,7 @@ spring:
               - Authorization
               - Content-Type
               - Sec-WebSocket-Protocol
+              - X-Client-Instance-Id
             exposed-headers:
               - Retry-After
             allow-credentials: true
@@ -75,6 +76,15 @@ spring:
     lettuce:
       shutdown-timeout: 100ms
 wifi:
+  internal:
+    token: ${WIFI_INTERNAL_TOKEN:local-internal-token-change-me}
+  jwt:
+    # 默认关闭旧 JWT；灰度部署时只允许设置一个明确的 ISO-8601 UTC 截止时间。
+    legacy-accept-until: ${WIFI_JWT_LEGACY_ACCEPT_UNTIL:1970-01-01T00:00:00Z}
+  context-validation:
+    timeout-millis: ${WIFI_CONTEXT_VALIDATION_TIMEOUT_MILLIS:2000}
+    read-cache-millis: ${WIFI_CONTEXT_READ_CACHE_MILLIS:5000}
+    maximum-cache-entries: ${WIFI_CONTEXT_CACHE_MAX_ENTRIES:4096}
   security:
     # 只证明请求经过 Gateway，不能与内部服务 Token 使用同一个值。
     gateway-token: ${WIFI_GATEWAY_TOKEN:local-gateway-token-change-me}

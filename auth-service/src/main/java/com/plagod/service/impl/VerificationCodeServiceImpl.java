@@ -42,7 +42,8 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
                     "register",
                     "login",
                     "reset_password",
-                    "bind_contact"
+                    "bind_contact",
+                    "step_up"
             ));
 
     private final VerificationCodeProperties properties;

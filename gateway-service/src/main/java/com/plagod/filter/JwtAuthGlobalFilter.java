@@ -3,7 +3,11 @@ package com.plagod.filter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.plagod.dto.ApiResponse;
 import com.plagod.ratelimit.GatewayRateLimiter;
+import com.plagod.service.GatewayIdentityContext;
+import com.plagod.service.GatewayIdentityValidationService;
+import com.plagod.service.GatewayValidationException;
 import com.plagod.utils.JwtUtils;
+import com.plagod.vo.tenant.TenantContextVO;
 import io.jsonwebtoken.Claims;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -37,6 +41,10 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
 
     private static final Set<String> TRUST_HEADERS = new HashSet<>(Arrays.asList(
             "X-User-Id", "X-User-Name", "X-User-Role",
+            "X-Session-Id", "X-Token-Id", "X-Context-Type",
+            "X-Tenant-Id", "X-Tenant-Code", "X-Tenant-Role",
+            "X-Tenant-Context-Version", "X-Member-Context-Version",
+            "X-Context-Version", "X-Platform-Authorities",
             GATEWAY_TOKEN_HEADER, INTERNAL_TOKEN_HEADER,
             CLIENT_IP_HEADER
     ));
@@ -44,6 +52,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     private static final Set<String> AUTH_WHITE_PATHS = new HashSet<>(Arrays.asList(
             "/auth/login", "/auth/register", "/auth/codes",
             "/auth/code-login", "/auth/reset-password",
+            "/auth/refresh", "/auth/refresh/step-up", "/auth/logout",
             "/auth/oauth/providers", "/health/gateway"
     ));
 
@@ -76,6 +85,9 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
 
     @Autowired
     private GatewayRateLimiter gatewayRateLimiter;
+
+    @Autowired
+    private GatewayIdentityValidationService identityValidationService;
 
     @Value("${wifi.rate-limit.commerce-write-per-minute:30}")
     private int commerceWriteLimit;
@@ -134,11 +146,27 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
                 return reject(cleanExchange, HttpStatus.UNAUTHORIZED, 401, "登录凭据内容无效");
             }
 
-            if (!isAllowed(path, method, userId, role)) {
-                return reject(cleanExchange, HttpStatus.FORBIDDEN, 403, "无权访问该资源");
-            }
-
-            return filterProtectedRateLimit(cleanExchange, chain, path, method, userId, username, role);
+            return identityValidationService
+                    .validate(claims, userId, username, role, method)
+                    .flatMap(identity -> {
+                        if (!isAllowed(path, method, identity.getUserId(), identity.getRole())) {
+                            return reject(cleanExchange, HttpStatus.FORBIDDEN, 403, "无权访问该资源");
+                        }
+                        return filterProtectedRateLimit(cleanExchange, chain, path, method, identity);
+                    })
+                    .onErrorResume(
+                            GatewayValidationException.class,
+                                    exception -> reject(
+                                    cleanExchange,
+                                    resolveStatus(exception.getHttpStatus()),
+                                    exception.getCode(),
+                                    exception.getMessage()))
+                    .onErrorResume(
+                            exception -> reject(
+                                    cleanExchange,
+                                    HttpStatus.INTERNAL_SERVER_ERROR,
+                                    500,
+                                    "身份上下文校验失败"));
 
         } catch (Exception exception) {
             return reject(cleanExchange, HttpStatus.UNAUTHORIZED, 401, "登录凭据无效或已经过期");
@@ -157,7 +185,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
         return exchange.mutate().request(request).build();
     }
 
-    private ServerWebExchange addTrustedHeaders(ServerWebExchange exchange, Long userId, String username, Integer role) {
+    private ServerWebExchange addTrustedHeaders(ServerWebExchange exchange, GatewayIdentityContext identity) {
         boolean alertWebSocket = "/ws/alerts".equals(exchange.getRequest().getURI().getPath());
 
         ServerHttpRequest request = exchange.getRequest().mutate()
@@ -171,10 +199,39 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
                         // JWT 只在 Gateway 完成验证，下游只接收已选择的子协议标记。
                         headers.set(SEC_WEBSOCKET_PROTOCOL_HEADER, "access_token");
                     }
-                    if (userId != null) {
-                        headers.set("X-User-Id", String.valueOf(userId));
-                        headers.set("X-User-Name", username);
-                        headers.set("X-User-Role", String.valueOf(role));
+                    if (identity != null) {
+                        headers.set("X-User-Id", String.valueOf(identity.getUserId()));
+                        headers.set("X-User-Name", identity.getUsername());
+                        headers.set("X-User-Role", String.valueOf(identity.getRole()));
+                        setIfPresent(headers, "X-Session-Id", identity.getSessionId());
+                        setIfPresent(headers, "X-Token-Id", identity.getTokenId());
+                        TenantContextVO context = identity.getTenantContext();
+                        if (context != null) {
+                            setIfPresent(headers, "X-Context-Type", context.getContextType());
+                            setIfPresent(headers, "X-Tenant-Id", context.getTenantId());
+                            setIfPresent(headers, "X-Tenant-Code", context.getTenantCode());
+                            setIfPresent(headers, "X-Tenant-Role", context.getTenantRole());
+                            setIfPresent(
+                                    headers,
+                                    "X-Tenant-Context-Version",
+                                    context.getContextVersion() == null
+                                            ? null : String.valueOf(context.getContextVersion()));
+                            setIfPresent(
+                                    headers,
+                                    "X-Context-Version",
+                                    context.getContextVersion() == null
+                                            ? null : String.valueOf(context.getContextVersion()));
+                            setIfPresent(
+                                    headers,
+                                    "X-Member-Context-Version",
+                                    context.getMemberContextVersion() == null
+                                            ? null : String.valueOf(context.getMemberContextVersion()));
+                            if (context.getAuthorities() != null && !context.getAuthorities().isEmpty()) {
+                                headers.set(
+                                        "X-Platform-Authorities",
+                                        String.join(",", context.getAuthorities()));
+                            }
+                        }
                     }
                 }).build();
 
@@ -184,7 +241,11 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     private boolean isWhitePath(String path, HttpMethod method) {
 
         if (AUTH_WHITE_PATHS.contains(path)) {
-            return true;
+            if ("/health/gateway".equals(path)
+                    || "/auth/oauth/providers".equals(path)) {
+                return HttpMethod.GET.equals(method);
+            }
+            return HttpMethod.POST.equals(method);
         }
 
         // 登录授权入口和 Provider 回调允许匿名访问。
@@ -204,7 +265,10 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
                 || "/auth/login".equals(path)
                 || "/auth/code-login".equals(path)
                 || "/auth/codes".equals(path)
-                || "/auth/reset-password".equals(path);
+                || "/auth/reset-password".equals(path)
+                || "/auth/refresh".equals(path)
+                || "/auth/refresh/step-up".equals(path)
+                || "/auth/logout".equals(path);
     }
     private boolean isOAuthRatePath(String path) {
         return OAUTH_AUTHORIZE.matcher(path).matches() || OAUTH_CALLBACK.matcher(path).matches();
@@ -221,6 +285,21 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
 
         if ("/tenants/me".equals(path)) {
             return HttpMethod.GET.equals(method);
+        }
+        if ("/tenants/current".equals(path)) {
+            return HttpMethod.GET.equals(method);
+        }
+
+        if ("/auth/account-switch".equals(path)
+                || "/auth/account-switch/codes".equals(path)
+                || "/auth/operation-tokens".equals(path)
+                || "/auth/tenant-context/switch".equals(path)) {
+            return HttpMethod.POST.equals(method);
+        }
+
+        if ("/auth/platform-context".equals(path)
+                || path.matches("^/auth/platform-context/tenants/[1-9]\\d*$")) {
+            return HttpMethod.POST.equals(method) && Integer.valueOf(0).equals(role);
         }
 
         // 绑定入口必须先通过 JWT，随后由 Gateway 注入可信用户身份。
@@ -449,21 +528,31 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
         String ip = clientIp(exchange.getRequest());
 
         if (isOAuthRatePath(path)) {
-            return rateLimitOrContinue(exchange, chain, "oauth", ip, oauthLimit, "OAuth 请求过于频繁，请稍后再试", null, null, null);
+            return rateLimitOrContinue(
+                    exchange, chain, "oauth", ip, oauthLimit,
+                    "OAuth 请求过于频繁，请稍后再试", null);
         }
 
         if (isAuthRatePath(path)) {
-            return rateLimitOrContinue(exchange, chain, "auth", ip, authLimit, "认证请求过于频繁，请稍后再试", null, null, null);
+            return rateLimitOrContinue(
+                    exchange, chain, "auth", ip, authLimit,
+                    "认证请求过于频繁，请稍后再试", null);
         }
 
         if (LOCAL_DEMO_CALLBACK.equals(path)) {
-            return rateLimitOrContinue(exchange, chain, "payment-callback", ip, paymentCallbackLimit, "支付回调请求过于频繁", null, null, null);
+            return rateLimitOrContinue(
+                    exchange, chain, "payment-callback", ip, paymentCallbackLimit,
+                    "支付回调请求过于频繁", null);
         }
 
-        return chain.filter(addTrustedHeaders(exchange, null, null, null));
+        return chain.filter(addTrustedHeaders(exchange, null));
     }
 
-    private Mono<Void> filterProtectedRateLimit(ServerWebExchange exchange, GatewayFilterChain chain, String path, HttpMethod method, Long userId, String username, Integer role) {
+    private Mono<Void> filterProtectedRateLimit(ServerWebExchange exchange,
+                                                GatewayFilterChain chain,
+                                                String path,
+                                                HttpMethod method,
+                                                GatewayIdentityContext identity) {
 
         String scene = null;
         int limit = 0;
@@ -483,16 +572,35 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
         } else if (isCommerceWritePath(path, method)) {
             scene = "commerce-write";
             limit = commerceWriteLimit;
+        } else if (path.startsWith("/auth/account-switch")
+                || path.startsWith("/auth/tenant-context")
+                || path.startsWith("/auth/platform-context")
+                || "/auth/operation-tokens".equals(path)) {
+            scene = "auth-sensitive";
+            limit = authLimit;
         }
 
         if (scene == null) {
-            return chain.filter(addTrustedHeaders(exchange, userId, username, role));
+            return chain.filter(addTrustedHeaders(exchange, identity));
         }
 
-        return rateLimitOrContinue(exchange, chain, scene, String.valueOf(userId), limit, "请求过于频繁，请稍后再试", userId, username, role);
+        return rateLimitOrContinue(
+                exchange,
+                chain,
+                scene,
+                String.valueOf(identity.getUserId()),
+                limit,
+                "请求过于频繁，请稍后再试",
+                identity);
     }
 
-    private Mono<Void> rateLimitOrContinue(ServerWebExchange exchange, GatewayFilterChain chain, String scene, String subject, int limit, String message, Long userId, String username, Integer role) {
+    private Mono<Void> rateLimitOrContinue(ServerWebExchange exchange,
+                                           GatewayFilterChain chain,
+                                           String scene,
+                                           String subject,
+                                           int limit,
+                                           String message,
+                                           GatewayIdentityContext identity) {
 
         return gatewayRateLimiter
                 .acquire(scene, subject, limit, Duration.ofMinutes(1))
@@ -501,7 +609,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
                         return reject(exchange, HttpStatus.TOO_MANY_REQUESTS, 429, message, decision.getRetryAfterSeconds());
                     }
 
-                    return chain.filter(addTrustedHeaders(exchange, userId, username, role));
+                    return chain.filter(addTrustedHeaders(exchange, identity));
                 });
     }
 
@@ -515,6 +623,17 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
                 || ENTITLEMENT_ORDER_CANCEL.matcher(path).matches()
                 || ENTITLEMENT_PAYMENT_CREATE.matcher(path).matches()
                 || ENTITLEMENT_PAYMENT_DEMO_COMPLETE.matcher(path).matches();
+    }
+
+    private void setIfPresent(HttpHeaders headers, String name, String value) {
+        if (StringUtils.hasText(value)) {
+            headers.set(name, value);
+        }
+    }
+
+    private HttpStatus resolveStatus(int status) {
+        HttpStatus resolved = HttpStatus.resolve(status);
+        return resolved == null ? HttpStatus.INTERNAL_SERVER_ERROR : resolved;
     }
 
 }

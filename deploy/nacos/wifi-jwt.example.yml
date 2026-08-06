@@ -2,4 +2,7 @@ wifi:
   jwt:
     # Auth 用于签发，Gateway 用于验证。必须替换为高熵随机值，且不少于 32 字节。
     secret: CHANGE_ME_RANDOM_JWT_SECRET_AT_LEAST_32_BYTES
-    expiration-millis: 86400000
+    # Access JWT 固定 15 分钟；7 天免登录由服务端 Refresh Session 承担。
+    expiration-millis: 900000
+    issuer: wifi-manager
+    algorithm: HS256
