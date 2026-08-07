@@ -100,6 +100,14 @@ GET  /entitlements/refunds                          查询本人退款
 GET  /entitlements/refunds/{refundNo}               查询退款详情
 ```
 
+以上本人订单、支付、退款、购买记录和使用流水均以 Gateway 注入的可信
+`X-Tenant-Id` 与当前用户联合过滤；其他租户的业务编号按不存在处理。
+固定时长商品为 5/24/100/300 小时，订阅商品为 1/3/6/12 个自然月。
+订单金额、`pricingVersion`、`grantMonths`、参照直购金额、订阅比例和周期折扣
+均由服务端计算并保存快照，客户端金额不参与订单定价。未配置可用
+`PaymentChannelAdapter` 时创建支付返回 503 和 `PAYMENT_CHANNEL_UNAVAILABLE`，
+不会创建支付记录或履约；渠道下线后，已完成的历史支付记录仍可查询。
+
 ## 5. Portal Session 与流量
 
 ```text
@@ -173,8 +181,15 @@ GET /admin/users/{userId}/entitlement
 GET /admin/users/{userId}/entitlement/purchases
 GET /admin/users/{userId}/entitlement/usage-logs
 POST /admin/users/{userId}/entitlement/adjustments
+POST /admin/users/{userId}/entitlement/unlimited-adjustments
 POST /admin/users/{userId}/entitlement/reward-orders
 ```
+
+`unlimited-adjustments` 仅允许 role=0，请求体为
+`requestId`、`action=GRANT|REVOKE`、`reason`。相同租户内稳定 `requestId`
+重复调用不重复改变权益；role=1/2 返回 403。无限权益只跳过用户时长扣减，
+设备侧仍使用最多 20 秒的滚动租约，撤销、停用或注销不会获得永久 TTL。
+奖励订阅使用 `grantMonths=1|3|6|12`，不再使用 `grantSeconds` 表示自然月。
 
 账号删除规则：role=0 超级管理员不能通过逻辑删除、直接物理删除、删除申请或审批路径删除；role=1 普通管理员允许被 role=0 删除，也可为自己的账号提交删除申请，但不能删除 role=0/1 管理员；role=2 普通用户按现有管理员权限删除。删除申请审批仅允许 role=0，批准时会再次核验目标当前角色。
 
@@ -277,6 +292,10 @@ GET /health/gateway
 /internal/tenants/context/resolve
 /internal/tenants/context/validate
 ```
+
+`POST /internal/entitlements/lease` 的首次租约只接受可信
+`X-Tenant-Id` 上下文；无 Servlet 请求上下文的后台续租必须携带已持久化的
+`entitlementId`，由 user-service 校验权益与用户并反查租户。请求体不能自行指定租户。
 
 这些接口依赖 `WIFI_INTERNAL_TOKEN` 或可信 Gateway 请求机制。禁止在 Gateway 增加 `/internal/**` 路由，也禁止客户端自行构造 `X-User-*`、`X-Gateway-Token` 或内部 Token。
 

@@ -187,7 +187,12 @@ public class UserManageServiceImpl implements UserManageService {
             throw new IllegalArgumentException("用户 ID 无效");
         }
 
-        requireDeletableUser(getExistingUser(userId));
+        User user = userMapper.selectByIdForUpdate(userId);
+        if (user == null) {
+            throw new IllegalArgumentException("用户不存在");
+        }
+        requireDeletableUser(user);
+        requireNoEntitlementHistory(userId);
 
         revokeAuthSessions(userId, "ACCOUNT_PURGED");
         socialIdentityMapper.physicalDeleteByUserId(userId);
@@ -262,6 +267,31 @@ public class UserManageServiceImpl implements UserManageService {
     private void requireDeletableUser(User user) {
         if (user.getRole() == null || Integer.valueOf(0).equals(user.getRole())) {
             throw new IllegalArgumentException("超级管理员账号不能通过产品功能删除");
+        }
+    }
+
+    private void requireNoEntitlementHistory(Long userId) {
+        Integer historyExists = jdbcTemplate.queryForObject(
+                "SELECT CASE WHEN "
+                        + "EXISTS (SELECT 1 FROM t_duration_purchase WHERE user_id = ?) "
+                        + "OR EXISTS (SELECT 1 FROM t_network_entitlement WHERE user_id = ?) "
+                        + "OR EXISTS (SELECT 1 FROM t_entitlement_usage_log WHERE user_id = ?) "
+                        + "OR EXISTS (SELECT 1 FROM t_entitlement_order WHERE user_id = ?) "
+                        + "OR EXISTS (SELECT 1 FROM t_payment_record WHERE user_id = ?) "
+                        + "OR EXISTS (SELECT 1 FROM t_refund_record WHERE user_id = ?) "
+                        + "THEN 1 ELSE 0 END",
+                Integer.class,
+                userId,
+                userId,
+                userId,
+                userId,
+                userId,
+                userId
+        );
+        if (Integer.valueOf(1).equals(historyExists)) {
+            throw ApiStatusException.conflict(
+                    "该用户存在权益或交易记录，只能停用或逻辑删除，不能永久删除"
+            );
         }
     }
 

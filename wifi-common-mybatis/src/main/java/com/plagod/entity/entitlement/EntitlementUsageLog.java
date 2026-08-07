@@ -19,6 +19,7 @@ public class EntitlementUsageLog implements Serializable {
     @TableId(value = "id", type = IdType.AUTO)
     private Long id;
 
+    private Long tenantId;
     private Long entitlementId;
     private Long userId;
     // 同一次消费重试必须复用同一个 requestId

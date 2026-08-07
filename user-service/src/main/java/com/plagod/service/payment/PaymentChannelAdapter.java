@@ -6,6 +6,10 @@ public interface PaymentChannelAdapter {
 
     String channel();
 
+    default boolean available() {
+        return true;
+    }
+
     PaymentChannelAction initiate(PaymentRecord payment);
 
     final class PaymentChannelAction {

@@ -190,6 +190,7 @@ public class SessionLeaseServiceImpl implements SessionLeaseService {
     private EntitlementLeaseResult acquireLease(SessionRecord session, LocalDateTime billedTime, Long usageSeconds, String requestIdPrefix) {
         EntitlementLeaseRequest request = new EntitlementLeaseRequest();
 
+        request.setEntitlementId(session.getEntitlementId());
         request.setRequestId(requestIdPrefix + session.getSessionId() + "-" + billedTime.format(REQUEST_TIME));
         request.setUserId(session.getUserId());
         request.setSessionId(session.getSessionId());

@@ -32,6 +32,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class PaymentCallbackRegressionTest {
 
+    private static final Long TENANT_ID = 3L;
     private static final Long USER_ID = 7L;
     private static final String ORDER_NO = "ORDER-212C-001";
     private static final String PAYMENT_NO = "PAYMENT-212C-001";
@@ -94,7 +95,7 @@ class PaymentCallbackRegressionTest {
         when(paymentMapper.selectByChannelTransaction(CHANNEL, TRANSACTION_NO)).thenReturn(payment);
 
         when(userMapper.selectByIdForUpdate(USER_ID)).thenReturn(new User());
-        when(entitlementMapper.selectByUserIdForUpdate(USER_ID)).thenReturn(entitlement);
+        when(entitlementMapper.selectByUserIdForUpdate(TENANT_ID, USER_ID)).thenReturn(entitlement);
 
         PaymentCallbackResultVO result = paymentCallbackService.handleSuccess(callback);
 
@@ -131,6 +132,7 @@ class PaymentCallbackRegressionTest {
     private PaymentRecord succeededPayment() {
         PaymentRecord payment = new PaymentRecord();
         payment.setPaymentNo(PAYMENT_NO);
+        payment.setTenantId(TENANT_ID);
         payment.setOrderNo(ORDER_NO);
         payment.setUserId(USER_ID);
         payment.setBusinessKey(BUSINESS_KEY);
@@ -147,6 +149,7 @@ class PaymentCallbackRegressionTest {
     private EntitlementOrder fulfilledOrder() {
         EntitlementOrder order = new EntitlementOrder();
         order.setOrderNo(ORDER_NO);
+        order.setTenantId(TENANT_ID);
         order.setUserId(USER_ID);
         order.setAmountCents(AMOUNT_CENTS);
         order.setGrantSeconds(3600L);
@@ -157,6 +160,7 @@ class PaymentCallbackRegressionTest {
     private NetworkEntitlement existingEntitlement() {
         NetworkEntitlement entitlement = new NetworkEntitlement();
         entitlement.setEntitlementId(21L);
+        entitlement.setTenantId(TENANT_ID);
         entitlement.setUserId(USER_ID);
         entitlement.setMode(EntitlementTradeConstants.MODE_DURATION);
         entitlement.setRemainingSeconds(7200L);

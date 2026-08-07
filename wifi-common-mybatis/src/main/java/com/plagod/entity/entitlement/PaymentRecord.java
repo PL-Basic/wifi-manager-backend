@@ -17,6 +17,7 @@ public class PaymentRecord implements Serializable {
     @TableId(value = "payment_id", type = IdType.AUTO)
     private Long paymentId;
 
+    private Long tenantId;
     private String paymentNo;
     private String orderNo;
     private Long userId;

@@ -19,12 +19,15 @@ public class NetworkEntitlement implements Serializable {
     @TableId(value = "entitlement_id", type = IdType.AUTO)
     private Long entitlementId;
 
+    private Long tenantId;
     private Long userId;
     private String mode;
+    private String unlimitedPreviousMode;
     private LocalDateTime subscriptionStartTime;
     private LocalDateTime subscriptionEndTime;
     private Long remainingSeconds;
     private Integer status;
+    private Integer unlimitedPreviousStatus;
     private Integer version;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;

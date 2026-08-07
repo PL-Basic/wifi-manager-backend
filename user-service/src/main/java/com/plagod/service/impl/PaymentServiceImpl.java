@@ -7,6 +7,7 @@ import com.plagod.dto.entitlement.PaymentCreateRequest;
 import com.plagod.dto.entitlement.VerifiedPaymentCallback;
 import com.plagod.entity.entitlement.*;
 import com.plagod.entity.user.User;
+import com.plagod.exception.ApiStatusException;
 import com.plagod.mapper.*;
 import com.plagod.service.PaymentCallbackService;
 import com.plagod.service.PaymentService;
@@ -53,8 +54,9 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public PaymentVO createPayment(Long userId, String rawOrderNo, PaymentCreateRequest request) {
+    public PaymentVO createPayment(Long tenantId, Long userId, String rawOrderNo, PaymentCreateRequest request) {
 
+        requireTenantId(tenantId);
         requireUserId(userId);
         if (request == null) {
             throw new IllegalArgumentException("支付参数不能为空");
@@ -68,19 +70,19 @@ public class PaymentServiceImpl implements PaymentService {
         // 固定锁顺序从订单开始。
         EntitlementOrder order = orderMapper.selectByOrderNoForUpdate(orderNo);
 
-        if (order == null || !userId.equals(order.getUserId())) {
-            throw new IllegalArgumentException("订单不存在或不属于当前用户");
+        if (order == null || !tenantId.equals(order.getTenantId()) || !userId.equals(order.getUserId())) {
+            throw ApiStatusException.notFound("订单不存在");
         }
 
         // 同一个订单只允许存在一条支付记录，避免订单被支付两次。
-        PaymentRecord existing = paymentMapper.selectByOrderNoForUpdate(orderNo);
+        PaymentRecord existing = paymentMapper.selectByOrderNoForUpdate(tenantId, orderNo);
 
         if (existing != null) {
             requireSameRequest(existing, userId, requestId, channel);
             return toVO(existing, requireAction(adapter, existing));
         }
 
-        PaymentRecord reusedRequest = paymentMapper.selectByUserRequestForUpdate(userId, requestId);
+        PaymentRecord reusedRequest = paymentMapper.selectByUserRequestForUpdate(tenantId, userId, requestId);
 
         if (reusedRequest != null) {
             throw new IllegalArgumentException("支付请求号已被其他订单使用");
@@ -100,16 +102,17 @@ public class PaymentServiceImpl implements PaymentService {
             throw new IllegalArgumentException("用户不存在或不可用");
         }
 
-        NetworkEntitlement entitlement = entitlementMapper.selectByUserIdForUpdate(userId);
+        NetworkEntitlement entitlement = entitlementMapper.selectByUserIdForUpdate(tenantId, userId);
         requireCompatibleMode(entitlement, order.getEntitlementMode(), now);
 
-        PaymentRecord conflicting = paymentMapper.selectCreatedOtherModePayment(userId, order.getEntitlementMode());
+        PaymentRecord conflicting = paymentMapper.selectCreatedOtherModePayment(tenantId, userId, order.getEntitlementMode());
 
         if (conflicting != null) {
             throw new IllegalArgumentException("已有其他权益模式的待支付记录");
         }
 
         PaymentRecord candidate = new PaymentRecord();
+        candidate.setTenantId(tenantId);
         candidate.setPaymentNo(generateNo("PAY", now));
         candidate.setOrderNo(orderNo);
         candidate.setUserId(userId);
@@ -126,46 +129,50 @@ public class PaymentServiceImpl implements PaymentService {
 
         paymentMapper.insertOrResolveExisting(candidate);
 
-        PaymentRecord stored = paymentMapper.selectByOrderNoForUpdate(orderNo);
+        PaymentRecord stored = paymentMapper.selectByOrderNoForUpdate(tenantId, orderNo);
         if (stored == null) {
             throw new IllegalStateException("支付创建结果无法确认");
         }
 
         requireSameRequest(stored, userId, requestId, channel);
 
-        appendStatusLog(stored.getPaymentNo(), "CREATE:" + requestId, null, EntitlementTradeConstants.PAYMENT_CREATED, userId);
+        appendStatusLog(tenantId, stored.getPaymentNo(), "CREATE:" + requestId, null, EntitlementTradeConstants.PAYMENT_CREATED, userId);
 
         return toVO(stored, requireAction(adapter, stored));
     }
 
     @Override
     @Transactional(readOnly = true)
-    public PaymentVO getOwnPayment(Long userId, String rawPaymentNo) {
+    public PaymentVO getOwnPayment(Long tenantId, Long userId, String rawPaymentNo) {
+        requireTenantId(tenantId);
         requireUserId(userId);
 
         String paymentNo = normalize(rawPaymentNo, "支付单号", 64, true);
-        PaymentRecord payment = paymentMapper.selectOwnedPayment(paymentNo, userId);
+        PaymentRecord payment = paymentMapper.selectOwnedPayment(tenantId, paymentNo, userId);
 
         if (payment == null) {
-            throw new IllegalArgumentException("支付记录不存在或不属于当前用户");
+            throw ApiStatusException.notFound("支付记录不存在");
         }
 
-        PaymentChannelAdapter adapter = requireAdapter(payment.getChannel());
-
-        return toVO(payment, requireAction(adapter, payment));
+        PaymentChannelAdapter.PaymentChannelAction action = null;
+        if (EntitlementTradeConstants.PAYMENT_CREATED.equals(payment.getStatus())) {
+            action = requireAction(requireAdapter(payment.getChannel()), payment);
+        }
+        return toVO(payment, action);
     }
 
     @Override
-    public PaymentCallbackResultVO completeLocalDemo(Long userId, String rawPaymentNo) {
+    public PaymentCallbackResultVO completeLocalDemo(Long tenantId, Long userId, String rawPaymentNo) {
 
+        requireTenantId(tenantId);
         requireUserId(userId);
 
         String paymentNo = normalize(rawPaymentNo, "支付单号", 64, true);
 
-        PaymentRecord payment = paymentMapper.selectOwnedPayment(paymentNo, userId);
+        PaymentRecord payment = paymentMapper.selectOwnedPayment(tenantId, paymentNo, userId);
 
         if (payment == null) {
-            throw new IllegalArgumentException("支付记录不存在或不属于当前用户");
+            throw ApiStatusException.notFound("支付记录不存在");
         }
 
         if (!EntitlementTradeConstants.CHANNEL_LOCAL_DEMO.equals(payment.getChannel())) {
@@ -199,7 +206,9 @@ public class PaymentServiceImpl implements PaymentService {
             return;
         }
 
-        if (EntitlementTradeConstants.MODE_DURATION.equalsIgnoreCase(entitlement.getMode()) && purchaseMapper.selectRefundReservedByUserForUpdate(entitlement.getUserId()) != null) {
+        if (EntitlementTradeConstants.MODE_DURATION.equalsIgnoreCase(entitlement.getMode())
+                && purchaseMapper.selectRefundReservedByUserForUpdate(
+                entitlement.getTenantId(), entitlement.getUserId()) != null) {
             throw new IllegalArgumentException("存在退款冻结批次，暂时不能切换权益模式");
         }
 
@@ -210,15 +219,20 @@ public class PaymentServiceImpl implements PaymentService {
         if (EntitlementTradeConstants.MODE_SUBSCRIPTION.equalsIgnoreCase(entitlement.getMode()) && entitlement.getSubscriptionEndTime() != null && entitlement.getSubscriptionEndTime().isAfter(now)) {
             throw new IllegalArgumentException("现有订阅尚未到期，不能切换为时长权益");
         }
+
+        if (EntitlementTradeConstants.MODE_UNLIMITED.equalsIgnoreCase(entitlement.getMode())) {
+            throw new IllegalArgumentException("无限权益尚未撤销");
+        }
     }
 
     private PaymentChannelAdapter requireAdapter(String channel) {
         for (PaymentChannelAdapter adapter : channelAdapters) {
-            if (adapter.channel().equalsIgnoreCase(channel)) {
+            if (adapter.channel().equalsIgnoreCase(channel) && adapter.available()) {
                 return adapter;
             }
         }
-        throw new IllegalArgumentException("暂不支持该支付渠道");
+        throw ApiStatusException.serviceUnavailable(
+                "PAYMENT_CHANNEL_UNAVAILABLE：当前服务未提供所选付款渠道");
     }
 
     private void requireSameRequest(PaymentRecord payment, Long userId, String requestId, String channel) {
@@ -228,9 +242,10 @@ public class PaymentServiceImpl implements PaymentService {
         }
     }
 
-    private void appendStatusLog(String paymentNo, String eventKey, String fromStatus, String toStatus, Long operatorId) {
+    private void appendStatusLog(Long tenantId, String paymentNo, String eventKey, String fromStatus, String toStatus, Long operatorId) {
 
         TradeStatusLog log = new TradeStatusLog();
+        log.setTenantId(tenantId);
         log.setBusinessType(EntitlementTradeConstants.BUSINESS_PAYMENT);
         log.setBusinessNo(paymentNo);
         log.setEventKey(eventKey);
@@ -246,6 +261,7 @@ public class PaymentServiceImpl implements PaymentService {
     private PaymentVO toVO(PaymentRecord payment, PaymentChannelAdapter.PaymentChannelAction action) {
 
         PaymentVO vo = new PaymentVO();
+        vo.setTenantId(String.valueOf(payment.getTenantId()));
         vo.setPaymentNo(payment.getPaymentNo());
         vo.setOrderNo(payment.getOrderNo());
         vo.setChannel(payment.getChannel());
@@ -268,6 +284,12 @@ public class PaymentServiceImpl implements PaymentService {
     private void requireUserId(Long userId) {
         if (userId == null || userId <= 0) {
             throw new IllegalArgumentException("用户身份无效");
+        }
+    }
+
+    private void requireTenantId(Long tenantId) {
+        if (tenantId == null || tenantId <= 0) {
+            throw new IllegalArgumentException("租户身份无效");
         }
     }
 

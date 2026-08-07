@@ -1,6 +1,7 @@
 package com.plagod.configuration;
 
 import com.plagod.constant.EntitlementTradeConstants;
+import com.plagod.exception.ApiStatusException;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
@@ -13,15 +14,16 @@ import java.util.Locale;
 @ConfigurationProperties(prefix = "wifi.payment")
 public class PaymentProperties {
 
-    private String defaultChannel = EntitlementTradeConstants.CHANNEL_LOCAL_DEMO;
+    private String defaultChannel = "";
+    private boolean localDemoEnabled = false;
     private int callbackWindowSeconds = 300;
     private String localDemoSecret = "local-demo-payment-secret-change-me";
 
     public String normalizeChannel(String channel) {
-        String value = StringUtils.hasText(channel) ? channel : defaultChannel;
-
+        String value = StringUtils.hasText(channel) ? channel.trim() : defaultChannel;
         if (!StringUtils.hasText(value)) {
-            return EntitlementTradeConstants.CHANNEL_LOCAL_DEMO;
+            throw ApiStatusException.serviceUnavailable(
+                    "PAYMENT_CHANNEL_UNAVAILABLE：当前服务未提供真实付款渠道");
         }
 
         value = value.trim().toUpperCase(Locale.ROOT);

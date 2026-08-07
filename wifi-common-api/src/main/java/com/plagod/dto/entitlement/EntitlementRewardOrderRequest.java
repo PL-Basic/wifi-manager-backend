@@ -20,9 +20,11 @@ public class EntitlementRewardOrderRequest {
     @Pattern(regexp = "DURATION|SUBSCRIPTION")
     private String mode;
 
-    @NotNull
     @Positive
     private Long grantSeconds;
+
+    @Positive
+    private Integer grantMonths;
 
     @NotNull
     @PositiveOrZero

@@ -66,7 +66,8 @@ public class PaymentCallbackServiceImpl
             validateRepeatedCallback(payment, callback);
 
             userMapper.selectByIdForUpdate(payment.getUserId());
-            NetworkEntitlement entitlement = entitlementMapper.selectByUserIdForUpdate(payment.getUserId());
+            NetworkEntitlement entitlement = entitlementMapper.selectByUserIdForUpdate(
+                    payment.getTenantId(), payment.getUserId());
 
             return buildResult(payment, order, entitlement, true);
         }
@@ -91,7 +92,8 @@ public class PaymentCallbackServiceImpl
             throw new IllegalArgumentException("用户不存在或不可用");
         }
 
-        NetworkEntitlement entitlement = entitlementMapper.selectByUserIdForUpdate(payment.getUserId());
+        NetworkEntitlement entitlement = entitlementMapper.selectByUserIdForUpdate(
+                payment.getTenantId(), payment.getUserId());
 
         entitlement = grantEntitlement(order, payment, entitlement, now);
 
@@ -111,6 +113,7 @@ public class PaymentCallbackServiceImpl
 
         if (isNew) {
             entitlement = new NetworkEntitlement();
+            entitlement.setTenantId(order.getTenantId());
             entitlement.setUserId(order.getUserId());
             entitlement.setVersion(0);
             entitlement.setCreateTime(now);
@@ -139,6 +142,7 @@ public class PaymentCallbackServiceImpl
             saveEntitlement(entitlement, isNew);
 
             DurationPurchase purchase = new DurationPurchase();
+            purchase.setTenantId(order.getTenantId());
             purchase.setOrderNo(order.getOrderNo());
             purchase.setUserId(order.getUserId());
             purchase.setPurchasedSeconds(order.getGrantSeconds());
@@ -162,7 +166,17 @@ public class PaymentCallbackServiceImpl
 
             beforeSeconds = existingEnd != null && existingEnd.isAfter(now) ? Duration.between(now, existingEnd).getSeconds() : 0L;
 
-            LocalDateTime endTime = baseTime.plusSeconds(order.getGrantSeconds());
+            LocalDateTime endTime;
+            if (order.getGrantMonths() != null && order.getGrantMonths() > 0) {
+                endTime = baseTime.plusMonths(order.getGrantMonths());
+            } else if (Integer.valueOf(1).equals(order.getPricingVersion())
+                    && order.getGrantSeconds() != null
+                    && order.getGrantSeconds() > 0) {
+                // V2.2.1 之前的固定 30 天订阅只允许按原订单快照兼容履约。
+                endTime = baseTime.plusSeconds(order.getGrantSeconds());
+            } else {
+                throw new IllegalStateException("订阅订单缺少自然月快照");
+            }
 
             afterSeconds = Duration.between(now, endTime).getSeconds();
 
@@ -180,6 +194,7 @@ public class PaymentCallbackServiceImpl
 
         EntitlementUsageLog usageLog = new EntitlementUsageLog();
 
+        usageLog.setTenantId(order.getTenantId());
         usageLog.setEntitlementId(entitlement.getEntitlementId());
         usageLog.setUserId(order.getUserId());
         usageLog.setRequestId("PAY:" + payment.getPaymentNo());
@@ -187,7 +202,10 @@ public class PaymentCallbackServiceImpl
         usageLog.setPurchaseId(purchaseId);
         usageLog.setAuthorizationMode(targetMode);
         usageLog.setSessionId(null);
-        usageLog.setChangeSeconds(order.getGrantSeconds());
+        usageLog.setChangeSeconds(
+                EntitlementTradeConstants.MODE_SUBSCRIPTION.equals(targetMode)
+                        ? afterSeconds - beforeSeconds
+                        : order.getGrantSeconds());
         usageLog.setBeforeSeconds(beforeSeconds);
         usageLog.setAfterSeconds(afterSeconds);
         usageLog.setReason("PAYMENT_GRANT");
@@ -228,7 +246,7 @@ public class PaymentCallbackServiceImpl
             throw new IllegalStateException("支付状态更新失败");
         }
 
-        appendStatusLog(EntitlementTradeConstants.BUSINESS_PAYMENT, payment.getPaymentNo(), "CALLBACK:" + callback.getEventId(), previousStatus, EntitlementTradeConstants.PAYMENT_SUCCEEDED, EntitlementTradeConstants.OPERATOR_CHANNEL, null, "支付渠道成功回调");
+        appendStatusLog(payment.getTenantId(), EntitlementTradeConstants.BUSINESS_PAYMENT, payment.getPaymentNo(), "CALLBACK:" + callback.getEventId(), previousStatus, EntitlementTradeConstants.PAYMENT_SUCCEEDED, EntitlementTradeConstants.OPERATOR_CHANNEL, null, "支付渠道成功回调");
     }
 
     private void markOrderPaidAndFulfilled(EntitlementOrder order, PaymentRecord payment, LocalDateTime now) {
@@ -244,7 +262,7 @@ public class PaymentCallbackServiceImpl
             throw new IllegalStateException("订单支付状态更新失败");
         }
 
-        appendStatusLog(EntitlementTradeConstants.BUSINESS_ORDER, order.getOrderNo(), "PAID:" + payment.getPaymentNo(), previousStatus, EntitlementTradeConstants.ORDER_PAID, EntitlementTradeConstants.OPERATOR_CHANNEL, null, "订单支付成功");
+        appendStatusLog(order.getTenantId(), EntitlementTradeConstants.BUSINESS_ORDER, order.getOrderNo(), "PAID:" + payment.getPaymentNo(), previousStatus, EntitlementTradeConstants.ORDER_PAID, EntitlementTradeConstants.OPERATOR_CHANNEL, null, "订单支付成功");
 
         previousStatus = order.getStatus();
         order.setStatus(EntitlementTradeConstants.ORDER_FULFILLED);
@@ -256,11 +274,13 @@ public class PaymentCallbackServiceImpl
             throw new IllegalStateException("订单履约状态更新失败");
         }
 
-        appendStatusLog(EntitlementTradeConstants.BUSINESS_ORDER, order.getOrderNo(), "FULFILL:" + payment.getPaymentNo(), previousStatus, EntitlementTradeConstants.ORDER_FULFILLED, EntitlementTradeConstants.OPERATOR_SYSTEM, null, "支付成功并完成权益发放");
+        appendStatusLog(order.getTenantId(), EntitlementTradeConstants.BUSINESS_ORDER, order.getOrderNo(), "FULFILL:" + payment.getPaymentNo(), previousStatus, EntitlementTradeConstants.ORDER_FULFILLED, EntitlementTradeConstants.OPERATOR_SYSTEM, null, "支付成功并完成权益发放");
     }
 
     private void validateAssociation(PaymentRecord payment, EntitlementOrder order, VerifiedPaymentCallback callback) {
-        if (!Objects.equals(payment.getOrderNo(), order.getOrderNo()) || !Objects.equals(payment.getUserId(), order.getUserId())) {
+        if (!Objects.equals(payment.getTenantId(), order.getTenantId())
+                || !Objects.equals(payment.getOrderNo(), order.getOrderNo())
+                || !Objects.equals(payment.getUserId(), order.getUserId())) {
             throw new IllegalStateException("支付记录与订单关联不一致");
         }
 
@@ -305,7 +325,9 @@ public class PaymentCallbackServiceImpl
             return;
         }
 
-        if (EntitlementTradeConstants.MODE_DURATION.equalsIgnoreCase(entitlement.getMode()) && purchaseMapper.selectRefundReservedByUserForUpdate(entitlement.getUserId()) != null) {
+        if (EntitlementTradeConstants.MODE_DURATION.equalsIgnoreCase(entitlement.getMode())
+                && purchaseMapper.selectRefundReservedByUserForUpdate(
+                entitlement.getTenantId(), entitlement.getUserId()) != null) {
             throw new IllegalArgumentException("存在退款冻结批次，暂时不能切换权益模式");
         }
 
@@ -315,6 +337,10 @@ public class PaymentCallbackServiceImpl
 
         if (EntitlementTradeConstants.MODE_SUBSCRIPTION.equalsIgnoreCase(entitlement.getMode()) && entitlement.getSubscriptionEndTime() != null && entitlement.getSubscriptionEndTime().isAfter(now)) {
             throw new IllegalArgumentException("原有订阅尚未到期");
+        }
+
+        if (EntitlementTradeConstants.MODE_UNLIMITED.equalsIgnoreCase(entitlement.getMode())) {
+            throw new IllegalArgumentException("无限权益尚未撤销");
         }
     }
 
@@ -343,9 +369,10 @@ public class PaymentCallbackServiceImpl
         order.setVersion(order.getVersion() == null ? 1 : order.getVersion() + 1);
     }
 
-    private void appendStatusLog(String businessType, String businessNo, String eventKey, String fromStatus, String toStatus, String operatorType, Long operatorId, String remark) {
+    private void appendStatusLog(Long tenantId, String businessType, String businessNo, String eventKey, String fromStatus, String toStatus, String operatorType, Long operatorId, String remark) {
 
         TradeStatusLog log = new TradeStatusLog();
+        log.setTenantId(tenantId);
         log.setBusinessType(businessType);
         log.setBusinessNo(businessNo);
         log.setEventKey(eventKey);

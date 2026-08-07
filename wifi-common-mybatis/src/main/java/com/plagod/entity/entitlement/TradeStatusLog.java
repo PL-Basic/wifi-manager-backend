@@ -17,6 +17,7 @@ public class TradeStatusLog implements Serializable {
     @TableId(value = "id", type = IdType.AUTO)
     private Long id;
 
+    private Long tenantId;
     private String businessType;
     private String businessNo;
     private String eventKey;

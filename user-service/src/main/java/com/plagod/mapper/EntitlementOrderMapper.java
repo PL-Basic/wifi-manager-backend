@@ -17,14 +17,18 @@ public interface EntitlementOrderMapper extends BaseMapper<EntitlementOrder> {
 
     int insertOrResolveExisting(EntitlementOrder order);
 
-    @Select("select * from t_entitlement_order where user_id = #{userId} and client_request_id = #{clientRequestId} limit 1 for update")
-    EntitlementOrder selectByUserRequestForUpdate(@Param("userId") Long userId, @Param("clientRequestId") String clientRequestId);
+    @Select("select * from t_entitlement_order where tenant_id = #{tenantId} and user_id = #{userId} and client_request_id = #{clientRequestId} limit 1 for update")
+    EntitlementOrder selectByUserRequestForUpdate(@Param("tenantId") Long tenantId,
+                                                  @Param("userId") Long userId,
+                                                  @Param("clientRequestId") String clientRequestId);
 
     @Select("select * from t_entitlement_order where order_no = #{orderNo} limit 1 for update")
     EntitlementOrder selectByOrderNoForUpdate(@Param("orderNo") String orderNo);
 
-    @Select("select * from t_entitlement_order where order_no = #{orderNo} and user_id = #{userId} limit 1")
-    EntitlementOrder selectOwnedOrder(@Param("orderNo") String orderNo, @Param("userId") Long userId);
+    @Select("select * from t_entitlement_order where tenant_id = #{tenantId} and order_no = #{orderNo} and user_id = #{userId} limit 1")
+    EntitlementOrder selectOwnedOrder(@Param("tenantId") Long tenantId,
+                                      @Param("orderNo") String orderNo,
+                                      @Param("userId") Long userId);
 
     @Select("select order_no from t_entitlement_order where status = 'PENDING_PAYMENT' and expire_time <= #{now} order by expire_time limit #{limit}")
     List<String> selectExpiredPendingOrderNos(@Param("now") LocalDateTime now, @Param("limit") int limit);

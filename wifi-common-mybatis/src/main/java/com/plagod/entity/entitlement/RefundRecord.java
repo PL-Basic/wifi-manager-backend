@@ -17,6 +17,7 @@ public class RefundRecord implements Serializable {
     @TableId(value = "refund_id", type = IdType.AUTO)
     private Long refundId;
 
+    private Long tenantId;
     private String refundNo;
     private String orderNo;
     private String paymentNo;

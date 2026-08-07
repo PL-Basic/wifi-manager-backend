@@ -6,6 +6,7 @@ import java.time.LocalDateTime;
 
 @Data
 public class RefundVO {
+    private String tenantId;
 
     private String refundNo;
     private String orderNo;

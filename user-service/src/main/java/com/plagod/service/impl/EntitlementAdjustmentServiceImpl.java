@@ -3,6 +3,8 @@ package com.plagod.service.impl;
 import com.plagod.audit.Audited;
 import com.plagod.constant.EntitlementTradeConstants;
 import com.plagod.dto.entitlement.EntitlementAdjustmentRequest;
+import com.plagod.dto.entitlement.UnlimitedEntitlementRequest;
+import com.plagod.exception.ApiStatusException;
 import com.plagod.entity.entitlement.*;
 import com.plagod.entity.user.User;
 import com.plagod.mapper.*;
@@ -35,8 +37,11 @@ public class EntitlementAdjustmentServiceImpl implements EntitlementAdjustmentSe
     @Override
     @Audited(action = "entitlement.adjust")
     @Transactional(rollbackFor = Exception.class)
-    public EntitlementSnapshotVO adjust(Long userId, Long operatorId, String operatorName, EntitlementAdjustmentRequest request) {
+    public EntitlementSnapshotVO adjust(Long tenantId, Long userId, Long operatorId, String operatorName, EntitlementAdjustmentRequest request) {
 
+        if (tenantId == null || tenantId <= 0) {
+            throw new IllegalArgumentException("租户身份无效");
+        }
         validateRequest(userId, operatorId, operatorName, request);
 
         String mode = request.getMode().trim().toUpperCase(Locale.ROOT);
@@ -48,12 +53,12 @@ public class EntitlementAdjustmentServiceImpl implements EntitlementAdjustmentSe
             throw new IllegalArgumentException("目标用户不存在");
         }
 
-        NetworkEntitlement entitlement = entitlementMapper.selectByUserIdForUpdate(userId);
+        NetworkEntitlement entitlement = entitlementMapper.selectByUserIdForUpdate(tenantId, userId);
 
         /*
          * 锁定读取会看到等待用户/权益锁期间已经提交的调整流水。
          */
-        List<EntitlementUsageLog> existing = usageLogMapper.selectByRequestIdForUpdate(requestId);
+        List<EntitlementUsageLog> existing = usageLogMapper.selectByRequestIdForUpdate(tenantId, requestId);
 
         if (!existing.isEmpty()) {
             validateDuplicate(existing, userId, mode, changeSeconds);
@@ -65,15 +70,105 @@ public class EntitlementAdjustmentServiceImpl implements EntitlementAdjustmentSe
         requireCompatibleMode(entitlement, mode, changeSeconds, now);
 
         if (EntitlementTradeConstants.MODE_DURATION.equals(mode)) {
-            entitlement = adjustDuration(entitlement, userId, requestId, changeSeconds, now);
+            entitlement = adjustDuration(entitlement, tenantId, userId, requestId, changeSeconds, now);
         } else {
-            entitlement = adjustSubscription(entitlement, userId, requestId, changeSeconds, now);
+            entitlement = adjustSubscription(entitlement, tenantId, userId, requestId, changeSeconds, now);
         }
 
         return toSnapshot(entitlement);
     }
 
-    private NetworkEntitlement adjustDuration(NetworkEntitlement entitlement, Long userId, String requestId, long changeSeconds, LocalDateTime now) {
+    @Override
+    @Audited(action = "entitlement.unlimited.adjust")
+    @Transactional(rollbackFor = Exception.class)
+    public EntitlementSnapshotVO adjustUnlimited(Long tenantId,
+                                                 Long userId,
+                                                 Long operatorId,
+                                                 String operatorName,
+                                                 Integer operatorRole,
+                                                 UnlimitedEntitlementRequest request) {
+
+        if (!Integer.valueOf(0).equals(operatorRole)) {
+            throw ApiStatusException.forbidden("仅超级管理员可以授予或撤销无限权益");
+        }
+        if (tenantId == null || tenantId <= 0) {
+            throw new IllegalArgumentException("租户身份无效");
+        }
+        validateUnlimitedRequest(userId, operatorId, operatorName, request);
+
+        String action = request.getAction().trim().toUpperCase(Locale.ROOT);
+        String requestId = "UNL:" + request.getRequestId().trim();
+        long actionSignal = "GRANT".equals(action) ? 1L : -1L;
+
+        User user = userMapper.selectByIdForUpdate(userId);
+        if (user == null || "GRANT".equals(action) && !Integer.valueOf(1).equals(user.getStatus())) {
+            throw new IllegalArgumentException("目标用户不存在或不可用");
+        }
+
+        NetworkEntitlement entitlement = entitlementMapper.selectByUserIdForUpdate(tenantId, userId);
+        List<EntitlementUsageLog> existing =
+                usageLogMapper.selectByRequestIdForUpdate(tenantId, requestId);
+        if (!existing.isEmpty()) {
+            validateDuplicate(existing, userId, EntitlementTradeConstants.MODE_UNLIMITED, actionSignal);
+            return toSnapshot(entitlement);
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        boolean isNew = entitlement == null;
+        boolean activeUnlimited = !isNew
+                && EntitlementTradeConstants.MODE_UNLIMITED.equalsIgnoreCase(entitlement.getMode())
+                && Integer.valueOf(1).equals(entitlement.getStatus());
+        long before = activeUnlimited ? 1L : 0L;
+
+        if ("GRANT".equals(action)) {
+            if (!activeUnlimited) {
+                if (!isNew
+                        && EntitlementTradeConstants.MODE_DURATION.equalsIgnoreCase(entitlement.getMode())
+                        && purchaseMapper.selectRefundReservedByUserForUpdate(tenantId, userId) != null) {
+                    throw new IllegalArgumentException("存在退款冻结批次，暂时不能授予无限权益");
+                }
+                if (isNew) {
+                    entitlement = new NetworkEntitlement();
+                    entitlement.setTenantId(tenantId);
+                    entitlement.setUserId(userId);
+                    entitlement.setRemainingSeconds(0L);
+                    entitlement.setVersion(0);
+                    entitlement.setCreateTime(now);
+                } else {
+                    entitlement.setUnlimitedPreviousMode(entitlement.getMode());
+                    entitlement.setUnlimitedPreviousStatus(entitlement.getStatus());
+                    increaseVersion(entitlement);
+                }
+                entitlement.setMode(EntitlementTradeConstants.MODE_UNLIMITED);
+                entitlement.setStatus(1);
+                entitlement.setUpdateTime(now);
+                saveEntitlement(entitlement, isNew);
+            }
+        } else if (activeUnlimited) {
+            increaseVersion(entitlement);
+            restoreEntitlementAfterUnlimited(entitlement, now);
+            entitlement.setUpdateTime(now);
+            saveEntitlement(entitlement, false);
+        } else if (isNew) {
+            entitlement = new NetworkEntitlement();
+            entitlement.setTenantId(tenantId);
+            entitlement.setUserId(userId);
+            entitlement.setMode(EntitlementTradeConstants.MODE_UNLIMITED);
+            entitlement.setRemainingSeconds(0L);
+            entitlement.setStatus(0);
+            entitlement.setVersion(0);
+            entitlement.setCreateTime(now);
+            entitlement.setUpdateTime(now);
+            saveEntitlement(entitlement, true);
+        }
+
+        long after = EntitlementTradeConstants.MODE_UNLIMITED.equalsIgnoreCase(entitlement.getMode())
+                && Integer.valueOf(1).equals(entitlement.getStatus()) ? 1L : 0L;
+        insertUnlimitedUsageLog(entitlement, requestId, action, actionSignal, before, after, now);
+        return toSnapshot(entitlement);
+    }
+
+    private NetworkEntitlement adjustDuration(NetworkEntitlement entitlement, Long tenantId, Long userId, String requestId, long changeSeconds, LocalDateTime now) {
 
         boolean isNew = entitlement == null;
         boolean sameMode = !isNew && EntitlementTradeConstants.MODE_DURATION.equalsIgnoreCase(entitlement.getMode());
@@ -91,6 +186,7 @@ public class EntitlementAdjustmentServiceImpl implements EntitlementAdjustmentSe
             }
 
             entitlement = new NetworkEntitlement();
+            entitlement.setTenantId(tenantId);
             entitlement.setUserId(userId);
             entitlement.setVersion(0);
             entitlement.setCreateTime(now);
@@ -108,17 +204,17 @@ public class EntitlementAdjustmentServiceImpl implements EntitlementAdjustmentSe
         saveEntitlement(entitlement, isNew);
 
         if (changeSeconds > 0) {
-            DurationPurchase purchase = createAdjustmentPurchase(userId, changeSeconds, now);
+            DurationPurchase purchase = createAdjustmentPurchase(tenantId, userId, changeSeconds, now);
 
             insertUsageLog(entitlement, requestId, 1, purchase.getPurchaseId(), changeSeconds, before, after, now);
         } else {
-            deductDurationLots(entitlement, requestId, -changeSeconds, before, after, now);
+            deductDurationLots(entitlement, tenantId, requestId, -changeSeconds, before, after, now);
         }
 
         return entitlement;
     }
 
-    private NetworkEntitlement adjustSubscription(NetworkEntitlement entitlement, Long userId, String requestId, long changeSeconds, LocalDateTime now) {
+    private NetworkEntitlement adjustSubscription(NetworkEntitlement entitlement, Long tenantId, Long userId, String requestId, long changeSeconds, LocalDateTime now) {
         boolean isNew = entitlement == null;
         boolean sameMode = !isNew && EntitlementTradeConstants.MODE_SUBSCRIPTION.equalsIgnoreCase(entitlement.getMode());
 
@@ -137,6 +233,7 @@ public class EntitlementAdjustmentServiceImpl implements EntitlementAdjustmentSe
             }
 
             entitlement = new NetworkEntitlement();
+            entitlement.setTenantId(tenantId);
             entitlement.setUserId(userId);
             entitlement.setVersion(0);
             entitlement.setCreateTime(now);
@@ -162,9 +259,9 @@ public class EntitlementAdjustmentServiceImpl implements EntitlementAdjustmentSe
         return entitlement;
     }
 
-    private void deductDurationLots(NetworkEntitlement entitlement, String requestId, long seconds, long before, long after, LocalDateTime now) {
+    private void deductDurationLots(NetworkEntitlement entitlement, Long tenantId, String requestId, long seconds, long before, long after, LocalDateTime now) {
 
-        List<DurationPurchase> purchases = purchaseMapper.selectUsableLotsForUpdate(entitlement.getUserId());
+        List<DurationPurchase> purchases = purchaseMapper.selectUsableLotsForUpdate(tenantId, entitlement.getUserId());
 
         long total = purchases.stream()
                 .map(DurationPurchase::getRemainingSeconds)
@@ -206,9 +303,10 @@ public class EntitlementAdjustmentServiceImpl implements EntitlementAdjustmentSe
         }
     }
 
-    private DurationPurchase createAdjustmentPurchase(Long userId, long seconds, LocalDateTime now) {
+    private DurationPurchase createAdjustmentPurchase(Long tenantId, Long userId, long seconds, LocalDateTime now) {
 
         DurationPurchase purchase = new DurationPurchase();
+        purchase.setTenantId(tenantId);
         purchase.setOrderNo("ADJ" + UUID.randomUUID().toString().replace("-", "").toUpperCase(Locale.ROOT));
         purchase.setUserId(userId);
         purchase.setPurchasedSeconds(seconds);
@@ -228,6 +326,7 @@ public class EntitlementAdjustmentServiceImpl implements EntitlementAdjustmentSe
     private void insertUsageLog(NetworkEntitlement entitlement, String requestId, int lineNo, Long purchaseId, long changeSeconds, long before, long after, LocalDateTime now) {
 
         EntitlementUsageLog log = new EntitlementUsageLog();
+        log.setTenantId(entitlement.getTenantId());
 
         log.setEntitlementId(entitlement.getEntitlementId());
         log.setUserId(entitlement.getUserId());
@@ -272,7 +371,7 @@ public class EntitlementAdjustmentServiceImpl implements EntitlementAdjustmentSe
                 .equalsIgnoreCase(entitlement.getMode())
                 && purchaseMapper
                 .selectRefundReservedByUserForUpdate(
-                        entitlement.getUserId()) != null) {
+                        entitlement.getTenantId(), entitlement.getUserId()) != null) {
             throw new IllegalArgumentException(
                     "存在退款冻结批次，暂时不能切换权益模式");
         }
@@ -288,6 +387,60 @@ public class EntitlementAdjustmentServiceImpl implements EntitlementAdjustmentSe
         if (EntitlementTradeConstants.MODE_SUBSCRIPTION.equalsIgnoreCase(entitlement.getMode()) && entitlement.getSubscriptionEndTime() != null && entitlement.getSubscriptionEndTime().isAfter(now)) {
             throw new IllegalArgumentException("原订阅尚未到期");
         }
+
+        if (EntitlementTradeConstants.MODE_UNLIMITED.equalsIgnoreCase(entitlement.getMode())
+                && Integer.valueOf(1).equals(entitlement.getStatus())) {
+            throw new IllegalArgumentException("无限权益尚未撤销");
+        }
+    }
+
+    private void restoreEntitlementAfterUnlimited(NetworkEntitlement entitlement, LocalDateTime now) {
+        String previousMode = entitlement.getUnlimitedPreviousMode();
+        boolean previouslyActive = Integer.valueOf(1)
+                .equals(entitlement.getUnlimitedPreviousStatus());
+
+        if (EntitlementTradeConstants.MODE_DURATION.equalsIgnoreCase(previousMode)) {
+            entitlement.setMode(EntitlementTradeConstants.MODE_DURATION);
+            entitlement.setStatus(previouslyActive
+                    && entitlement.getRemainingSeconds() != null
+                    && entitlement.getRemainingSeconds() > 0 ? 1 : 0);
+        } else if (EntitlementTradeConstants.MODE_SUBSCRIPTION.equalsIgnoreCase(previousMode)) {
+            entitlement.setMode(EntitlementTradeConstants.MODE_SUBSCRIPTION);
+            entitlement.setStatus(previouslyActive
+                    && entitlement.getSubscriptionEndTime() != null
+                    && entitlement.getSubscriptionEndTime().isAfter(now) ? 1 : 0);
+        } else {
+            entitlement.setStatus(0);
+        }
+        entitlement.setUnlimitedPreviousMode(null);
+        entitlement.setUnlimitedPreviousStatus(null);
+    }
+
+    private void insertUnlimitedUsageLog(NetworkEntitlement entitlement,
+                                         String requestId,
+                                         String action,
+                                         long actionSignal,
+                                         long before,
+                                         long after,
+                                         LocalDateTime now) {
+        EntitlementUsageLog log = new EntitlementUsageLog();
+        log.setTenantId(entitlement.getTenantId());
+        log.setEntitlementId(entitlement.getEntitlementId());
+        log.setUserId(entitlement.getUserId());
+        log.setRequestId(requestId);
+        log.setLineNo(1);
+        log.setPurchaseId(null);
+        log.setAuthorizationMode(EntitlementTradeConstants.MODE_UNLIMITED);
+        log.setSessionId(null);
+        log.setChangeSeconds(actionSignal);
+        log.setBeforeSeconds(before);
+        log.setAfterSeconds(after);
+        log.setReason("UNLIMITED_" + action);
+        log.setCreateTime(now);
+
+        if (usageLogMapper.insert(log) != 1) {
+            throw new IllegalStateException("无限权益调整流水写入失败");
+        }
     }
 
     private EntitlementSnapshotVO toSnapshot(NetworkEntitlement entitlement) {
@@ -298,6 +451,7 @@ public class EntitlementAdjustmentServiceImpl implements EntitlementAdjustmentSe
 
         EntitlementSnapshotVO result = new EntitlementSnapshotVO();
         result.setEntitlementId(entitlement.getEntitlementId());
+        result.setTenantId(String.valueOf(entitlement.getTenantId()));
         result.setUserId(entitlement.getUserId());
         result.setMode(entitlement.getMode());
         result.setSubscriptionStartTime(entitlement.getSubscriptionStartTime());
@@ -336,6 +490,27 @@ public class EntitlementAdjustmentServiceImpl implements EntitlementAdjustmentSe
         String mode = request.getMode() == null ? "" : request.getMode().trim().toUpperCase(Locale.ROOT);
         if (!EntitlementTradeConstants.MODE_DURATION.equals(mode) && !EntitlementTradeConstants.MODE_SUBSCRIPTION.equals(mode)) {
             throw new IllegalArgumentException("权益模式无效");
+        }
+    }
+
+    private void validateUnlimitedRequest(Long userId,
+                                          Long operatorId,
+                                          String operatorName,
+                                          UnlimitedEntitlementRequest request) {
+        if (userId == null || userId <= 0) {
+            throw new IllegalArgumentException("目标用户无效");
+        }
+        if (operatorId == null || operatorId <= 0 || !StringUtils.hasText(operatorName)) {
+            throw new IllegalArgumentException("超级管理员身份无效");
+        }
+        if (request == null || !StringUtils.hasText(request.getRequestId())
+                || !StringUtils.hasText(request.getAction())
+                || !StringUtils.hasText(request.getReason())) {
+            throw new IllegalArgumentException("无限权益调整参数无效");
+        }
+        String action = request.getAction().trim().toUpperCase(Locale.ROOT);
+        if (!"GRANT".equals(action) && !"REVOKE".equals(action)) {
+            throw new IllegalArgumentException("无限权益操作无效");
         }
     }
 }

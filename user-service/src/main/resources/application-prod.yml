@@ -19,6 +19,7 @@ wifi:
     internal-token: "${WIFI_INTERNAL_TOKEN}"
     internal-token-required: true
   payment:
-    default-channel: "${WIFI_PAYMENT_DEFAULT_CHANNEL}"
-    callback-window-seconds: "${WIFI_PAYMENT_CALLBACK_WINDOW_SECONDS}"
-    local-demo-secret: "${WIFI_PAYMENT_LOCAL_DEMO_SECRET}"
+    default-channel: "${WIFI_PAYMENT_DEFAULT_CHANNEL:}"
+    local-demo-enabled: false
+    callback-window-seconds: "${WIFI_PAYMENT_CALLBACK_WINDOW_SECONDS:300}"
+    local-demo-secret: "${WIFI_PAYMENT_LOCAL_DEMO_SECRET:}"

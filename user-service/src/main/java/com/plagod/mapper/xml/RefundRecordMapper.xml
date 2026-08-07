@@ -4,7 +4,7 @@
 
     <insert id="insertOrResolveExisting">
         insert into t_refund_record (
-            refund_no, order_no, payment_no, purchase_id,
+            tenant_id, refund_no, order_no, payment_no, purchase_id,
             user_id, request_id, channel, status, reason,
             requested_seconds, requested_amount_cents,
             refunded_seconds, refund_amount_cents,
@@ -14,7 +14,7 @@
             create_time, update_time
         )
         values (
-           #{refundNo}, #{orderNo}, #{paymentNo}, #{purchaseId},
+           #{tenantId}, #{refundNo}, #{orderNo}, #{paymentNo}, #{purchaseId},
            #{userId}, #{requestId}, #{channel}, #{status}, #{reason},
            #{requestedSeconds}, #{requestedAmountCents},
            #{refundedSeconds}, #{refundAmountCents},

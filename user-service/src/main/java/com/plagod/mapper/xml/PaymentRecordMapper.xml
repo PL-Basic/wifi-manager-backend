@@ -3,12 +3,12 @@
 <mapper namespace="com.plagod.mapper.PaymentRecordMapper">
     <insert id="insertOrResolveExisting">
         insert into t_payment_record (
-            payment_no, order_no, user_id, request_id, business_key, channel,
+            tenant_id, payment_no, order_no, user_id, request_id, business_key, channel,
             amount_cents, paid_amount_cents, refunded_amount_cents, status, version,
             create_time, update_time
         )
         values (
-            #{paymentNo}, #{orderNo}, #{userId}, #{requestId}, #{businessKey},
+            #{tenantId}, #{paymentNo}, #{orderNo}, #{userId}, #{requestId}, #{businessKey},
             #{channel}, #{amountCents}, #{paidAmountCents}, #{refundedAmountCents},
             #{status}, #{version}, #{createTime}, #{updateTime}
         )

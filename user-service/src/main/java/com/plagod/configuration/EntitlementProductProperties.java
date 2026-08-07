@@ -7,9 +7,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Data
@@ -18,13 +21,16 @@ import java.util.stream.Collectors;
 public class EntitlementProductProperties {
 
     public static final String CUSTOM_DURATION_PRODUCT_CODE = "DURATION_CUSTOM";
+    private static final Set<Integer> ALLOWED_SUBSCRIPTION_MONTHS =
+            Collections.unmodifiableSet(new HashSet<>(Arrays.asList(1, 3, 6, 12)));
 
     private int orderExpireMinutes = 15;
+    private int pricingVersion = 1;
     private List<Product> products = new ArrayList<>();
     private boolean customDurationEnabled = true;
     private long customDurationMinAmountCents = 100L;
     private long customDurationMaxAmountCents = 100000L;
-    private long customDurationSecondsPerCent = 36L;
+    private long customDurationSecondsPerCent = 180L;
 
     public Product requireOrderProduct(String rawProductCode, Long customAmountCents) {
         String productCode = normalizeProductCode(rawProductCode);
@@ -59,6 +65,7 @@ public class EntitlementProductProperties {
         product.setCode(CUSTOM_DURATION_PRODUCT_CODE);
         product.setName("自定义网络时长");
         product.setMode(EntitlementTradeConstants.MODE_DURATION);
+        product.setPricingVersion(effectivePricingVersion());
         product.setAmountCents(amountCents);
 
         try {
@@ -98,10 +105,12 @@ public class EntitlementProductProperties {
             return Collections.emptyList();
         }
 
-        return products.stream()
+        List<Product> enabled = products.stream()
                 .filter(product -> product != null && product.isEnabled())
                 .peek(this::validateProduct)
                 .collect(Collectors.toList());
+        validateSubscriptionCatalog(enabled);
+        return enabled;
     }
 
     public int effectiveOrderExpireMinutes() {
@@ -109,6 +118,13 @@ public class EntitlementProductProperties {
             return 15;
         }
         return Math.min(orderExpireMinutes, 1440);
+    }
+
+    public int effectivePricingVersion() {
+        if (pricingVersion <= 0) {
+            throw new IllegalStateException("权益商品定价版本必须大于0");
+        }
+        return pricingVersion;
     }
 
     private void validateProduct(Product product) {
@@ -119,12 +135,40 @@ public class EntitlementProductProperties {
             throw new IllegalStateException("权益商品模式配置无效");
         }
 
-        if (product.getGrantSeconds() == null || product.getGrantSeconds() <= 0) {
-            throw new IllegalStateException("权益商品发放时长配置无效");
+        if (EntitlementTradeConstants.MODE_DURATION.equals(mode)) {
+            if (product.getGrantSeconds() == null || product.getGrantSeconds() <= 0) {
+                throw new IllegalStateException("时长商品发放秒数配置无效");
+            }
+            if (product.getGrantMonths() != null) {
+                throw new IllegalStateException("时长商品不能配置自然月");
+            }
+        } else {
+            if (product.getGrantMonths() == null
+                    || !ALLOWED_SUBSCRIPTION_MONTHS.contains(product.getGrantMonths())) {
+                throw new IllegalStateException("订阅商品自然月只能为1、3、6或12");
+            }
+            if (product.getGrantSeconds() != null && product.getGrantSeconds() != 0) {
+                throw new IllegalStateException("自然月订阅不能再配置固定秒数");
+            }
         }
 
         if (product.getAmountCents() == null || product.getAmountCents() <= 0) {
             throw new IllegalStateException("权益商品金额配置无效");
+        }
+    }
+
+    private void validateSubscriptionCatalog(List<Product> enabled) {
+        Set<Integer> months = new HashSet<>();
+        for (Product product : enabled) {
+            if (!EntitlementTradeConstants.MODE_SUBSCRIPTION.equals(normalizeMode(product.getMode()))) {
+                continue;
+            }
+            if (!months.add(product.getGrantMonths())) {
+                throw new IllegalStateException("同一定价版本不能重复配置订阅月数");
+            }
+        }
+        if (!months.isEmpty() && !months.equals(ALLOWED_SUBSCRIPTION_MONTHS)) {
+            throw new IllegalStateException("订阅商品必须完整配置1、3、6、12个月");
         }
     }
 
@@ -148,7 +192,9 @@ public class EntitlementProductProperties {
         private String code;
         private String name;
         private String mode;
+        private Integer pricingVersion;
         private Long grantSeconds;
+        private Integer grantMonths;
         private Long amountCents;
         private boolean enabled = true;
     }

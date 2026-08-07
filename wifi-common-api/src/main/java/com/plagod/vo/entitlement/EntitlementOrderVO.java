@@ -8,12 +8,18 @@ import java.time.LocalDateTime;
 public class EntitlementOrderVO {
 
     private String orderNo;
+    private String tenantId;
     private Long userId;
     private String productCode;
     private String orderType;
     private String entitlementMode;
+    private Integer pricingVersion;
     private Long grantSeconds;
+    private Integer grantMonths;
     private Long amountCents;
+    private Long referenceAmountCents;
+    private Integer subscriptionRatioBps;
+    private Integer periodDiscountBps;
     private Long paidAmountCents;
     private Long refundedAmountCents;
     private String status;

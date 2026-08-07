@@ -6,11 +6,11 @@ import com.plagod.vo.user.EntitlementSnapshotVO;
 
 public interface EntitlementQueryService {
 
-    EntitlementSnapshotVO getSnapshot(Long userId, Long entitlementId);
+    EntitlementSnapshotVO getSnapshot(Long tenantId, Long userId, Long entitlementId);
 
-    EntitlementSnapshotVO getByUserId(Long userId);
+    EntitlementSnapshotVO getByUserId(Long tenantId, Long userId);
 
-    DurationPurchasePageResult pagePurchases(Long userId, long current, long size);
+    DurationPurchasePageResult pagePurchases(Long tenantId, Long userId, long current, long size);
 
-    EntitlementUsagePageResult pageUsageLogs(Long userId, long current, long size);
+    EntitlementUsagePageResult pageUsageLogs(Long tenantId, Long userId, long current, long size);
 }

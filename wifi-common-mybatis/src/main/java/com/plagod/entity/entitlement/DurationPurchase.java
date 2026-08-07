@@ -17,6 +17,8 @@ public class DurationPurchase implements Serializable {
     @TableId(value = "purchase_id", type = IdType.AUTO)
     private Long purchaseId;
 
+    private Long tenantId;
+
     // 支付或充值系统生成的唯一订单号
     private String orderNo;
 

@@ -11,9 +11,12 @@ import com.plagod.mapper.NetworkEntitlementMapper;
 import com.plagod.mapper.UserMapper;
 import com.plagod.service.EntitlementLeaseService;
 import com.plagod.vo.user.EntitlementLeaseResult;
+import com.plagod.constant.EntitlementTradeConstants;
+import com.plagod.utils.TenantScopeUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -40,10 +43,12 @@ public class EntitlementLeaseServiceImpl implements EntitlementLeaseService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public EntitlementLeaseResult acquireLease(EntitlementLeaseRequest request) {
-        List<EntitlementUsageLog> existing = usageLogMapper.selectByRequestId(request.getRequestId());
+    public EntitlementLeaseResult acquireLease(String trustedTenantId,
+                                               EntitlementLeaseRequest request) {
+        Long tenantId = resolveTenantId(trustedTenantId, request);
+        List<EntitlementUsageLog> existing = usageLogMapper.selectByRequestId(tenantId, request.getRequestId());
         if (!existing.isEmpty()) {
-            return duplicateResult(request, existing);
+            return duplicateResult(tenantId, request, existing);
         }
 
         User user = userMapper.selectById(request.getUserId());
@@ -52,20 +57,29 @@ public class EntitlementLeaseServiceImpl implements EntitlementLeaseService {
         }
 
         // 所有扣费、退款都必须先锁汇总权益，再锁购买批次
-        NetworkEntitlement entitlement = entitlementMapper.selectByUserIdForUpdate(request.getUserId());
+        NetworkEntitlement entitlement = entitlementMapper.selectByUserIdForUpdate(tenantId, request.getUserId());
+        if (entitlement != null
+                && request.getEntitlementId() != null
+                && !request.getEntitlementId().equals(entitlement.getEntitlementId())) {
+            throw new IllegalArgumentException("Session 权益标识与租户用户不一致");
+        }
         if (entitlement == null || !Integer.valueOf(1).equals(entitlement.getStatus())) {
             return denied(entitlement, "ENTITLEMENT_UNAVAILABLE");
         }
 
         // 等待行锁期间，另一个线程可能已经完成了同一请求
-        existing = usageLogMapper.selectByRequestIdForUpdate(request.getRequestId());
+        existing = usageLogMapper.selectByRequestIdForUpdate(tenantId, request.getRequestId());
         if (!existing.isEmpty()) {
-            return duplicateResult(request, existing);
+            return duplicateResult(tenantId, request, existing);
         }
 
         int requestTtl = Math.min(request.getRequestedTtlSeconds(), MAX_TTL_SECONDS);
         LocalDateTime now = LocalDateTime.now();
 
+        if (EntitlementTradeConstants.MODE_UNLIMITED.equalsIgnoreCase(entitlement.getMode())) {
+            return allowed(entitlement, requestTtl, 0L, entitlement.getRemainingSeconds(), false,
+                    "UNLIMITED_ACTIVE");
+        }
         if (SUBSCRIPTION.equalsIgnoreCase(entitlement.getMode())) {
             return handleSubscription(entitlement, requestTtl, now);
         }
@@ -85,7 +99,7 @@ public class EntitlementLeaseServiceImpl implements EntitlementLeaseService {
         long charged = Math.min(request.getUsageSeconds(), before);
         long after = before - charged;
         // 先锁定全部可用购买批次，并验证汇总余额和批次余额完全一致
-        List<DurationPurchase> purchases = purchaseMapper.selectUsableLotsForUpdate(request.getUserId());
+        List<DurationPurchase> purchases = purchaseMapper.selectUsableLotsForUpdate(tenantId, request.getUserId());
         // 获取批次余额汇总
         long purchaseTotal = purchases.stream()
                 .map(DurationPurchase::getRemainingSeconds)
@@ -97,7 +111,7 @@ public class EntitlementLeaseServiceImpl implements EntitlementLeaseService {
             throw new IllegalStateException("购买时长订单余额与汇总余额不一致");
         }
 
-        if (entitlementMapper.deductRemainingSeconds(entitlement.getEntitlementId(), charged) != 1) {
+        if (entitlementMapper.deductRemainingSeconds(tenantId, entitlement.getEntitlementId(), charged) != 1) {
             throw new IllegalStateException("购买时长汇总余额扣减失败");
         }
 
@@ -122,6 +136,7 @@ public class EntitlementLeaseServiceImpl implements EntitlementLeaseService {
             }
 
             EntitlementUsageLog log = new EntitlementUsageLog();
+            log.setTenantId(tenantId);
             log.setEntitlementId(entitlement.getEntitlementId());
             log.setUserId(request.getUserId());
             log.setRequestId(request.getRequestId());
@@ -152,11 +167,15 @@ public class EntitlementLeaseServiceImpl implements EntitlementLeaseService {
 
     // 处理已经成功执行过的重复请求。
     // 同一个 requestId 可能因为网络超时被再次调用。该方法不会再次扣费，而是读取第一次请求产生的多条购买批次流水，重新组装第一次的业务结果。
-    private EntitlementLeaseResult duplicateResult(EntitlementLeaseRequest request, List<EntitlementUsageLog> existing) {
+    private EntitlementLeaseResult duplicateResult(Long tenantId,
+                                                   EntitlementLeaseRequest request,
+                                                   List<EntitlementUsageLog> existing) {
         EntitlementUsageLog first = existing.get(0);
 
         for (EntitlementUsageLog log : existing) {
-            if (!Objects.equals(request.getUserId(), log.getUserId()) || !Objects.equals(request.getSessionId(), log.getSessionId())) {
+            if (!Objects.equals(tenantId, log.getTenantId())
+                    || !Objects.equals(request.getUserId(), log.getUserId())
+                    || !Objects.equals(request.getSessionId(), log.getSessionId())) {
                 throw new IllegalArgumentException("requestId 已被其他用户或会话使用");
             }
 
@@ -189,6 +208,22 @@ public class EntitlementLeaseServiceImpl implements EntitlementLeaseService {
         result.setSubscriptionEndTime(null);
         result.setReason(remainingSeconds > 0 ? "DURATION_AVAILABLE" : "DURATION_EXHAUSTED");
         return result;
+    }
+
+    private Long resolveTenantId(String trustedTenantId,
+                                 EntitlementLeaseRequest request) {
+        if (StringUtils.hasText(trustedTenantId)) {
+            return TenantScopeUtils.requireTenantId(trustedTenantId);
+        }
+        if (request.getEntitlementId() == null) {
+            throw new IllegalArgumentException("后台租约缺少可信租户或权益标识");
+        }
+
+        NetworkEntitlement entitlement = entitlementMapper.selectById(request.getEntitlementId());
+        if (entitlement == null || !Objects.equals(request.getUserId(), entitlement.getUserId())) {
+            throw new IllegalArgumentException("Session 权益标识无效");
+        }
+        return TenantScopeUtils.requireTenantId(entitlement.getTenantId());
     }
 
     // 统一构造拒绝授权或拒绝续租的结果。

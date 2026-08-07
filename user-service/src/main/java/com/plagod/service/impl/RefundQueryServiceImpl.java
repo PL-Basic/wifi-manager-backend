@@ -40,22 +40,25 @@ public class RefundQueryServiceImpl implements RefundQueryService {
 
     @Override
     @Transactional(readOnly = true)
-    public RefundPageResult pageOwnRefunds(Long userId, long current, long size, String status) {
+    public RefundPageResult pageOwnRefunds(Long tenantId, Long userId, long current, long size, String status) {
 
+        requireTenantId(tenantId);
         requireUserId(userId);
-        return page(current, size, userId, status);
+        return page(tenantId, current, size, userId, status);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public RefundVO getOwnRefund(Long userId, String refundNo) {
+    public RefundVO getOwnRefund(Long tenantId, Long userId, String refundNo) {
+        requireTenantId(tenantId);
         requireUserId(userId);
 
-        RefundRecord refund = refundMapper.selectOwnedRefund(normalizeRefundNo(refundNo), userId);
+        RefundRecord refund = refundMapper.selectOwnedRefund(
+                tenantId, normalizeRefundNo(refundNo), userId);
 
         if (refund == null) {
             // 不区分不存在和不属于本人，避免枚举他人的退款单。
-            throw new IllegalArgumentException("退款单不存在或不属于当前用户");
+            throw ApiStatusException.notFound("退款单不存在");
         }
 
         return toVO(refund);
@@ -63,31 +66,34 @@ public class RefundQueryServiceImpl implements RefundQueryService {
 
     @Override
     @Transactional(readOnly = true)
-    public RefundPageResult pageForAdmin(long current, long size, Long userId, String status) {
+    public RefundPageResult pageForAdmin(Long tenantId, long current, long size, Long userId, String status) {
 
+        requireTenantId(tenantId);
         if (userId != null && userId <= 0) {
             throw new IllegalArgumentException("用户编号无效");
         }
 
-        return page(current, size, userId, status);
+        return page(tenantId, current, size, userId, status);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public RefundVO getForAdmin(String refundNo) {
+    public RefundVO getForAdmin(Long tenantId, String refundNo) {
+        requireTenantId(tenantId);
         RefundRecord refund = refundMapper.selectByRefundNo(normalizeRefundNo(refundNo));
-        if (refund == null) {
+        if (refund == null || !tenantId.equals(refund.getTenantId())) {
             throw ApiStatusException.notFound("退款单不存在");
         }
         return toVO(refund);
     }
 
-    private RefundPageResult page(long current, long size, Long userId, String status) {
+    private RefundPageResult page(Long tenantId, long current, long size, Long userId, String status) {
 
         long pageCurrent = current <= 0 ? 1 : current;
         long pageSize = size <= 0 ? 10 : Math.min(size, 100);
 
         QueryWrapper<RefundRecord> wrapper = new QueryWrapper<>();
+        wrapper.eq("tenant_id", tenantId);
 
         if (userId != null) {
             wrapper.eq("user_id", userId);
@@ -148,7 +154,14 @@ public class RefundQueryServiceImpl implements RefundQueryService {
     private RefundVO toVO(RefundRecord refund) {
         RefundVO vo = new RefundVO();
         BeanUtils.copyProperties(refund, vo);
+        vo.setTenantId(String.valueOf(refund.getTenantId()));
         vo.setPurchaseId(refund.getOrderNo());
         return vo;
+    }
+
+    private void requireTenantId(Long tenantId) {
+        if (tenantId == null || tenantId <= 0) {
+            throw new IllegalArgumentException("租户身份无效");
+        }
     }
 }

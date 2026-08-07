@@ -26,44 +26,64 @@ wifi:
   entitlement:
     order-expire-minutes: 15
     close-delay-ms: 60000
-    # 自定义时长按当前基础价换算：1 元 = 1 小时，即每 1 分 = 36 秒。
+    pricing-version: 2
+    # 自定义时长基础换算：1 元 = 5 小时，即每 1 分 = 180 秒。
     custom-duration-enabled: true
     custom-duration-min-amount-cents: 100
     custom-duration-max-amount-cents: 100000
-    custom-duration-seconds-per-cent: 36
+    custom-duration-seconds-per-cent: 180
     products:
-      - code: DURATION_1H
-        name: 1小时网络时长
+      - code: DURATION_5H
+        name: 5小时网络时长
         mode: DURATION
-        grant-seconds: 3600
+        grant-seconds: 18000
         amount-cents: 100
         enabled: true
-      - code: DURATION_10H
-        name: 10小时网络时长
+      - code: DURATION_24H
+        name: 24小时网络时长
         mode: DURATION
-        grant-seconds: 36000
-        amount-cents: 1000
-        enabled: true
-      - code: DURATION_50H
-        name: 50小时网络时长
-        mode: DURATION
-        grant-seconds: 180000
-        amount-cents: 5000
+        grant-seconds: 86400
+        amount-cents: 390
         enabled: true
       - code: DURATION_100H
         name: 100小时网络时长
         mode: DURATION
         grant-seconds: 360000
-        amount-cents: 10000
+        amount-cents: 1290
         enabled: true
-      - code: SUBSCRIPTION_30D
-        name: 30天网络订阅
+      - code: DURATION_300H
+        name: 300小时网络时长
+        mode: DURATION
+        grant-seconds: 1080000
+        amount-cents: 1990
+        enabled: true
+      - code: SUBSCRIPTION_1M
+        name: 1个月网络订阅
         mode: SUBSCRIPTION
-        grant-seconds: 2592000
-        amount-cents: 1000
+        grant-months: 1
+        amount-cents: 2990
+        enabled: true
+      - code: SUBSCRIPTION_3M
+        name: 3个月网络订阅
+        mode: SUBSCRIPTION
+        grant-months: 3
+        amount-cents: 7490
+        enabled: true
+      - code: SUBSCRIPTION_6M
+        name: 6个月网络订阅
+        mode: SUBSCRIPTION
+        grant-months: 6
+        amount-cents: 13990
+        enabled: true
+      - code: SUBSCRIPTION_12M
+        name: 12个月网络订阅
+        mode: SUBSCRIPTION
+        grant-months: 12
+        amount-cents: 24900
         enabled: true
   payment:
-    default-channel: ${WIFI_PAYMENT_DEFAULT_CHANNEL:LOCAL_DEMO}
+    default-channel: ${WIFI_PAYMENT_DEFAULT_CHANNEL:}
+    local-demo-enabled: ${WIFI_PAYMENT_LOCAL_DEMO_ENABLED:false}
     callback-window-seconds: ${WIFI_PAYMENT_CALLBACK_WINDOW_SECONDS:300}
     local-demo-secret: ${WIFI_PAYMENT_LOCAL_DEMO_SECRET:local-demo-payment-secret-change-me}
 

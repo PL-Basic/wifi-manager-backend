@@ -11,13 +11,13 @@ public interface EntitlementOrderService {
 
     List<EntitlementProductVO> listProducts();
 
-    EntitlementOrderVO createOrder(Long userId, EntitlementOrderCreateRequest request);
+    EntitlementOrderVO createOrder(Long tenantId, Long userId, EntitlementOrderCreateRequest request);
 
-    EntitlementOrderPageResult pageOwnOrders(Long userId, long current, long size, String status);
+    EntitlementOrderPageResult pageOwnOrders(Long tenantId, Long userId, long current, long size, String status);
 
-    EntitlementOrderVO getOwnOrder(Long userId, String orderNo);
+    EntitlementOrderVO getOwnOrder(Long tenantId, Long userId, String orderNo);
 
-    EntitlementOrderVO cancelOwnOrder(Long userId, String orderNo);
+    EntitlementOrderVO cancelOwnOrder(Long tenantId, Long userId, String orderNo);
 
     int closeExpiredOrders(int batchSize);
 }

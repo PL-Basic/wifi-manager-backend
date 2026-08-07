@@ -3,11 +3,11 @@
 <mapper namespace="com.plagod.mapper.TradeStatusLogMapper">
     <insert id="insertIgnore">
         insert ignore into t_trade_status_log (
-            business_type, business_no, event_key, from_status, to_status,
+            tenant_id, business_type, business_no, event_key, from_status, to_status,
             operator_type, operator_id, remark, create_time
         )
         values (
-            #{businessType}, #{businessNo}, #{eventKey}, #{fromStatus},
+            #{tenantId}, #{businessType}, #{businessNo}, #{eventKey}, #{fromStatus},
             #{toStatus}, #{operatorType}, #{operatorId}, #{remark},
             #{createTime}
          )

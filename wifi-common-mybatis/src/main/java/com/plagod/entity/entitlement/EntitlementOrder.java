@@ -17,14 +17,20 @@ public class EntitlementOrder implements Serializable {
     @TableId(value = "order_id", type = IdType.AUTO)
     private Long orderId;
 
+    private Long tenantId;
     private String orderNo;
     private Long userId;
     private String clientRequestId;
     private String productCode;
     private String orderType;
     private String entitlementMode;
+    private Integer pricingVersion;
     private Long grantSeconds;
+    private Integer grantMonths;
     private Long amountCents;
+    private Long referenceAmountCents;
+    private Integer subscriptionRatioBps;
+    private Integer periodDiscountBps;
     private Long paidAmountCents;
     private Long refundedAmountCents;
     private String status;

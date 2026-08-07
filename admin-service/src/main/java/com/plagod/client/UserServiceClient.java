@@ -2,6 +2,7 @@ package com.plagod.client;
 
 import com.plagod.dto.ApiResponse;
 import com.plagod.dto.entitlement.EntitlementAdjustmentRequest;
+import com.plagod.dto.entitlement.UnlimitedEntitlementRequest;
 import com.plagod.dto.entitlement.EntitlementRewardOrderRequest;
 import com.plagod.dto.entitlement.LocalDemoRefundResultRequest;
 import com.plagod.dto.entitlement.RefundReviewRequest;
@@ -100,6 +101,14 @@ public interface UserServiceClient {
                                                          @RequestHeader("X-User-Id") Long operatorId,
                                                          @RequestHeader("X-User-Name") String operatorName,
                                                          @RequestBody EntitlementAdjustmentRequest request);
+
+    @PostMapping("/internal/admin/entitlements/users/{userId}/unlimited-adjustments")
+    ApiResponse<EntitlementSnapshotVO> adjustUnlimitedEntitlement(
+            @PathVariable("userId") Long userId,
+            @RequestHeader("X-User-Id") Long operatorId,
+            @RequestHeader("X-User-Name") String operatorName,
+            @RequestHeader("X-User-Role") Integer operatorRole,
+            @RequestBody UnlimitedEntitlementRequest request);
 
     @PostMapping("/internal/admin/entitlements/users/{userId}/reward-orders")
     ApiResponse<EntitlementOrderVO> createRewardOrder(
