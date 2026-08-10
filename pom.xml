@@ -19,6 +19,7 @@
     <description>家庭WiFi管理系统 - 微服务后端</description>
 
     <modules>
+        <module>wifi-test-kit</module>
         <module>wifi-common-api</module>
         <module>wifi-common-mybatis</module>
         <module>wifi-audit-spring-boot-starter</module>
@@ -57,6 +58,8 @@
         <hutool.version>5.7.22</hutool.version>
         <knife4j.version>3.0.3</knife4j.version>
         <paho-mqtt.version>1.2.5</paho-mqtt.version>
+        <archunit.version>1.2.1</archunit.version>
+        <maven-failsafe-plugin.version>2.22.2</maven-failsafe-plugin.version>
     </properties>
 
     <dependencyManagement>
@@ -156,6 +159,13 @@
                 <version>${paho-mqtt.version}</version>
             </dependency>
 
+            <!-- ===== 测试架构 ===== -->
+            <dependency>
+                <groupId>com.tngtech.archunit</groupId>
+                <artifactId>archunit</artifactId>
+                <version>${archunit.version}</version>
+            </dependency>
+
             <!-- ===== 内部模块 ===== -->
             <dependency>
                 <groupId>org.example</groupId>
@@ -191,8 +201,59 @@
         </pluginManagement>
     </build>
 
-</project>
+    <profiles>
+        <profile>
+            <id>backend-core-acceptance</id>
+            <properties>
+                <wifi.test.external-writes>false</wifi.test.external-writes>
+                <wifi.test.mysql.enabled>false</wifi.test.mysql.enabled>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <failIfNoTests>false</failIfNoTests>
+                            <includes>
+                                <include>**/*Test.java</include>
+                                <include>**/*ArchitectureTest.java</include>
+                                <include>**/*ContractTest.java</include>
+                            </includes>
+                            <excludes>
+                                <exclude>**/*IT.java</exclude>
+                                <exclude>**/*ContractIT.java</exclude>
+                                <exclude>**/*MySqlIT.java</exclude>
+                            </excludes>
+                        </configuration>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-failsafe-plugin</artifactId>
+                        <version>${maven-failsafe-plugin.version}</version>
+                        <configuration>
+                            <failIfNoTests>false</failIfNoTests>
+                            <includes>
+                                <include>**/*IT.java</include>
+                                <include>**/*ContractIT.java</include>
+                                <include>**/*MySqlIT.java</include>
+                            </includes>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <goals>
+                                    <goal>integration-test</goal>
+                                    <goal>verify</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 
+</project>
 
 
 
