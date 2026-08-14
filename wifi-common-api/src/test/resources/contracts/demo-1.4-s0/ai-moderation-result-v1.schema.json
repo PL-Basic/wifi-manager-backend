@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "wifi-manager://contracts/ai-moderation-result-v1",
+  "title": "Wifi Manager AI moderation result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "decision",
+    "confidence",
+    "reasonCode",
+    "riskLabels"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "ai-moderation-result-v1"
+    },
+    "decision": {
+      "type": "string",
+      "enum": ["APPROVE", "REJECT", "MANUAL"]
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "reasonCode": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+    },
+    "riskLabels": {
+      "type": "array",
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+      }
+    },
+    "category": {
+      "type": ["string", "null"],
+      "maxLength": 64
+    },
+    "priority": {
+      "type": ["string", "null"],
+      "enum": ["LOW", "NORMAL", "HIGH", "URGENT", null]
+    },
+    "providerRequestId": {
+      "type": ["string", "null"],
+      "maxLength": 128
+    },
+    "model": {
+      "type": ["string", "null"],
+      "maxLength": 96
+    },
+    "latencyMillis": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "maximum": 120000
+    }
+  },
+  "x-wifi-failureFallback": "MANUAL",
+  "x-wifi-confidencePersistence": "confidenceBps=round(confidence*10000)",
+  "x-wifi-unknownFieldPolicy": "REJECT"
+}
