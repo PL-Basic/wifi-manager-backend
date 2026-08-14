@@ -1,5 +1,6 @@
 package com.plagod.security;
 
+import com.plagod.request.RequestId;
 import feign.RequestTemplate;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -67,6 +68,9 @@ class TrustedFeignRequestInterceptorTest {
         request.setAttribute(
                 TrustedHeaderNames.TRUSTED_SOURCE_ATTRIBUTE,
                 TrustedHeaderNames.SOURCE_GATEWAY);
+        request.setAttribute(
+                RequestId.REQUEST_ATTRIBUTE,
+                "request-id-00000001");
         request.addHeader(TrustedHeaderNames.USER_ID, "17");
         request.addHeader(TrustedHeaderNames.USER_NAME, "p1accept0804");
         request.addHeader(TrustedHeaderNames.USER_ROLE, "1");
@@ -91,6 +95,7 @@ class TrustedFeignRequestInterceptorTest {
         assertHeader(template, TrustedHeaderNames.CONTEXT_TYPE, "TENANT");
         assertHeader(template, TrustedHeaderNames.TENANT_CONTEXT_VERSION, "4");
         assertHeader(template, TrustedHeaderNames.MEMBER_CONTEXT_VERSION, "5");
+        assertHeader(template, RequestId.HEADER_NAME, "request-id-00000001");
         assertFalse(template.headers().containsKey(TrustedHeaderNames.GATEWAY_TOKEN));
         assertFalse(template.headers().containsKey(TrustedHeaderNames.AUTHORIZATION));
         assertFalse(template.headers().containsKey(TrustedHeaderNames.COOKIE));
@@ -107,6 +112,7 @@ class TrustedFeignRequestInterceptorTest {
         assertHeader(template, TrustedHeaderNames.INTERNAL_TOKEN, INTERNAL_TOKEN);
         assertFalse(template.headers().containsKey(TrustedHeaderNames.USER_ID));
         assertFalse(template.headers().containsKey(TrustedHeaderNames.TENANT_ID));
+        assertFalse(template.headers().containsKey(RequestId.HEADER_NAME));
         assertFalse(template.headers().containsKey(TrustedHeaderNames.GATEWAY_TOKEN));
         assertFalse(template.headers().containsKey(TrustedHeaderNames.AUTHORIZATION));
         assertFalse(template.headers().containsKey(TrustedHeaderNames.COOKIE));
@@ -118,6 +124,7 @@ class TrustedFeignRequestInterceptorTest {
         template.header(TrustedHeaderNames.GATEWAY_TOKEN, "caller-gateway-token");
         template.header(TrustedHeaderNames.USER_ID, "999");
         template.header(TrustedHeaderNames.TENANT_ID, "999");
+        template.header(RequestId.HEADER_NAME, "forged-request-id");
         template.header(TrustedHeaderNames.AUTHORIZATION, "Bearer browser-token");
         template.header(TrustedHeaderNames.COOKIE, "wifi_refresh=secret");
         return template;

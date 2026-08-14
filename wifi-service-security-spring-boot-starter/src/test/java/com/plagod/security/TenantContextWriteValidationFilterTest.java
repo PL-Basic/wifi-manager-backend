@@ -2,6 +2,7 @@ package com.plagod.security;
 
 import com.plagod.dto.ApiResponse;
 import com.plagod.dto.tenant.TenantContextValidationRequest;
+import com.plagod.request.RequestId;
 import com.plagod.vo.tenant.TenantContextValidationVO;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -161,6 +162,10 @@ class TenantContextWriteValidationFilterTest {
         assertFalse(invoked.get());
         assertEquals(503, response.getStatus());
         assertTrue(response.getContentAsString().contains("\"code\":503"));
+        assertTrue(response.getContentAsString().contains(
+                "\"errorKey\":\"DEPENDENCY_UNAVAILABLE\""));
+        assertTrue(RequestId.isValid(
+                response.getHeader(RequestId.HEADER_NAME)));
     }
 
     @Test
@@ -196,6 +201,11 @@ class TenantContextWriteValidationFilterTest {
         assertEquals(0, calls.get());
         assertFalse(invoked.get());
         assertEquals(401, response.getStatus());
+        assertTrue(response.getContentAsString().contains(
+                "\"errorKey\":\"SESSION_EXPIRED\""));
+        assertEquals(
+                response.getHeader(RequestId.HEADER_NAME),
+                request.getAttribute(RequestId.REQUEST_ATTRIBUTE));
     }
 
     private MockHttpServletRequest tenantRequest(String method, String path) {

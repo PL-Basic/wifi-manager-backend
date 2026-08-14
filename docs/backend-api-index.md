@@ -14,10 +14,11 @@ http://{gateway-host}:8080
 {"code":200,"message":"操作成功","data":{}}
 ```
 
-Demo 1.4 S0 已冻结 `http-envelope-v1`：后续只能向该结构增加可空的
-`errorKey` 和 `requestId`，不能删除或改名 `code/message/data`。S0 尚未把
-两个新字段接入生产 handler；调用方当前仍须兼容三字段响应。冻结结论、基础
-错误键、MQTT/AI 样本和 P14 文件所有权见
+Demo 1.4 S1 已在共享入口实现 `http-envelope-v1`：`ApiResponse` 保留
+`code/message/data`，并以仅在非空时序列化的方式增加 `errorKey/requestId`。
+`http-support-v1` 固定 Servlet 的九类状态、`X-Request-Id`、MDC 清理和安全
+500；业务服务 handler 与 Gateway 的实际接入仍分别属于后续 `P14-*`。冻结
+结论、基础错误键、MQTT/AI 样本和 P14 文件所有权见
 [Demo 1.4 S0 公共能力与兼容契约冻结](demo-1.4-s0-contract-freeze.md)。
 
 受保护接口使用：

@@ -1,5 +1,7 @@
 package com.plagod.security;
 
+import com.plagod.exception.ApiErrorKey;
+import com.plagod.request.RequestId;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -54,9 +56,11 @@ public class TrustedRequestFilter extends OncePerRequestFilter {
             String reason = properties.isInternalPath(path)
                     ? "INTERNAL_TOKEN_MISMATCH"
                     : "TRUSTED_TOKEN_MISMATCH";
+            String requestId = RequestId.generate();
 
             log.warning(String.format(
-                    "trusted request rejected: reason=%s, method=%s, path=%s, internalPath=%s, gatewayTokenPresent=%s, internalTokenPresent=%s",
+                    "trusted request rejected: requestId=%s, reason=%s, method=%s, path=%s, internalPath=%s, gatewayTokenPresent=%s, internalTokenPresent=%s",
+                    requestId,
                     reason,
                     request.getMethod(),
                     path,
@@ -64,7 +68,7 @@ public class TrustedRequestFilter extends OncePerRequestFilter {
                     StringUtils.hasText(gatewayToken),
                     StringUtils.hasText(internalToken)));
 
-            reject(response);
+            reject(response, requestId);
             return;
         }
 
@@ -80,12 +84,25 @@ public class TrustedRequestFilter extends OncePerRequestFilter {
         return MessageDigest.isEqual(supplied.getBytes(StandardCharsets.UTF_8), expected.getBytes(StandardCharsets.UTF_8));
     }
 
-    private void reject(HttpServletResponse response) throws java.io.IOException {
-        byte[] body = ("{\"code\":401,\"message\":\"服务请求来源认证失败\",\"data\":null}").getBytes(StandardCharsets.UTF_8);
+    private void reject(
+            HttpServletResponse response,
+            String requestId) throws java.io.IOException {
+        byte[] body = (
+                "{\"code\":401,"
+                        + "\"message\":\"服务请求来源认证失败\","
+                        + "\"data\":null,"
+                        + "\"errorKey\":\""
+                        + ApiErrorKey.AUTHENTICATION_REQUIRED.value()
+                        + "\","
+                        + "\"requestId\":\""
+                        + requestId
+                        + "\"}")
+                .getBytes(StandardCharsets.UTF_8);
 
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         response.setContentType("application/json; charset=utf-8");
+        response.setHeader(RequestId.HEADER_NAME, requestId);
         response.setContentLength(body.length);
         response.getOutputStream().write(body);
     }

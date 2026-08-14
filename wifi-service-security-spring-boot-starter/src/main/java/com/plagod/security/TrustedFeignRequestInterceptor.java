@@ -1,5 +1,6 @@
 package com.plagod.security;
 
+import com.plagod.request.RequestId;
 import feign.RequestInterceptor;
 import feign.RequestTemplate;
 import org.springframework.util.StringUtils;
@@ -35,6 +36,7 @@ public class TrustedFeignRequestInterceptor implements RequestInterceptor {
         template.removeHeader(TrustedHeaderNames.COOKIE);
         template.removeHeader(TrustedHeaderNames.GATEWAY_TOKEN);
         template.removeHeader(TrustedHeaderNames.INTERNAL_TOKEN);
+        template.removeHeader(RequestId.HEADER_NAME);
         template.header(TrustedHeaderNames.INTERNAL_TOKEN, internalToken);
 
         // 先删除调用方手工提供的上下文，避免绕过可信 Servlet 请求来源。
@@ -51,6 +53,12 @@ public class TrustedFeignRequestInterceptor implements RequestInterceptor {
             if (!values.isEmpty()) {
                 template.header(headerName, values);
             }
+        }
+
+        Object requestId = request.getAttribute(RequestId.REQUEST_ATTRIBUTE);
+        if (requestId instanceof String
+                && RequestId.isValid((String) requestId)) {
+            template.header(RequestId.HEADER_NAME, String.valueOf(requestId));
         }
     }
 

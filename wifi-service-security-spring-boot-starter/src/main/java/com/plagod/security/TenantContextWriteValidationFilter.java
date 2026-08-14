@@ -2,6 +2,8 @@ package com.plagod.security;
 
 import com.plagod.dto.ApiResponse;
 import com.plagod.dto.tenant.TenantContextValidationRequest;
+import com.plagod.exception.ApiErrorKey;
+import com.plagod.request.RequestId;
 import com.plagod.vo.tenant.TenantContextValidationVO;
 import feign.FeignException;
 import org.springframework.util.StringUtils;
@@ -53,7 +55,11 @@ public class TenantContextWriteValidationFilter extends OncePerRequestFilter {
         try {
             validationRequest = buildValidationRequest(request);
         } catch (IllegalArgumentException exception) {
-            reject(response, HttpServletResponse.SC_UNAUTHORIZED, exception.getMessage());
+            reject(
+                    request,
+                    response,
+                    HttpServletResponse.SC_UNAUTHORIZED,
+                    exception.getMessage());
             return;
         }
 
@@ -63,6 +69,7 @@ public class TenantContextWriteValidationFilter extends OncePerRequestFilter {
             int rejectedStatus = rejectedStatus(result);
             if (rejectedStatus != 0) {
                 reject(
+                        request,
                         response,
                         rejectedStatus,
                         rejectedStatus == HttpServletResponse.SC_SERVICE_UNAVAILABLE
@@ -74,14 +81,14 @@ public class TenantContextWriteValidationFilter extends OncePerRequestFilter {
             int status = exception.status();
             if (status == HttpServletResponse.SC_UNAUTHORIZED
                     || status == HttpServletResponse.SC_FORBIDDEN) {
-                reject(response, status, "租户上下文已失效");
+                reject(request, response, status, "租户上下文已失效");
             } else {
-                reject(response, HttpServletResponse.SC_SERVICE_UNAVAILABLE,
+                reject(request, response, HttpServletResponse.SC_SERVICE_UNAVAILABLE,
                         "租户上下文校验服务暂时不可用");
             }
             return;
         } catch (RuntimeException exception) {
-            reject(response, HttpServletResponse.SC_SERVICE_UNAVAILABLE,
+            reject(request, response, HttpServletResponse.SC_SERVICE_UNAVAILABLE,
                     "租户上下文校验服务暂时不可用");
             return;
         }
@@ -235,19 +242,42 @@ public class TenantContextWriteValidationFilter extends OncePerRequestFilter {
         return StringUtils.hasText(value) ? value.trim() : null;
     }
 
-    private void reject(HttpServletResponse response, int status, String message) throws IOException {
+    private void reject(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            int status,
+            String message) throws IOException {
         String safeMessage = message == null
                 ? "租户上下文校验失败"
                 : message.replace("\\", "\\\\").replace("\"", "\\\"");
+        String requestId = requestId(request);
+        String errorKey = status == HttpServletResponse.SC_UNAUTHORIZED
+                ? ApiErrorKey.SESSION_EXPIRED.value()
+                : ApiErrorKey.defaultForHttpStatus(status).value();
         byte[] body = String.format(
                 Locale.ROOT,
-                "{\"code\":%d,\"message\":\"%s\",\"data\":null}",
+                "{\"code\":%d,\"message\":\"%s\",\"data\":null,"
+                        + "\"errorKey\":\"%s\",\"requestId\":\"%s\"}",
                 status,
-                safeMessage).getBytes(StandardCharsets.UTF_8);
+                safeMessage,
+                errorKey,
+                requestId).getBytes(StandardCharsets.UTF_8);
         response.setStatus(status);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         response.setContentType("application/json; charset=utf-8");
+        response.setHeader(RequestId.HEADER_NAME, requestId);
         response.setContentLength(body.length);
         response.getOutputStream().write(body);
+    }
+
+    private String requestId(HttpServletRequest request) {
+        Object current = request.getAttribute(RequestId.REQUEST_ATTRIBUTE);
+        if (current instanceof String
+                && RequestId.isValid((String) current)) {
+            return (String) current;
+        }
+        String generated = RequestId.generate();
+        request.setAttribute(RequestId.REQUEST_ATTRIBUTE, generated);
+        return generated;
     }
 }

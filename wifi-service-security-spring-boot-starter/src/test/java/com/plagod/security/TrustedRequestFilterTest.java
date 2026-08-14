@@ -1,5 +1,8 @@
 package com.plagod.security;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.plagod.request.RequestId;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -15,6 +18,7 @@ class TrustedRequestFilterTest {
 
     private static final String GATEWAY_TOKEN = "a-valid-gateway-token-value";
     private static final String INTERNAL_TOKEN = "a-valid-internal-token-value";
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Test
     void gatewayRequestIsMarkedTrusted() throws Exception {
@@ -59,6 +63,14 @@ class TrustedRequestFilterTest {
 
         assertFalse(invoked.get());
         assertEquals(401, response.getStatus());
+        String requestId = response.getHeader(RequestId.HEADER_NAME);
+        assertTrue(RequestId.isValid(requestId));
+        JsonNode body = OBJECT_MAPPER.readTree(
+                response.getContentAsByteArray());
+        assertEquals(
+                "AUTHENTICATION_REQUIRED",
+                body.path("errorKey").asText());
+        assertEquals(requestId, body.path("requestId").asText());
     }
 
     private TrustedRequestProperties properties() {
