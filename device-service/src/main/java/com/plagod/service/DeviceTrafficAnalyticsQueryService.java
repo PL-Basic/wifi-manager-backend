@@ -3,6 +3,7 @@ package com.plagod.service;
 import com.plagod.dto.TrafficAnalyticsQueryCriteria;
 import com.plagod.mapper.TrafficLogMapper;
 import com.plagod.vo.device.TrafficAnalyticsSourceVO;
+import com.plagod.utils.TenantScopeUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,12 +29,14 @@ public class DeviceTrafficAnalyticsQueryService {
     private TrafficLogMapper trafficLogMapper;
 
     @Transactional(readOnly = true)
-    public TrafficAnalyticsSourceVO query(Long userId, String mac, Long sessionId, Long nodeId, String deviceCode, LocalDateTime startTime, LocalDateTime endTime, Integer bucketMinutes, Integer topLimit) {
+    public TrafficAnalyticsSourceVO query(Long tenantId, Long userId, String mac, Long sessionId, Long nodeId, String deviceCode, LocalDateTime startTime, LocalDateTime endTime, Integer bucketMinutes, Integer topLimit) {
+        TenantScopeUtils.requireTenantId(tenantId);
 
         validate(userId, mac, sessionId, nodeId, deviceCode, startTime, endTime, bucketMinutes, topLimit);
 
         TrafficAnalyticsQueryCriteria criteria = new TrafficAnalyticsQueryCriteria();
 
+        criteria.setTenantId(tenantId);
         criteria.setUserId(userId);
         criteria.setMac(normalizeMac(mac));
         criteria.setSessionId(sessionId);

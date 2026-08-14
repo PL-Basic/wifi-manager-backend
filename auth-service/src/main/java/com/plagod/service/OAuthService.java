@@ -17,6 +17,7 @@ import com.plagod.vo.OAuthCallbackIssue;
 import com.plagod.vo.OAuthCallbackResultVO;
 import com.plagod.vo.user.SocialIdentityResolveResultVO;
 import com.plagod.vo.user.SocialLoginPrincipalVO;
+import com.plagod.vo.user.UserAccountSnapshotVO;
 import feign.FeignException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,7 +31,7 @@ import org.springframework.util.StringUtils;
 public class OAuthService {
 
     @Autowired
-    private DefaultTenantMembershipOutboxService defaultTenantMembershipOutboxService;
+    private UserAccountGateway userAccountGateway;
 
     @Autowired
     private OAuthProviderRegistry providerRegistry;
@@ -236,10 +237,25 @@ public class OAuthService {
             }
 
             if (!Integer.valueOf(0).equals(principal.getRole())) {
-                defaultTenantMembershipOutboxService.dispatchForUser(principal.getUserId());
+                try {
+                    userAccountGateway.dispatchDefaultMembership(
+                            principal.getUserId());
+                } catch (RuntimeException exception) {
+                    log.warn("OAuth默认租户成员事件等待后续投递：userId={}",
+                            principal.getUserId());
+                }
+            }
+            UserAccountSnapshotVO account = null;
+            if (!Integer.valueOf(0).equals(principal.getRole())) {
+                try {
+                    account = userAccountGateway.findById(principal.getUserId());
+                } catch (RuntimeException exception) {
+                    throw userAccountGateway.mapFailure("账号读取", exception);
+                }
             }
             if (!Integer.valueOf(0).equals(principal.getRole())
-                    && !defaultTenantMembershipOutboxService.isMembershipReady(principal.getUserId())) {
+                    && (account == null
+                    || !Boolean.TRUE.equals(account.getMembershipReady()))) {
                 result.setAccountState("TENANT_MEMBERSHIP_PENDING");
                 result.setMessage("默认租户成员关系正在恢复");
             } else {

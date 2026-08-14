@@ -9,6 +9,7 @@ import com.plagod.mapper.ClientSignalMapper;
 import com.plagod.mapper.Esp32NodeMapper;
 import com.plagod.mapper.SessionRecordMapper;
 import com.plagod.service.ClientSignalEventService;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -78,13 +79,15 @@ public class ClientSignalEventServiceImpl implements ClientSignalEventService {
             long sessionId = item.getSessionId();
 
             // 已分配 sessionId 的 RSSI 必须属于当前节点上的开放 Session。
-            if (sessionId > 0 && !isOpenSessionRelationshipValid(sessionId, node.getNodeId(), mac)) {
+            if (sessionId > 0 && !isOpenSessionRelationshipValid(
+                    node.getTenantId(), sessionId, node.getNodeId(), mac)) {
                 log.warn("忽略会话关系不匹配的 RSSI，device={},mac={},sessionId={}", deviceCode, mac, sessionId);
                 ignoredCount++;
                 continue;
             }
 
             ClientSignalRecord record = new ClientSignalRecord();
+            record.setTenantId(node.getTenantId());
             record.setNodeId(node.getNodeId());
             record.setDeviceCode(deviceCode);
             record.setMac(mac);
@@ -97,7 +100,8 @@ public class ClientSignalEventServiceImpl implements ClientSignalEventService {
             savedCount++;
 
             // sessionId=0 是认证前观测，只保存 RSSI，不关联任何 Session。
-            if (sessionId > 0 && updateSessionLastSeenTime(sessionId, node.getNodeId(), mac, reportTime)) {
+            if (sessionId > 0 && updateSessionLastSeenTime(
+                    node.getTenantId(), sessionId, node.getNodeId(), mac, reportTime)) {
                 lastSeenUpdatedCount++;
             }
         }
@@ -145,8 +149,12 @@ public class ClientSignalEventServiceImpl implements ClientSignalEventService {
     }
 
     // 校验 RSSI 携带的 Session 是否仍然开放，并属于当前节点和 MAC。
-    private boolean isOpenSessionRelationshipValid(Long sessionId, Long nodeId, String mac) {
-        SessionRecord session = sessionRecordMapper.selectById(sessionId);
+    private boolean isOpenSessionRelationshipValid(Long tenantId, Long sessionId, Long nodeId, String mac) {
+        SessionRecord session = sessionRecordMapper.selectOne(
+                new QueryWrapper<SessionRecord>()
+                        .eq("tenant_id", tenantId)
+                        .eq("session_id", sessionId)
+                        .last("limit 1"));
 
         if (session == null || !SessionStatus.isOpen(session.getStatus())) {
             return false;
@@ -160,9 +168,10 @@ public class ClientSignalEventServiceImpl implements ClientSignalEventService {
     }
 
     // 只更新在线观测时间，避免覆盖 Session 的续租、计费等并发字段。
-    private boolean updateSessionLastSeenTime(Long sessionId, Long nodeId, String mac, LocalDateTime reportTime) {
+    private boolean updateSessionLastSeenTime(Long tenantId, Long sessionId, Long nodeId, String mac, LocalDateTime reportTime) {
         UpdateWrapper<SessionRecord> update = new UpdateWrapper<>();
-        update.eq("session_id", sessionId)
+        update.eq("tenant_id", tenantId)
+                .eq("session_id", sessionId)
                 .eq("node_id", nodeId)
                 .eq("mac", mac)
                 .in("status", SessionStatus.ACTIVE, SessionStatus.PENDING)

@@ -3,34 +3,32 @@ package com.plagod.service.impl;
 import com.plagod.dto.AccountSwitchCodeRequest;
 import com.plagod.dto.AccountSwitchRequest;
 import com.plagod.dto.auth.AuthResultDTO;
-import com.plagod.entity.user.User;
 import com.plagod.exception.ApiStatusException;
-import com.plagod.mapper.UserMapper;
 import com.plagod.service.AccountSwitchService;
-import com.plagod.service.DefaultTenantMembershipOutboxService;
+import com.plagod.service.UserAccountGateway;
 import com.plagod.service.VerificationCodeService;
 import com.plagod.vo.AccountSwitchCodeVO;
+import com.plagod.vo.user.UserAccountSnapshotVO;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 @Service
 public class AccountSwitchServiceImpl implements AccountSwitchService {
 
-    private final UserMapper userMapper;
+    private final UserAccountGateway userAccountGateway;
     private final VerificationCodeService verificationCodeService;
-    private final DefaultTenantMembershipOutboxService membershipOutboxService;
 
-    public AccountSwitchServiceImpl(UserMapper userMapper,
-                                    VerificationCodeService verificationCodeService,
-                                    DefaultTenantMembershipOutboxService membershipOutboxService) {
-        this.userMapper = userMapper;
+    public AccountSwitchServiceImpl(
+                                    UserAccountGateway userAccountGateway,
+                                    VerificationCodeService verificationCodeService) {
+        this.userAccountGateway = userAccountGateway;
         this.verificationCodeService = verificationCodeService;
-        this.membershipOutboxService = membershipOutboxService;
     }
 
     @Override
     public AccountSwitchCodeVO sendCode(AccountSwitchCodeRequest request, String clientIp) {
-        User user = requireTargetUser(request.getExpectedUserId());
+        UserAccountSnapshotVO user =
+                requireTargetUser(request.getExpectedUserId());
         String target = target(user, request.getChannel());
         verificationCodeService.sendCode(target, "login", clientIp);
         return new AccountSwitchCodeVO(request.getChannel(), mask(target, request.getChannel()));
@@ -38,11 +36,12 @@ public class AccountSwitchServiceImpl implements AccountSwitchService {
 
     @Override
     public AuthResultDTO verify(AccountSwitchRequest request, String clientIp) {
-        User user = requireTargetUser(request.getExpectedUserId());
+        UserAccountSnapshotVO user =
+                requireTargetUser(request.getExpectedUserId());
         String target = target(user, request.getChannel());
         verificationCodeService.consumeCode(target, "login", request.getCode(), clientIp);
         if (!Integer.valueOf(0).equals(user.getRole())
-                && !membershipOutboxService.isMembershipReady(user.getUserId())) {
+                && !Boolean.TRUE.equals(user.getMembershipReady())) {
             throw ApiStatusException.conflict("目标账号的默认租户成员关系正在恢复");
         }
         AuthResultDTO identity = new AuthResultDTO();
@@ -55,21 +54,26 @@ public class AccountSwitchServiceImpl implements AccountSwitchService {
         return identity;
     }
 
-    private User requireTargetUser(String userIdValue) {
+    private UserAccountSnapshotVO requireTargetUser(String userIdValue) {
         Long userId;
         try {
             userId = Long.valueOf(userIdValue);
         } catch (RuntimeException exception) {
             throw new IllegalArgumentException("目标账号ID无效");
         }
-        User user = userMapper.selectById(userId);
+        UserAccountSnapshotVO user;
+        try {
+            user = userAccountGateway.findById(userId);
+        } catch (RuntimeException exception) {
+            throw userAccountGateway.mapFailure("账号读取", exception);
+        }
         if (user == null || !Integer.valueOf(1).equals(user.getStatus())) {
             throw ApiStatusException.forbidden("目标历史账号当前不可用");
         }
         return user;
     }
 
-    private String target(User user, String channel) {
+    private String target(UserAccountSnapshotVO user, String channel) {
         String target = "phone".equals(channel) ? user.getPhone() : user.getEmail();
         if (!StringUtils.hasText(target)) {
             throw ApiStatusException.conflict("目标历史账号没有可用的" + ("phone".equals(channel) ? "手机号" : "邮箱"));

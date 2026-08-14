@@ -54,7 +54,10 @@ public class AccessRuleServiceImpl implements AccessRuleService {
     private AccessRuleCache accessRuleCache;
 
     @Override
-    @Audited(action = "rule.create")
+    @Audited(
+            action = "rule.create",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     public AccessRuleVO create(AccessRuleCreateDTO createDTO) {
         createDTO.setRuleCode(cleanRequiredText(createDTO.getRuleCode(),"规则编码不能为空"));
         createDTO.setPattern(cleanRequiredText(createDTO.getPattern(),"匹配值不能为空"));
@@ -87,7 +90,10 @@ public class AccessRuleServiceImpl implements AccessRuleService {
     }
 
     @Override
-    @Audited(action = "rule.update")
+    @Audited(
+            action = "rule.update",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     public AccessRuleVO update(Long id, AccessRuleUpdateDTO updateDTO) {
         AccessRule entity = accessRuleMapper.selectById(id);
         if (entity == null) {
@@ -127,7 +133,10 @@ public class AccessRuleServiceImpl implements AccessRuleService {
     }
 
     @Override
-    @Audited(action = "rule.delete")
+    @Audited(
+            action = "rule.delete",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     public void delete(Long id) {
         int affected = accessRuleMapper.deleteById(id);
         if (affected == 0) {
@@ -137,7 +146,10 @@ public class AccessRuleServiceImpl implements AccessRuleService {
     }
 
     @Override
-    @Audited(action = "rule.toggle")
+    @Audited(
+            action = "rule.toggle",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     public void toggleEnabled(Long id, Integer enabled) {
         if (enabled == null || (enabled != 0 && enabled != 1)) {
             throw new IllegalArgumentException("enabled 只能是 0 或 1");

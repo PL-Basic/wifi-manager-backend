@@ -47,7 +47,8 @@ public class DeviceWifiConfigLifecycleServiceImpl implements DeviceWifiConfigLif
             throw new IllegalStateException("WiFi 配置命令缺少终态或 requestId");
         }
 
-        DeviceWifiConfigRecord task = wifiConfigRecordMapper.selectByRequestIdForUpdate(command.getRequestId());
+        DeviceWifiConfigRecord task = wifiConfigRecordMapper.selectByRequestIdForUpdate(
+                command.getTenantId(), command.getRequestId());
 
         if (task == null) {
             throw new IllegalStateException("WiFi 配置命令缺少对应任务");
@@ -116,7 +117,8 @@ public class DeviceWifiConfigLifecycleServiceImpl implements DeviceWifiConfigLif
 
         UpdateWrapper<DeviceWifiConfigRecord> update = new UpdateWrapper<>();
 
-        update.eq("wifi_config_id", task.getWifiConfigId())
+        update.eq("tenant_id", task.getTenantId())
+                .eq("wifi_config_id", task.getWifiConfigId())
                 .in("status", DeviceWifiConfigStatus.DISPATCHING, DeviceWifiConfigStatus.UNKNOWN)
                 .set("status", DeviceWifiConfigStatus.STAGED)
                 .set("staged_time", task.getStagedTime() == null ? now : task.getStagedTime())
@@ -147,7 +149,8 @@ public class DeviceWifiConfigLifecycleServiceImpl implements DeviceWifiConfigLif
 
             UpdateWrapper<DeviceWifiConfigRecord> update = new UpdateWrapper<>();
 
-            update.eq("wifi_config_id", task.getWifiConfigId())
+            update.eq("tenant_id", task.getTenantId())
+                    .eq("wifi_config_id", task.getWifiConfigId())
                     .in("status", DeviceWifiConfigStatus.DISPATCHING, DeviceWifiConfigStatus.STAGED, DeviceWifiConfigStatus.UNKNOWN)
                     .set("status", DeviceWifiConfigStatus.ACTIVE)
                     .set("staged_time", task.getStagedTime() == null ? now : task.getStagedTime())
@@ -162,7 +165,8 @@ public class DeviceWifiConfigLifecycleServiceImpl implements DeviceWifiConfigLif
 
         // 新配置真正激活后，旧的当前配置才失去 ACTIVE 身份。
         UpdateWrapper<DeviceWifiConfigRecord> older = new UpdateWrapper<>();
-        older.eq("node_id", node.getNodeId())
+        older.eq("tenant_id", node.getTenantId())
+                .eq("node_id", node.getNodeId())
                 .lt("config_version", reference.configVersion)
                 .in("status", DeviceWifiConfigStatus.ACTIVE, DeviceWifiConfigStatus.STAGED, DeviceWifiConfigStatus.UNKNOWN)
                 .set("status", DeviceWifiConfigStatus.SUPERSEDED)
@@ -184,7 +188,8 @@ public class DeviceWifiConfigLifecycleServiceImpl implements DeviceWifiConfigLif
 
         UpdateWrapper<DeviceWifiConfigRecord> update = new UpdateWrapper<>();
 
-        update.eq("wifi_config_id", task.getWifiConfigId())
+        update.eq("tenant_id", task.getTenantId())
+                .eq("wifi_config_id", task.getWifiConfigId())
                 .eq("status", DeviceWifiConfigStatus.DISPATCHING)
                 .set("status", targetStatus)
                 .set(targetStatus == DeviceWifiConfigStatus.STAGED, "staged_time", now)
@@ -198,7 +203,8 @@ public class DeviceWifiConfigLifecycleServiceImpl implements DeviceWifiConfigLif
 
     private DeviceWifiConfigRecord loadAndValidate(Esp32Node node, ConfigReference reference) {
 
-        DeviceWifiConfigRecord task = wifiConfigRecordMapper.selectByRequestIdForUpdate(reference.requestId);
+        DeviceWifiConfigRecord task = wifiConfigRecordMapper.selectByRequestIdForUpdate(
+                node.getTenantId(), reference.requestId);
 
         if (task == null) {
             log.warn("忽略未知 WiFi 配置心跳，deviceCode={}, requestId={}, version={}", node.getDeviceCode(), reference.requestId, reference.configVersion);
@@ -217,7 +223,11 @@ public class DeviceWifiConfigLifecycleServiceImpl implements DeviceWifiConfigLif
 
     private void validateCommandTask(DeviceCommandRecord command, DeviceWifiConfigRecord task) {
 
-        if (!command.getRequestId().equals(task.getRequestId()) || command.getNodeId() == null || !command.getNodeId().equals(task.getNodeId()) || !command.getDeviceCode().equals(task.getDeviceCode())) {
+        if (!command.getRequestId().equals(task.getRequestId())
+                || !command.getTenantId().equals(task.getTenantId())
+                || command.getNodeId() == null
+                || !command.getNodeId().equals(task.getNodeId())
+                || !command.getDeviceCode().equals(task.getDeviceCode())) {
             throw new IllegalStateException(
                     "WiFi 配置命令与任务关联不一致");
         }

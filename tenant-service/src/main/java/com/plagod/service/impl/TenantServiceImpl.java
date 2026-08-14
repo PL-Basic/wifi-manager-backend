@@ -168,7 +168,10 @@ public class TenantServiceImpl implements TenantService {
 
     @Override
     @Transactional
-    @Audited(action = "tenant.create")
+    @Audited(
+            action = "tenant.create",
+            scope = Audited.Scope.PLATFORM,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     public TenantVO createTenant(TenantCreateRequest request, Long operatorId, Integer operatorRole) {
         requireSuperAdmin(operatorRole);
         String code = request.getTenantCode().trim();
@@ -206,7 +209,10 @@ public class TenantServiceImpl implements TenantService {
 
     @Override
     @Transactional
-    @Audited(action = "tenant.update")
+    @Audited(
+            action = "tenant.update",
+            scope = Audited.Scope.PLATFORM,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     public TenantVO updateTenant(String tenantId, TenantUpdateRequest request, Integer operatorRole) {
         requireSuperAdmin(operatorRole);
         Tenant tenant = requiredTenant(parseId(tenantId, "租户ID"));
@@ -226,7 +232,10 @@ public class TenantServiceImpl implements TenantService {
 
     @Override
     @Transactional
-    @Audited(action = "tenant.status")
+    @Audited(
+            action = "tenant.status",
+            scope = Audited.Scope.PLATFORM,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     public TenantVO updateStatus(String tenantId, TenantStatusRequest request, Integer operatorRole) {
         requireSuperAdmin(operatorRole);
         Tenant tenant = requiredTenant(parseId(tenantId, "租户ID"));

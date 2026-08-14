@@ -41,8 +41,15 @@ public class AuthController {
 
     @PostMapping("/register")
     public ApiResponse<RegisterResult> register(@Valid @RequestBody RegisterDTO registerDTO,
+                                                @RequestHeader(
+                                                        value = "X-Request-Id",
+                                                        required = false)
+                                                String requestId,
                                                 HttpServletRequest request) {
-        RegisterResult registerResult = userService.register(registerDTO,RequestIpUtils.getClientIP(request));
+        RegisterResult registerResult = userService.register(
+                registerDTO,
+                requestId,
+                RequestIpUtils.getClientIP(request));
         if (registerResult.getStatus() == RegisterStatusEnum.SUCCESS) {
             return ApiResponse.success(registerResult.getMessage(), registerResult);
         }else{

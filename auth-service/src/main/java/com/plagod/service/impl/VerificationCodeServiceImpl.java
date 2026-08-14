@@ -183,20 +183,73 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
     }
 
     @Override
+    public boolean checkCodeForRequest(
+            String target,
+            String scene,
+            String code,
+            String consumeRequestKey) {
+        if (wasConsumedByRequest(target, scene, consumeRequestKey)) {
+            return true;
+        }
+        checkCode(target, scene, code);
+        return false;
+    }
+
+    @Override
     @Transactional
     public void consumeCode(String target, String scene, String code, String verifyIp) {
+        consumeCodeForRequest(target, scene, code, verifyIp, null);
+    }
 
+    @Override
+    @Transactional
+    public void consumeCodeForRequest(
+            String target,
+            String scene,
+            String code,
+            String verifyIp,
+            String consumeRequestKey) {
+        if (StringUtils.hasText(consumeRequestKey)
+                && wasConsumedByRequest(target, scene, consumeRequestKey)) {
+            return;
+        }
         VerificationCodeStateService.Decision decision = verifyAndRemember(target, scene, code);
 
         requireVerified(decision);
 
         LocalDateTime now = LocalDateTime.now();
 
-        int affected = verifyCodeMapper.consumeVerifiedCode(decision.getRecordId(), now, verifyIp);
+        int affected = verifyCodeMapper.consumeVerifiedCode(
+                decision.getRecordId(),
+                now,
+                verifyIp,
+                StringUtils.hasText(consumeRequestKey)
+                        ? consumeRequestKey.trim()
+                        : null);
 
-        if (affected != 1) {
+        if (affected != 1
+                && !(StringUtils.hasText(consumeRequestKey)
+                && wasConsumedByRequest(target, scene, consumeRequestKey))) {
             throw new IllegalArgumentException("验证码已被使用或已经过期");
         }
+    }
+
+    private boolean wasConsumedByRequest(
+            String target,
+            String scene,
+            String consumeRequestKey) {
+        if (!StringUtils.hasText(consumeRequestKey)) {
+            return false;
+        }
+        String cleanTarget = cleanTarget(target);
+        resolveTargetType(cleanTarget);
+        String cleanScene = cleanScene(scene);
+        return verifyCodeMapper.selectOne(
+                new QueryWrapper<VerifyCode>()
+                        .eq("target", cleanTarget)
+                        .eq("scene", cleanScene)
+                        .eq("consume_request_key", consumeRequestKey.trim())
+                        .eq("status", 1)) != null;
     }
 
     private VerificationCodeStateService.Decision verifyAndRemember(String target, String scene, String code) {

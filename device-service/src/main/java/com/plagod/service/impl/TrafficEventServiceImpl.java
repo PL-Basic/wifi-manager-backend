@@ -1,5 +1,6 @@
 package com.plagod.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.plagod.constant.SessionStatus;
 import com.plagod.dto.DeviceTrafficEvent;
 import com.plagod.entity.device.Esp32Node;
@@ -56,7 +57,11 @@ public class TrafficEventServiceImpl implements TrafficEventService {
             throw new IllegalArgumentException("流量事件 deviceCode 与节点登记编码不完全一致");
         }
 
-        SessionRecord session = sessionRecordMapper.selectById(event.getSessionId());
+        SessionRecord session = sessionRecordMapper.selectOne(
+                new QueryWrapper<SessionRecord>()
+                        .eq("tenant_id", node.getTenantId())
+                        .eq("session_id", event.getSessionId())
+                        .last("limit 1"));
 
         validateSessionRelation(event, node, session);
 
@@ -69,7 +74,14 @@ public class TrafficEventServiceImpl implements TrafficEventService {
             return;
         }
 
-        int updated = sessionRecordMapper.incrementTrafficIfActive(session.getSessionId(), node.getNodeId(), event.getMac(), SessionStatus.ACTIVE, event.getBytesUp(), event.getBytesDown());
+        int updated = sessionRecordMapper.incrementTrafficIfActive(
+                node.getTenantId(),
+                session.getSessionId(),
+                node.getNodeId(),
+                event.getMac(),
+                SessionStatus.ACTIVE,
+                event.getBytesUp(),
+                event.getBytesDown());
 
         // Session 在前置校验后被关闭或关系改变时，流量插入也必须回滚。
         if (updated != 1) {
@@ -130,6 +142,10 @@ public class TrafficEventServiceImpl implements TrafficEventService {
             throw new IllegalArgumentException("流量事件节点与 Session 节点不一致");
         }
 
+        if (!Objects.equals(node.getTenantId(), session.getTenantId())) {
+            throw new IllegalArgumentException("流量事件与 Session 租户不一致");
+        }
+
         String sessionMac = normalizeMac(session.getMac());
 
         if (!event.getMac().equals(sessionMac)) {
@@ -141,6 +157,7 @@ public class TrafficEventServiceImpl implements TrafficEventService {
                                        Esp32Node node) {
         TrafficLog trafficLog = new TrafficLog();
 
+        trafficLog.setTenantId(node.getTenantId());
         trafficLog.setEventId(event.getEventId());
         trafficLog.setNodeId(node.getNodeId());
         trafficLog.setDeviceCode(node.getDeviceCode());
@@ -158,7 +175,8 @@ public class TrafficEventServiceImpl implements TrafficEventService {
     }
 
     private void handleDuplicateEvent(TrafficLog candidate) {
-        TrafficLog existing = trafficLogMapper.selectByEventIdentityForUpdate(candidate.getDeviceCode(), candidate.getEventId());
+        TrafficLog existing = trafficLogMapper.selectByEventIdentityForUpdate(
+                candidate.getTenantId(), candidate.getDeviceCode(), candidate.getEventId());
 
         if (existing == null) {
             throw new IllegalStateException("流量事件唯一键冲突，但未找到已有记录");

@@ -1,9 +1,11 @@
 package com.plagod.service;
 
 import com.plagod.entity.device.Esp32Node;
+import com.plagod.exception.ApiStatusException;
 import com.plagod.mapper.ClientSignalMapper;
 import com.plagod.mapper.Esp32NodeMapper;
 import com.plagod.vo.device.SignalAnalyticsSourceVO;
+import com.plagod.utils.TenantScopeUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -29,14 +31,15 @@ public class DeviceSignalAnalyticsQueryService {
     @Autowired
     private ClientSignalMapper signalMapper;
 
-    public SignalAnalyticsSourceVO query(Long nodeId, String mac, LocalDateTime startTime, LocalDateTime endTime, Integer sampleLimit, Integer bucketMinutes) {
+    public SignalAnalyticsSourceVO query(Long tenantId, Long nodeId, String mac, LocalDateTime startTime, LocalDateTime endTime, Integer sampleLimit, Integer bucketMinutes) {
+        TenantScopeUtils.requireTenantId(tenantId);
 
         validate(nodeId, startTime, endTime, sampleLimit, bucketMinutes);
 
         String normalizedMac = normalizeMac(mac);
-        Esp32Node node = requireNode(nodeId);
+        Esp32Node node = requireNode(tenantId, nodeId);
 
-        List<SignalAnalyticsSourceVO.SignalSample> samples = signalMapper.selectLatestSamples(nodeId, normalizedMac, startTime, endTime, sampleLimit);
+        List<SignalAnalyticsSourceVO.SignalSample> samples = signalMapper.selectLatestSamples(tenantId, nodeId, normalizedMac, startTime, endTime, sampleLimit);
 
         // SQL 先取最新 N 条，再恢复为时间正序。
         Collections.reverse(samples);
@@ -44,24 +47,25 @@ public class DeviceSignalAnalyticsQueryService {
         SignalAnalyticsSourceVO result = createBaseResult(node, normalizedMac, null, startTime, endTime, sampleLimit);
 
         result.setLatestSamples(samples);
-        result.setTrend(signalMapper.selectTrendBuckets(nodeId, normalizedMac, startTime, endTime, Math.multiplyExact(bucketMinutes, 60)));
+        result.setTrend(signalMapper.selectTrendBuckets(tenantId, nodeId, normalizedMac, startTime, endTime, Math.multiplyExact(bucketMinutes, 60)));
 
         return result;
     }
 
-    public SignalAnalyticsSourceVO queryCoverage(Long nodeId, String mac, Long sessionId, LocalDateTime startTime, LocalDateTime endTime, Integer sampleLimit) {
+    public SignalAnalyticsSourceVO queryCoverage(Long tenantId, Long nodeId, String mac, Long sessionId, LocalDateTime startTime, LocalDateTime endTime, Integer sampleLimit) {
+        TenantScopeUtils.requireTenantId(tenantId);
 
         validateCoverage(nodeId, sessionId, startTime, endTime, sampleLimit);
 
         String normalizedMac = normalizeMac(mac);
-        Esp32Node node = requireNode(nodeId);
+        Esp32Node node = requireNode(tenantId, nodeId);
 
         if (node.getLatitude() == null || node.getLongitude() == null) {
             throw new IllegalArgumentException("节点尚未配置安装坐标");
         }
 
         // 多取一条，用于判断数据是否超过上限，避免静默截断。
-        List<SignalAnalyticsSourceVO.SignalSample> samples = signalMapper.selectCoverageSamples(nodeId, normalizedMac, sessionId, startTime, endTime, sampleLimit + 1);
+        List<SignalAnalyticsSourceVO.SignalSample> samples = signalMapper.selectCoverageSamples(tenantId, nodeId, normalizedMac, sessionId, startTime, endTime, sampleLimit + 1);
         if (samples.size() > sampleLimit) {
             throw new IllegalArgumentException("覆盖分析的RSSI样本超过上限，请缩小时间范围");
         }
@@ -92,11 +96,11 @@ public class DeviceSignalAnalyticsQueryService {
         return result;
     }
 
-    private Esp32Node requireNode(Long nodeId) {
-        Esp32Node node = nodeMapper.selectById(nodeId);
+    private Esp32Node requireNode(Long tenantId, Long nodeId) {
+        Esp32Node node = nodeMapper.selectByNodeIdAndTenantIncludeDeleted(tenantId, nodeId);
 
         if (node == null) {
-            throw new IllegalArgumentException("节点不存在");
+            throw ApiStatusException.notFound("节点不存在");
         }
         return node;
     }

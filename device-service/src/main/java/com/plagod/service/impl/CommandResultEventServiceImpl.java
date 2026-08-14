@@ -4,7 +4,9 @@ import com.plagod.constant.DeviceCommandStatus;
 import com.plagod.constant.DeviceCommandType;
 import com.plagod.dto.CommandResultEvent;
 import com.plagod.entity.device.DeviceCommandRecord;
+import com.plagod.entity.device.Esp32Node;
 import com.plagod.mapper.DeviceCommandRecordMapper;
+import com.plagod.mapper.Esp32NodeMapper;
 import com.plagod.service.CommandResultEventService;
 import com.plagod.service.DeviceWifiConfigLifecycleService;
 import com.plagod.service.SessionCommandLifecycleService;
@@ -39,6 +41,8 @@ public class CommandResultEventServiceImpl implements CommandResultEventService 
 
     @Autowired
     private DeviceCommandRecordMapper commandRecordMapper;
+    @Autowired
+    private Esp32NodeMapper nodeMapper;
 
     @Autowired
     private SessionCommandLifecycleService sessionCommandLifecycleService;
@@ -69,7 +73,13 @@ public class CommandResultEventServiceImpl implements CommandResultEventService 
         }
 
 
-        DeviceCommandRecord command = commandRecordMapper.selectByRequestIdForUpdate(requestId);
+        Esp32Node node = nodeMapper.selectByDeviceCodeIncludeDeleted(deviceCode);
+        if (node == null || !deviceCode.equals(node.getDeviceCode())) {
+            throw new IllegalArgumentException("command-result 目标设备不存在");
+        }
+
+        DeviceCommandRecord command = commandRecordMapper.selectByRequestIdForUpdate(
+                node.getTenantId(), requestId);
 
         // 未知 requestId 不能反向创建命令，否则会接受伪造结果。
         if (command == null) {
@@ -94,7 +104,8 @@ public class CommandResultEventServiceImpl implements CommandResultEventService 
             } else {
                 log.warn("忽略与现有终态冲突的命令结果，requestId={}, oldStatus={}, newStatus={}", requestId, command.getStatus(), targetStatus);
             }
-            commandRecordMapper.clearEncryptedPayload(command.getCommandId(), LocalDateTime.now());
+            commandRecordMapper.clearEncryptedPayload(
+                    command.getTenantId(), command.getCommandId(), LocalDateTime.now());
             wifiConfigLifecycleService.handleTerminalCommand(command);
             return;
         }
@@ -114,7 +125,8 @@ public class CommandResultEventServiceImpl implements CommandResultEventService 
         if (commandRecordMapper.updateById(command) != 1) {
             throw new IllegalStateException("命令结果保存失败");
         }
-        commandRecordMapper.clearEncryptedPayload(command.getCommandId(), now);
+        commandRecordMapper.clearEncryptedPayload(
+                command.getTenantId(), command.getCommandId(), now);
         wifiConfigLifecycleService.handleTerminalCommand(command);
         // 命令状态和 Session 状态必须在同一事务中提交。
         sessionCommandLifecycleService.handleTerminalCommand(command);

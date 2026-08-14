@@ -17,7 +17,10 @@ mybatis-plus:
       logic-delete-field: delFlag
       logic-delete-value: 1
       logic-not-delete-value: 0
-  mapper-locations: classpath:com/plagod/mapper/**/*.xml
+  mapper-locations:
+    - classpath:com/plagod/mapper/xml/ClientSignalMapper.xml
+    - classpath:com/plagod/mapper/xml/Esp32NodeMapper.xml
+    - classpath:com/plagod/mapper/xml/TrafficLogMapper.xml
 
 mqtt:
   broker-url: ${MQTT_BROKER_URL:tcp://localhost:1883}

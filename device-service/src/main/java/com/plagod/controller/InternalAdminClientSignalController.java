@@ -17,7 +17,8 @@ public class InternalAdminClientSignalController {
     private ClientSignalQueryService clientSignalQueryService;
 
     @GetMapping
-    public ApiResponse<ClientSignalPageResult> pageClientSignals(@RequestParam(defaultValue = "1") Long current,
+    public ApiResponse<ClientSignalPageResult> pageClientSignals(@RequestHeader("X-Tenant-Id") Long tenantId,
+                                                                 @RequestParam(defaultValue = "1") Long current,
                                                                  @RequestParam(defaultValue = "10") Long size,
                                                                  @RequestParam(required = false) String deviceCode,
                                                                  @RequestParam(required = false) Long nodeId,
@@ -26,6 +27,6 @@ public class InternalAdminClientSignalController {
                                                                  @RequestParam(required = false) String state, @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTime,
                                                                  @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime) {
 
-        return ApiResponse.success(clientSignalQueryService.pageClientSignals(current, size, deviceCode, nodeId, mac, sessionId, state, startTime, endTime));
+        return ApiResponse.success(clientSignalQueryService.pageClientSignals(tenantId, current, size, deviceCode, nodeId, mac, sessionId, state, startTime, endTime));
     }
 }

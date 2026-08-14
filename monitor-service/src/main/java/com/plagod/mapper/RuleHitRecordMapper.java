@@ -13,10 +13,21 @@ public interface RuleHitRecordMapper extends BaseMapper<RuleHitRecord> {
 
     int insertIgnore(RuleHitRecord record);
 
+    int insertIgnoreByTenant(RuleHitRecord record);
+
+    RuleHitRecord selectByIdAndTenant(@Param("tenantId") Long tenantId,
+                                      @Param("id") Long id);
 
     @Update("update t_rule_hit set alert_id = #{alertId} where device_code = #{deviceCode} and event_id = #{eventId} and suppressed = 0 and alert_id is null")
     int bindAlert(@Param("deviceCode") String deviceCode, @Param("eventId") String eventId, @Param("alertId") Long alertId);
 
+    @Update("update t_rule_hit set alert_id = #{alertId} "
+            + "where tenant_id = #{tenantId} and device_code = #{deviceCode} "
+            + "and event_id = #{eventId} and suppressed = 0 and alert_id is null")
+    int bindAlertByTenant(@Param("tenantId") Long tenantId,
+                          @Param("deviceCode") String deviceCode,
+                          @Param("eventId") String eventId,
+                          @Param("alertId") Long alertId);
 
     AlertRuleAnalyticsVO.RuleHitSummary selectAnalyticsSummary(@Param("criteria") AlertRuleAnalyticsQueryCriteria criteria);
 
@@ -25,4 +36,16 @@ public interface RuleHitRecordMapper extends BaseMapper<RuleHitRecord> {
 
 
     List<AlertRuleAnalyticsVO.CountBucket> selectActionDistribution(@Param("criteria") AlertRuleAnalyticsQueryCriteria criteria);
+
+    AlertRuleAnalyticsVO.RuleHitSummary selectAnalyticsSummaryByTenant(
+            @Param("tenantId") Long tenantId,
+            @Param("criteria") AlertRuleAnalyticsQueryCriteria criteria);
+
+    List<AlertRuleAnalyticsVO.RuleBucket> selectRuleRankingByTenant(
+            @Param("tenantId") Long tenantId,
+            @Param("criteria") AlertRuleAnalyticsQueryCriteria criteria);
+
+    List<AlertRuleAnalyticsVO.CountBucket> selectActionDistributionByTenant(
+            @Param("tenantId") Long tenantId,
+            @Param("criteria") AlertRuleAnalyticsQueryCriteria criteria);
 }

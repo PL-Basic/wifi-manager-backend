@@ -96,4 +96,9 @@ mybatis-plus:
       logic-delete-field: delFlag
       logic-delete-value: 1
       logic-not-delete-value: 0
-  mapper-locations: classpath:com/plagod/mapper/**/*.xml
+  mapper-locations:
+    - classpath:com/plagod/mapper/xml/EntitlementOrderMapper.xml
+    - classpath:com/plagod/mapper/xml/NetworkEntitlementMapper.xml
+    - classpath:com/plagod/mapper/xml/PaymentRecordMapper.xml
+    - classpath:com/plagod/mapper/xml/RefundRecordMapper.xml
+    - classpath:com/plagod/mapper/xml/TradeStatusLogMapper.xml

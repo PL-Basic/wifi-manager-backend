@@ -10,24 +10,26 @@ import com.plagod.dto.tenant.TenantContextResolveRequest;
 import com.plagod.entity.auth.AuthRefreshRiskEvent;
 import com.plagod.entity.auth.AuthRefreshSession;
 import com.plagod.entity.auth.AuthRefreshToken;
-import com.plagod.entity.user.User;
 import com.plagod.exception.ApiStatusException;
 import com.plagod.exception.RefreshSessionException;
 import com.plagod.mapper.AuthRefreshRiskEventMapper;
 import com.plagod.mapper.AuthRefreshSessionMapper;
 import com.plagod.mapper.AuthRefreshTokenMapper;
-import com.plagod.mapper.UserMapper;
 import com.plagod.service.AuthSessionService;
+import com.plagod.service.UserAccountGateway;
 import com.plagod.service.VerificationCodeService;
 import com.plagod.utils.JwtUtils;
 import com.plagod.vo.AuthSessionIssue;
 import com.plagod.vo.auth.SessionValidationVO;
 import com.plagod.vo.tenant.TenantContextVO;
+import com.plagod.vo.user.UserAccountSnapshotVO;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import feign.FeignException;
 
 import java.net.InetAddress;
@@ -47,11 +49,12 @@ public class AuthSessionServiceImpl implements AuthSessionService {
     private static final String ACTIVE = "ACTIVE";
     private static final String REVOKED_JTI_PREFIX = "auth:access-jti:revoked:";
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+    private static final Logger LOGGER = LoggerFactory.getLogger(AuthSessionServiceImpl.class);
 
     private final AuthRefreshSessionMapper sessionMapper;
     private final AuthRefreshTokenMapper tokenMapper;
     private final AuthRefreshRiskEventMapper riskEventMapper;
-    private final UserMapper userMapper;
+    private final UserAccountGateway userAccountGateway;
     private final TenantContextClient tenantContextClient;
     private final JwtUtils jwtUtils;
     private final ObjectMapper objectMapper;
@@ -63,7 +66,7 @@ public class AuthSessionServiceImpl implements AuthSessionService {
     public AuthSessionServiceImpl(AuthRefreshSessionMapper sessionMapper,
                                   AuthRefreshTokenMapper tokenMapper,
                                   AuthRefreshRiskEventMapper riskEventMapper,
-                                  UserMapper userMapper,
+                                  UserAccountGateway userAccountGateway,
                                   TenantContextClient tenantContextClient,
                                   JwtUtils jwtUtils,
                                   ObjectMapper objectMapper,
@@ -74,7 +77,7 @@ public class AuthSessionServiceImpl implements AuthSessionService {
         this.sessionMapper = sessionMapper;
         this.tokenMapper = tokenMapper;
         this.riskEventMapper = riskEventMapper;
-        this.userMapper = userMapper;
+        this.userAccountGateway = userAccountGateway;
         this.tenantContextClient = tenantContextClient;
         this.jwtUtils = jwtUtils;
         this.objectMapper = objectMapper;
@@ -91,7 +94,7 @@ public class AuthSessionServiceImpl implements AuthSessionService {
                                  String userAgent,
                                  String clientIp) {
         Long userId = parsePositiveId(identity == null ? null : identity.getUserId(), "用户ID");
-        User user = requireActiveUser(userId);
+        UserAccountSnapshotVO user = requireActiveUser(userId);
         TenantContextVO context = resolveContext(userId, user.getRole(), null, null);
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime absoluteExpiresAt = now.plus(properties.getRefreshAbsoluteTtl());
@@ -207,7 +210,8 @@ public class AuthSessionServiceImpl implements AuthSessionService {
             throw rejected(401, "REFRESH_SESSION_EXPIRED", "登录会话已超过7天绝对有效期，请重新验证身份");
         }
 
-        User user = requireActiveUserForRefresh(session.getUserId(), session.getSessionId(), now);
+        UserAccountSnapshotVO user = requireActiveUserForRefresh(
+                session.getUserId(), session.getSessionId(), now);
         String currentUserAgentHash = hashSignal(normalizeUserAgent(userAgent));
         String currentIpNetworkHash = hashSignal(ipNetwork(clientIp));
         String effectiveClientInstance = StringUtils.hasText(clientInstanceId)
@@ -385,7 +389,7 @@ public class AuthSessionServiceImpl implements AuthSessionService {
         if (!StringUtils.hasText(sessionId)) {
             throw ApiStatusException.forbidden("当前 Access JWT 不支持上下文切换，请重新登录");
         }
-        User user = requireActiveUser(userId);
+        UserAccountSnapshotVO user = requireActiveUser(userId);
         if (!user.getRole().equals(role)) {
             throw ApiStatusException.forbidden("用户角色已变化，请重新登录");
         }
@@ -507,7 +511,7 @@ public class AuthSessionServiceImpl implements AuthSessionService {
             result.setReason("REFRESH_SESSION_EXPIRED");
             return result;
         }
-        User user = userMapper.selectById(userId);
+        UserAccountSnapshotVO user = findUser(userId);
         if (user == null || !Integer.valueOf(1).equals(user.getStatus())) {
             revokeLockedFamily(sessionId, "ACCOUNT_UNAVAILABLE", now);
             result.setActive(false);
@@ -553,6 +557,12 @@ public class AuthSessionServiceImpl implements AuthSessionService {
         try {
             response = tenantContextClient.resolve(internalToken, request);
         } catch (FeignException exception) {
+            LOGGER.warn(
+                    "tenant context resolve failed: status={}, exception={}, contextType={}, tenantIdPresent={}",
+                    exception.status(),
+                    exception.getClass().getSimpleName(),
+                    contextType,
+                    tenantId != null);
             if (exception.status() == 400) {
                 throw new IllegalArgumentException("租户上下文请求无效");
             }
@@ -567,27 +577,42 @@ public class AuthSessionServiceImpl implements AuthSessionService {
             }
             throw ApiStatusException.serviceUnavailable("租户上下文服务暂时不可用");
         } catch (RuntimeException exception) {
+            LOGGER.warn(
+                    "tenant context resolve failed before HTTP response: exception={}, contextType={}, tenantIdPresent={}",
+                    exception.getClass().getSimpleName(),
+                    contextType,
+                    tenantId != null);
             throw ApiStatusException.serviceUnavailable("租户上下文服务暂时不可用");
         }
         if (response == null || response.getCode() != 200 || response.getData() == null) {
+            LOGGER.warn(
+                    "tenant context resolve returned invalid response: responsePresent={}, code={}, dataPresent={}, contextType={}, tenantIdPresent={}",
+                    response != null,
+                    response == null ? null : response.getCode(),
+                    response != null && response.getData() != null,
+                    contextType,
+                    tenantId != null);
             throw ApiStatusException.serviceUnavailable("租户上下文服务返回无效结果");
         }
         return response.getData();
     }
 
-    private User requireActiveUser(Long userId) {
+    private UserAccountSnapshotVO requireActiveUser(Long userId) {
         if (userId == null || userId <= 0) {
             throw new IllegalArgumentException("用户ID无效");
         }
-        User user = userMapper.selectById(userId);
+        UserAccountSnapshotVO user = findUser(userId);
         if (user == null || !Integer.valueOf(1).equals(user.getStatus())) {
             throw ApiStatusException.forbidden("用户当前不可用");
         }
         return user;
     }
 
-    private User requireActiveUserForRefresh(Long userId, String sessionId, LocalDateTime now) {
-        User user = userMapper.selectById(userId);
+    private UserAccountSnapshotVO requireActiveUserForRefresh(
+            Long userId,
+            String sessionId,
+            LocalDateTime now) {
+        UserAccountSnapshotVO user = findUser(userId);
         if (user == null || !Integer.valueOf(1).equals(user.getStatus())) {
             revokeLockedFamily(sessionId, "ACCOUNT_UNAVAILABLE", now);
             throw rejected(401, "ACCOUNT_UNAVAILABLE", "账号已停用或删除，请重新验证身份");
@@ -595,7 +620,7 @@ public class AuthSessionServiceImpl implements AuthSessionService {
         return user;
     }
 
-    private AuthResultDTO buildAuthResult(User user,
+    private AuthResultDTO buildAuthResult(UserAccountSnapshotVO user,
                                           String sessionId,
                                           TenantContextVO context,
                                           Long securityVersion) {
@@ -697,7 +722,7 @@ public class AuthSessionServiceImpl implements AuthSessionService {
         riskEventMapper.insert(event);
     }
 
-    private void verifyRefreshStepUp(User user,
+    private void verifyRefreshStepUp(UserAccountSnapshotVO user,
                                      String target,
                                      String code,
                                      String clientIp) {
@@ -733,6 +758,14 @@ public class AuthSessionServiceImpl implements AuthSessionService {
 
     private RefreshSessionException rejected(int status, String code, String message) {
         return new RefreshSessionException(status, code, message);
+    }
+
+    private UserAccountSnapshotVO findUser(Long userId) {
+        try {
+            return userAccountGateway.findById(userId);
+        } catch (RuntimeException exception) {
+            throw userAccountGateway.mapFailure("账号读取", exception);
+        }
     }
 
     private String randomToken() {

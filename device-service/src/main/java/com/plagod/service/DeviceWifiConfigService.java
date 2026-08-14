@@ -5,5 +5,5 @@ import com.plagod.vo.device.WifiConfigTaskVO;
 
 public interface DeviceWifiConfigService {
 
-    WifiConfigTaskVO stageCandidate(String deviceCode, WifiConfigStageDTO stageDTO);
+    WifiConfigTaskVO stageCandidate(Long tenantId, String deviceCode, WifiConfigStageDTO stageDTO);
 }

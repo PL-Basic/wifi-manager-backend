@@ -188,7 +188,8 @@ public class DeviceCommandDispatchServiceImpl implements DeviceCommandDispatchSe
 
         UpdateWrapper<DeviceCommandRecord> update = new UpdateWrapper<>();
 
-        update.eq("command_id", command.getCommandId())
+        update.eq("tenant_id", command.getTenantId())
+                .eq("command_id", command.getCommandId())
                 .set("status", command.getStatus())
                 .set("retry_count", command.getRetryCount())
                 .set("next_retry_time", command.getNextRetryTime())
@@ -229,7 +230,11 @@ public class DeviceCommandDispatchServiceImpl implements DeviceCommandDispatchSe
         if (!"REVOKE_ACCESS".equals(command.getCommandType()) || !DeviceCommandPurpose.isSessionRevokePurpose(command.getPurpose()) || command.getSessionId() == null || command.getSessionId() <= 0) {
             return false;
         }
-        long pendingAllowCount = commandRecordMapper.countEarlierPendingSessionAllowCommands(command.getSessionId(), command.getCommandId(), DeviceCommandStatus.PENDING);
+        long pendingAllowCount = commandRecordMapper.countEarlierPendingSessionAllowCommands(
+                command.getTenantId(),
+                command.getSessionId(),
+                command.getCommandId(),
+                DeviceCommandStatus.PENDING);
 
         return pendingAllowCount > 0;
     }
@@ -261,6 +266,7 @@ public class DeviceCommandDispatchServiceImpl implements DeviceCommandDispatchSe
             return;
         }
 
-        commandRecordMapper.clearEncryptedPayload(command.getCommandId(), now);
+        commandRecordMapper.clearEncryptedPayload(
+                command.getTenantId(), command.getCommandId(), now);
     }
 }

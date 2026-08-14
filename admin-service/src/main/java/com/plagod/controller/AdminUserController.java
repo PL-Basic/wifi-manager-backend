@@ -17,6 +17,7 @@ import com.plagod.vo.user.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -35,6 +36,14 @@ public class AdminUserController {
 
     @Autowired
     private UserServiceClient userServiceClient;
+
+    @ModelAttribute
+    public void requirePlatformSuperAdmin(
+            @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole) {
+        if (!Integer.valueOf(0).equals(operatorRole)) {
+            throw ApiStatusException.forbidden("全局用户管理仅对平台超级管理员开放");
+        }
+    }
 
     @GetMapping
     public ApiResponse<UserPageResult> pageUsers(@RequestParam(defaultValue = "1") Long current,

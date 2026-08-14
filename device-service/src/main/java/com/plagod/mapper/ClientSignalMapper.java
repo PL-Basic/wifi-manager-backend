@@ -14,29 +14,32 @@ import java.util.List;
 public interface ClientSignalMapper extends BaseMapper<ClientSignalRecord> {
 
     @Select("select id, rssi, report_time from t_client_signal " +
-            "where node_id = #{nodeId} and mac = #{mac} " +
+            "where tenant_id = #{tenantId} and node_id = #{nodeId} and mac = #{mac} " +
             "and report_time >= #{startTime} " +
             "and report_time <= #{endTime} " +
             "order by report_time desc, id desc limit #{sampleLimit}")
-    List<SignalAnalyticsSourceVO.SignalSample> selectLatestSamples(@Param("nodeId") Long nodeId,
+    List<SignalAnalyticsSourceVO.SignalSample> selectLatestSamples(@Param("tenantId") Long tenantId,
+                                                                   @Param("nodeId") Long nodeId,
                                                                    @Param("mac") String mac,
                                                                    @Param("startTime") LocalDateTime startTime,
                                                                    @Param("endTime") LocalDateTime endTime,
                                                                    @Param("sampleLimit") Integer sampleLimit);
 
 
-    List<SignalAnalyticsSourceVO.SignalTrendBucket> selectTrendBuckets(@Param("nodeId") Long nodeId,
+    List<SignalAnalyticsSourceVO.SignalTrendBucket> selectTrendBuckets(@Param("tenantId") Long tenantId,
+                                                                       @Param("nodeId") Long nodeId,
                                                                        @Param("mac") String mac,
                                                                        @Param("startTime") LocalDateTime startTime,
                                                                        @Param("endTime") LocalDateTime endTime,
                                                                        @Param("bucketSeconds") Integer bucketSeconds);
 
     @Select("select id, session_id, rssi, report_time from t_client_signal " +
-            "where node_id = #{nodeId} and mac = #{mac} " +
+            "where tenant_id = #{tenantId} and node_id = #{nodeId} and mac = #{mac} " +
             "and session_id = #{sessionId} " +
             "and report_time >= #{startTime} and report_time <= #{endTime} " +
             "order by report_time asc, id asc limit #{queryLimit}")
-    List<SignalAnalyticsSourceVO.SignalSample> selectCoverageSamples(@Param("nodeId") Long nodeId,
+    List<SignalAnalyticsSourceVO.SignalSample> selectCoverageSamples(@Param("tenantId") Long tenantId,
+                                                                     @Param("nodeId") Long nodeId,
                                                                      @Param("mac") String mac,
                                                                      @Param("sessionId") Long sessionId,
                                                                      @Param("startTime") LocalDateTime startTime,

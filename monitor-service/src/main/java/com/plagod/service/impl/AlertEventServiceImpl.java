@@ -72,7 +72,10 @@ public class AlertEventServiceImpl implements AlertEventService {
     }
 
     @Override
-    @Audited(action = "alert.handle")
+    @Audited(
+            action = "alert.handle",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     public void handle(Long id, Long handleUserId) {
         AlertEvent entity = alertEventMapper.selectById(id);
         if (entity == null) {

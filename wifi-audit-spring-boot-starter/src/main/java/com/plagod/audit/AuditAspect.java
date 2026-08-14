@@ -2,14 +2,14 @@ package com.plagod.audit;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.plagod.entity.monitor.AuditLog;
-import com.plagod.mapper.AuditLogMapper;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.BridgeMethodResolver;
+import org.springframework.aop.support.AopUtils;
 import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
@@ -22,11 +22,11 @@ public class AuditAspect {
 
     private static final Logger log = LoggerFactory.getLogger(AuditAspect.class);
 
-    private final AuditLogMapper auditLogMapper;
+    private final AuditWriter auditWriter;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public AuditAspect(AuditLogMapper auditLogMapper) {
-        this.auditLogMapper = auditLogMapper;
+    public AuditAspect(AuditWriter auditWriter) {
+        this.auditWriter = auditWriter;
     }
 
     @Around("@annotation(com.plagod.audit.Audited)")
@@ -42,24 +42,40 @@ public class AuditAspect {
     }
 
     private void persist(ProceedingJoinPoint joinPoint, Object result) {
-        MethodSignature signature = (MethodSignature) joinPoint.getSignature();
-        Method method = signature.getMethod();
+        Method method = auditedMethod(joinPoint);
         Audited annotation = method.getAnnotation(Audited.class);
         if (annotation == null) {
             return;
         }
 
-        AuditLog entry = new AuditLog();
-        entry.setAction(annotation.action());
-
         HttpServletRequest request = currentRequest();
-        entry.setOperatorName(resolveOperatorName(annotation, request));
-        entry.setOperatorId(resolveOperatorId(request));
-        entry.setIp(request == null ? null : request.getRemoteAddr());
-        entry.setTarget(resolveTarget(annotation, joinPoint.getArgs()));
-        entry.setDetail(serializeDetail(annotation, joinPoint.getArgs(), result));
+        AuditScope scope = AuditScopeResolver.resolve(
+                annotation,
+                method,
+                joinPoint.getArgs(),
+                request);
+        auditWriter.append(new AuditWriteRecord(
+                scope.getTenantId(),
+                scope.getScopeType(),
+                resolveOperatorId(request),
+                resolveOperatorName(annotation, request),
+                annotation.action(),
+                resolveTarget(annotation, joinPoint.getArgs()),
+                serializeDetail(annotation, joinPoint.getArgs(), result),
+                request == null ? null : request.getRemoteAddr()));
+    }
 
-        auditLogMapper.insert(entry);
+    private Method auditedMethod(ProceedingJoinPoint joinPoint) {
+        MethodSignature signature =
+                (MethodSignature) joinPoint.getSignature();
+        Method method = signature.getMethod();
+        Object target = joinPoint.getTarget();
+        if (target != null) {
+            method = AopUtils.getMostSpecificMethod(
+                    method,
+                    target.getClass());
+        }
+        return BridgeMethodResolver.findBridgedMethod(method);
     }
 
     private String resolveOperatorName(Audited annotation, HttpServletRequest request) {

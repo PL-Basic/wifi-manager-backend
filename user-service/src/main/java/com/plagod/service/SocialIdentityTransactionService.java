@@ -3,8 +3,6 @@ package com.plagod.service;
 import com.plagod.dto.user.SocialIdentityResolveDTO;
 import com.plagod.entity.user.SocialIdentity;
 import com.plagod.entity.user.User;
-import com.plagod.entity.auth.DefaultTenantMembershipOutbox;
-import com.plagod.mapper.DefaultTenantMembershipOutboxMapper;
 import com.plagod.mapper.SocialIdentityMapper;
 import com.plagod.mapper.UserMapper;
 import com.plagod.utils.PasswordUtils;
@@ -30,7 +28,8 @@ public class SocialIdentityTransactionService {
     private UserMapper userMapper;
 
     @Autowired
-    private DefaultTenantMembershipOutboxMapper defaultTenantMembershipOutboxMapper;
+    private DefaultTenantMembershipOutboxAppender
+            defaultTenantMembershipOutboxAppender;
 
     @Transactional
     public SocialIdentityResolveResultVO resolveLogin(SocialIdentityResolveDTO dto) {
@@ -52,7 +51,11 @@ public class SocialIdentityTransactionService {
 
         User user = createSocialUser(dto);
         userMapper.insert(user);
-        enqueueDefaultTenantMembership(user);
+        defaultTenantMembershipOutboxAppender.append(
+                user.getUserId(),
+                user.getRole(),
+                null,
+                null);
 
         SocialIdentity identity = createIdentity(user.getUserId(), dto, true);
         socialIdentityMapper.insert(identity);
@@ -202,17 +205,6 @@ public class SocialIdentityTransactionService {
         user.setStatus(1);
         user.setDelFlag(0);
         return user;
-    }
-
-    private void enqueueDefaultTenantMembership(User user) {
-        DefaultTenantMembershipOutbox outbox = new DefaultTenantMembershipOutbox();
-        outbox.setEventId(UUID.randomUUID().toString());
-        outbox.setUserId(user.getUserId());
-        outbox.setRole(user.getRole());
-        outbox.setStatus("PENDING");
-        outbox.setRetryCount(0);
-        outbox.setNextRetryTime(LocalDateTime.now());
-        defaultTenantMembershipOutboxMapper.insert(outbox);
     }
 
     private String resolveNickname(SocialIdentityResolveDTO dto) {

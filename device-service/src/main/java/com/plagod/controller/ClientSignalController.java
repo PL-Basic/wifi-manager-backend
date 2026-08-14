@@ -17,7 +17,8 @@ public class ClientSignalController {
     private ClientSignalQueryService clientSignalQueryService;
 
     @GetMapping
-    public ApiResponse<ClientSignalPageResult> pageOwnedClientSignals(@RequestParam(defaultValue = "1") Long current,
+    public ApiResponse<ClientSignalPageResult> pageOwnedClientSignals(@RequestHeader("X-Tenant-Id") Long tenantId,
+                                                                      @RequestParam(defaultValue = "1") Long current,
                                                                       @RequestParam(defaultValue = "10") Long size,
                                                                       @RequestParam(required = false) String deviceCode,
                                                                       @RequestParam(required = false) Long nodeId,
@@ -28,6 +29,6 @@ public class ClientSignalController {
                                                                       @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime,
                                                                       @RequestHeader("X-User-Id") Long userId) {
 
-        return ApiResponse.success(clientSignalQueryService.pageOwnedClientSignals(userId, current, size, deviceCode, nodeId, mac, sessionId, state, startTime, endTime));
+        return ApiResponse.success(clientSignalQueryService.pageOwnedClientSignals(tenantId, userId, current, size, deviceCode, nodeId, mac, sessionId, state, startTime, endTime));
     }
 }

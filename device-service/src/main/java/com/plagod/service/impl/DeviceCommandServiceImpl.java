@@ -11,6 +11,7 @@ import com.plagod.dto.AllowClientCommand;
 import com.plagod.dto.RevokeAccessCommand;
 import com.plagod.dto.device.*;
 import com.plagod.entity.device.DeviceCommandRecord;
+import com.plagod.exception.ApiStatusException;
 import com.plagod.service.DeviceCommandOutboxService;
 import com.plagod.service.ManagedDeviceCommandService;
 import com.plagod.vo.device.*;
@@ -21,6 +22,7 @@ import com.plagod.mapper.Esp32NodeMapper;
 import com.plagod.mapper.MacBlacklistMapper;
 import com.plagod.mapper.SessionRecordMapper;
 import com.plagod.service.DeviceCommandService;
+import com.plagod.utils.TenantScopeUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -62,26 +64,30 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
 
 
     @Override
-    @Audited(action = "device.restore")
-    public DeviceNodeVO restoreDevice(Long nodeId) {
+    @Audited(
+            action = "device.restore",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
+    public DeviceNodeVO restoreDevice(Long tenantId, Long nodeId) {
+        TenantScopeUtils.requireTenantId(tenantId);
         if (nodeId == null) {
             throw new IllegalArgumentException("设备号不能为空");
         }
-        Esp32Node esp32Node = esp32NodeMapper.selectByNodeIdIncludeDeleted(nodeId);
+        Esp32Node esp32Node = esp32NodeMapper.selectByNodeIdAndTenantIncludeDeleted(tenantId, nodeId);
         if (esp32Node == null) {
-            throw new IllegalArgumentException("该退役设备不存在");
+            throw ApiStatusException.notFound("设备不存在");
         }
         if (!Integer.valueOf(1).equals(esp32Node.getDelFlag())) {
             throw new IllegalArgumentException("设备恢复失败，该设备未退役");
         }
 
-        int rows = esp32NodeMapper.restoreRetiredById(nodeId);
+        int rows = esp32NodeMapper.restoreRetiredById(tenantId, nodeId);
 
         if (rows != 1) {
             throw new IllegalArgumentException("设备恢复失败，请刷新后再试");
         }
 
-        esp32Node = esp32NodeMapper.selectById(nodeId);
+        esp32Node = esp32NodeMapper.selectByNodeIdAndTenantIncludeDeleted(tenantId, nodeId);
         DeviceNodeVO deviceNodeVO = new DeviceNodeVO();
         BeanUtils.copyProperties(esp32Node, deviceNodeVO);
 
@@ -89,8 +95,12 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     }
 
     @Override
-    @Audited(action = "device.create")
-    public DeviceNodeVO createDevice(DeviceNodeCreateDTO createDTO) {
+    @Audited(
+            action = "device.create",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
+    public DeviceNodeVO createDevice(Long tenantId, DeviceNodeCreateDTO createDTO) {
+        TenantScopeUtils.requireTenantId(tenantId);
         //清洗数据
         String cleanDeviceCode = createDTO.getDeviceCode().trim();
         createDTO.setName(createDTO.getName().trim());
@@ -122,15 +132,12 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
 
         //判断设备是否存在
         if (esp32Node != null){
-            if (Integer.valueOf(0).equals(esp32Node.getDelFlag())) {
-                throw new IllegalArgumentException("设备已存在！");
-            }else {
-                throw new IllegalArgumentException("设备已退役，请恢复后使用");
-            }
+            throw ApiStatusException.conflict("deviceCode 已被占用");
         }
 
         //赋值
         esp32Node = new Esp32Node();
+        esp32Node.setTenantId(tenantId);
         esp32Node.setDeviceCode(cleanDeviceCode);
         esp32Node.setName(createDTO.getName());
         esp32Node.setIp(createDTO.getIp());
@@ -156,11 +163,15 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     }
 
     @Override
-    @Audited(action = "device.update")
-    public DeviceNodeVO updateDevice(Long nodeId, DeviceNodeUpdateDTO updateDTO) {
-        Esp32Node oldEsp32Node = esp32NodeMapper.selectById(nodeId);
+    @Audited(
+            action = "device.update",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
+    public DeviceNodeVO updateDevice(Long tenantId, Long nodeId, DeviceNodeUpdateDTO updateDTO) {
+        TenantScopeUtils.requireTenantId(tenantId);
+        Esp32Node oldEsp32Node = esp32NodeMapper.selectByNodeIdAndTenantIncludeDeleted(tenantId, nodeId);
         if (oldEsp32Node == null){
-            throw new IllegalArgumentException("设备不存在");
+            throw ApiStatusException.notFound("设备不存在");
         }
 
         if (updateDTO.getName() != null){
@@ -197,17 +208,22 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
 
 
     @Override
-    @Audited(action = "device.delete")
-    public void deleteDevice(Long nodeId) {
-        Esp32Node esp32Node = esp32NodeMapper.selectById(nodeId);
+    @Audited(
+            action = "device.delete",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
+    public void deleteDevice(Long tenantId, Long nodeId) {
+        TenantScopeUtils.requireTenantId(tenantId);
+        Esp32Node esp32Node = esp32NodeMapper.selectByNodeIdAndTenantIncludeDeleted(tenantId, nodeId);
         Long openSessionCount = sessionRecordMapper.selectCount(
                 new QueryWrapper<SessionRecord>()
+                        .eq("tenant_id", tenantId)
                         .eq("node_id", nodeId)
                         .in("status", SessionStatus.ACTIVE, SessionStatus.PENDING, SessionStatus.WAITING_REPLACEMENT)
         );
 
         if (esp32Node == null) {
-            throw new IllegalArgumentException("该设备节点不存在");
+            throw ApiStatusException.notFound("设备不存在");
         }
         if (Integer.valueOf(1).equals(esp32Node.getStatus())) {
             throw new IllegalArgumentException("当前设备在线，不能退役");
@@ -228,10 +244,11 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     }
 
     @Override
-    public DeviceNodeVO getDevice(Long nodeId) {
-        Esp32Node esp32Node = esp32NodeMapper.selectById(nodeId);
+    public DeviceNodeVO getDevice(Long tenantId, Long nodeId) {
+        TenantScopeUtils.requireTenantId(tenantId);
+        Esp32Node esp32Node = esp32NodeMapper.selectByNodeIdAndTenantIncludeDeleted(tenantId, nodeId);
         if (esp32Node == null) {
-            throw new IllegalArgumentException("节点不存在");
+            throw ApiStatusException.notFound("设备不存在");
         }
         DeviceNodeVO vo = new DeviceNodeVO();
         BeanUtils.copyProperties(esp32Node, vo);
@@ -239,9 +256,13 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     }
 
     @Override
-    @Audited(action = "device.allow")
+    @Audited(
+            action = "device.allow",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     @Transactional(rollbackFor = Exception.class)
-    public DeviceNodeVO allowDevice(String deviceCode) {
+    public DeviceNodeVO allowDevice(Long tenantId, String deviceCode) {
+        TenantScopeUtils.requireTenantId(tenantId);
         if (!StringUtils.hasText(deviceCode)) {
             throw new IllegalArgumentException("deviceCode 不能为空");
         }
@@ -252,11 +273,11 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
             throw new IllegalArgumentException("deviceCode 长度超限");
         }
 
-        Esp32Node node = esp32NodeMapper.selectByDeviceCodeIncludeDeleted(cleanedDeviceCode);
+        Esp32Node node = esp32NodeMapper.selectByDeviceCodeAndTenantIncludeDeleted(tenantId, cleanedDeviceCode);
 
         // 节点授权不能被 MQTT 心跳反向创建。
         if (node == null) {
-            throw new IllegalArgumentException("ESP32 节点尚未登记，请先创建设备节点");
+            throw ApiStatusException.notFound("ESP32 节点不存在");
         }
 
         if (!cleanedDeviceCode.equals(node.getDeviceCode())) {
@@ -264,17 +285,17 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         }
 
         if (Integer.valueOf(1).equals(node.getDelFlag())) {
-            int restored = esp32NodeMapper.restoreRetiredById(node.getNodeId());
+            int restored = esp32NodeMapper.restoreRetiredById(tenantId, node.getNodeId());
             if (restored != 1) {
                 // 并发授权时，另一请求可能已经完成恢复。
-                Esp32Node concurrentResult = esp32NodeMapper.selectByNodeIdIncludeDeleted(node.getNodeId());
+                Esp32Node concurrentResult = esp32NodeMapper.selectByNodeIdAndTenantIncludeDeleted(tenantId, node.getNodeId());
 
                 if (concurrentResult == null || Integer.valueOf(1).equals(concurrentResult.getDelFlag())) {
                     throw new IllegalStateException("ESP32 节点授权失败，请刷新后重试");
                 }
                 node = concurrentResult;
             } else {
-                node = esp32NodeMapper.selectByNodeIdIncludeDeleted(node.getNodeId());
+                node = esp32NodeMapper.selectByNodeIdAndTenantIncludeDeleted(tenantId, node.getNodeId());
             }
         }
 
@@ -288,14 +309,24 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     }
 
     @Override
-    @Audited(action = "device.kick")
-    public DeviceCommandResult kickDevice(String deviceCode, KickDeviceDTO kickDeviceDTO) {
+    @Audited(
+            action = "device.kick",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
+    public DeviceCommandResult kickDevice(Long tenantId, String deviceCode, KickDeviceDTO kickDeviceDTO) {
         String reason = kickDeviceDTO == null ? null : kickDeviceDTO.getReason();
 
-        return managedDeviceCommandService.enqueueKick(deviceCode, reason, DeviceCommandPurpose.MANUAL_DEVICE_RESTART);
+        return managedDeviceCommandService.enqueueKick(
+                TenantScopeUtils.requireTenantId(tenantId),
+                deviceCode,
+                reason,
+                DeviceCommandPurpose.MANUAL_DEVICE_RESTART);
     }
     @Override
-    @Audited(action = "device.allow-client")
+    @Audited(
+            action = "device.allow-client",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     public DeviceCommandResult allowClient(Long nodeId, String deviceCode, String mac, Long sessionId, Integer ttlSeconds) {
         return enqueueClientLease(nodeId, deviceCode, mac, sessionId, ttlSeconds, DeviceCommandPurpose.PORTAL_AUTHORIZE);
     }
@@ -335,6 +366,7 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
             String payload = objectMapper.writeValueAsString(body);
 
             DeviceCommandRecord command = new DeviceCommandRecord();
+            command.setTenantId(resolveCommandTenant(nodeId, normalizedDeviceCode));
             command.setRequestId(requestId);
             command.setNodeId(nodeId);
             command.setDeviceCode(normalizedDeviceCode);
@@ -353,37 +385,45 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     }
 
     @Override
-    @Audited(action = "blacklist.remove")
-    public void removeBlacklist(String mac) {
+    @Audited(
+            action = "blacklist.remove",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
+    public void removeBlacklist(Long tenantId, String mac) {
         QueryWrapper<MacBlacklist> queryWrapper = new QueryWrapper<>();
-        queryWrapper.eq("mac", mac);
+        queryWrapper.eq("tenant_id", TenantScopeUtils.requireTenantId(tenantId))
+                .eq("mac", mac);
         int count = macBlacklistMapper.delete(queryWrapper);
         if (count == 0) {
-            throw new IllegalArgumentException("黑名单记录不存在");
+            throw ApiStatusException.notFound("黑名单记录不存在");
         }
     }
 
     @Override
-    public DeviceStatsVO getDeviceStats() {
-        long totalNodes = esp32NodeMapper.selectCount(new QueryWrapper<Esp32Node>());
+    public DeviceStatsVO getDeviceStats(Long tenantId) {
+        TenantScopeUtils.requireTenantId(tenantId);
+        long totalNodes = esp32NodeMapper.selectCount(
+                new QueryWrapper<Esp32Node>().eq("tenant_id", tenantId));
 
         QueryWrapper<Esp32Node> onlineWrapper = new QueryWrapper<>();
-        onlineWrapper.eq("status", 1);
+        onlineWrapper.eq("tenant_id", tenantId).eq("status", 1);
         long onlineNodes = esp32NodeMapper.selectCount(onlineWrapper);
         long offlineNodes = totalNodes - onlineNodes;
 
         QueryWrapper<Esp32Node> clientWrapper = new QueryWrapper<>();
-        clientWrapper.select("IFNULL(SUM(current_clients),0) AS current_clients");
+        clientWrapper.select("IFNULL(SUM(current_clients),0) AS current_clients")
+                .eq("tenant_id", tenantId);
         Esp32Node clientSummary = esp32NodeMapper.selectOne(clientWrapper);
         long currentClients = clientSummary == null || clientSummary.getCurrentClients() == null
                 ? 0L
                 : clientSummary.getCurrentClients().longValue();
 
         QueryWrapper<SessionRecord> sessionWrapper = new QueryWrapper<>();
-        sessionWrapper.eq("status", SessionStatus.ACTIVE);
+        sessionWrapper.eq("tenant_id", tenantId).eq("status", SessionStatus.ACTIVE);
         long onlineSessions = sessionRecordMapper.selectCount(sessionWrapper);
 
-        long blacklistCount = macBlacklistMapper.selectCount(new QueryWrapper<MacBlacklist>());
+        long blacklistCount = macBlacklistMapper.selectCount(
+                new QueryWrapper<MacBlacklist>().eq("tenant_id", tenantId));
 
         DeviceStatsVO statsVO = new DeviceStatsVO();
         statsVO.setTotalNodes(totalNodes);
@@ -396,11 +436,13 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     }
 
     @Override
-    public DevicePageResult pageDevices(long current, long size, String keyword) {
+    public DevicePageResult pageDevices(Long tenantId, long current, long size, String keyword) {
+        TenantScopeUtils.requireTenantId(tenantId);
         long pageCurrent = current <= 0 ? 1 : current;
         long pageSize = size <= 0 ? 10 : Math.min(size, 100);
 
         QueryWrapper<Esp32Node> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("tenant_id", tenantId);
         if (StringUtils.hasText(keyword)) {
             queryWrapper.and(wrapper -> wrapper
                     .like("device_code", keyword)
@@ -429,11 +471,13 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     }
 
     @Override
-    public MacBlacklistPageResult pageBlacklist(long current, long size, String keyword) {
+    public MacBlacklistPageResult pageBlacklist(Long tenantId, long current, long size, String keyword) {
+        TenantScopeUtils.requireTenantId(tenantId);
         long pageCurrent = current <= 0 ? 1 : current;
         long pageSize = size <= 0 ? 10 : Math.min(size, 100);
 
         QueryWrapper<MacBlacklist> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("tenant_id", tenantId);
         if (StringUtils.hasText(keyword)) {
             queryWrapper.and(wrapper -> wrapper
                     .like("mac", keyword)
@@ -534,6 +578,7 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
             String payload = objectMapper.writeValueAsString(body);
 
             DeviceCommandRecord command = new DeviceCommandRecord();
+            command.setTenantId(resolveCommandTenant(nodeId, normalizedDeviceCode));
             command.setRequestId(requestId);
             command.setNodeId(nodeId);
             command.setDeviceCode(normalizedDeviceCode);
@@ -550,6 +595,14 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("ALLOW 命令序列化失败", exception);
         }
+    }
+
+    private Long resolveCommandTenant(Long nodeId, String deviceCode) {
+        Esp32Node node = esp32NodeMapper.selectByNodeIdIncludeDeleted(nodeId);
+        if (node == null || !deviceCode.equals(node.getDeviceCode())) {
+            throw new IllegalArgumentException("命令目标设备不存在");
+        }
+        return TenantScopeUtils.requireTenantId(node.getTenantId());
     }
 
     private void validateCoordinatePair(BigDecimal latitude, BigDecimal longitude) {

@@ -106,7 +106,10 @@ public class UserManageServiceImpl implements UserManageService {
     }
 
     @Override
-    @Audited(action = "user.update")
+    @Audited(
+            action = "user.update",
+            scope = Audited.Scope.PLATFORM,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     public UserVO updateUser(Long userId, UserUpdateDTO updateDTO, Integer operatorRole) {
         User user = getExistingUser(userId);
 
@@ -159,7 +162,10 @@ public class UserManageServiceImpl implements UserManageService {
 
     @Override
     @Transactional
-    @Audited(action = "user.status")
+    @Audited(
+            action = "user.status",
+            scope = Audited.Scope.PLATFORM,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     public void updateStatus(Long userId, UserStatusDTO statusDTO) {
         User user = getExistingUser(userId);
         if (Integer.valueOf(0).equals(statusDTO.getStatus())
@@ -172,7 +178,10 @@ public class UserManageServiceImpl implements UserManageService {
 
     @Override
     @Transactional
-    @Audited(action = "user.delete")
+    @Audited(
+            action = "user.delete",
+            scope = Audited.Scope.PLATFORM,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     public void deleteUser(Long userId) {
         requireDeletableUser(getExistingUser(userId));
         revokeAuthSessions(userId, "ACCOUNT_DELETED");
@@ -181,7 +190,10 @@ public class UserManageServiceImpl implements UserManageService {
 
     @Override
     @Transactional
-    @Audited(action = "user.purge")
+    @Audited(
+            action = "user.purge",
+            scope = Audited.Scope.PLATFORM,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     public void purgeUser(Long userId) {
         if (userId == null || userId <= 0) {
             throw new IllegalArgumentException("用户 ID 无效");

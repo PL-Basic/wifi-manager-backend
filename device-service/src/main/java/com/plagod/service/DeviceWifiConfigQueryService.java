@@ -4,7 +4,7 @@ import com.plagod.vo.device.WifiConfigTaskVO;
 
 public interface DeviceWifiConfigQueryService {
 
-    WifiConfigTaskVO getTask(String deviceCode, String requestId);
+    WifiConfigTaskVO getTask(Long tenantId, String deviceCode, String requestId);
 
-    WifiConfigTaskVO getLatestTask(String deviceCode);
+    WifiConfigTaskVO getLatestTask(Long tenantId, String deviceCode);
 }

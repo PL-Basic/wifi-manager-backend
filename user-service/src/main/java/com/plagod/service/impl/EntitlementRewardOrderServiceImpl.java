@@ -56,7 +56,10 @@ public class EntitlementRewardOrderServiceImpl implements EntitlementRewardOrder
     private TradeStatusLogMapper statusLogMapper;
 
     @Override
-    @Audited(action = "entitlement.reward-order.create")
+    @Audited(
+            action = "entitlement.reward-order.create",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     @Transactional(rollbackFor = Exception.class)
     public EntitlementOrderVO create(Long tenantId,
                                      Long userId,

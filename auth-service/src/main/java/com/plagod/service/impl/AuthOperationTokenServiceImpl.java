@@ -3,17 +3,17 @@ package com.plagod.service.impl;
 import com.plagod.configuration.AuthSessionProperties;
 import com.plagod.dto.auth.OperationTokenConsumeRequest;
 import com.plagod.dto.auth.OperationTokenIssueRequest;
-import com.plagod.entity.user.User;
 import com.plagod.exception.ApiStatusException;
-import com.plagod.mapper.UserMapper;
 import com.plagod.service.AuthOperationTokenService;
 import com.plagod.service.AuthSessionService;
+import com.plagod.service.UserAccountGateway;
 import com.plagod.service.VerificationCodeService;
 import com.plagod.utils.JwtUtils;
 import com.plagod.utils.PasswordUtils;
 import com.plagod.vo.auth.OperationTokenConsumptionVO;
 import com.plagod.vo.auth.OperationTokenVO;
 import com.plagod.vo.auth.SessionValidationVO;
+import com.plagod.vo.user.UserAuthenticationSnapshotVO;
 import io.jsonwebtoken.Claims;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -32,20 +32,20 @@ public class AuthOperationTokenServiceImpl implements AuthOperationTokenService 
 
     private static final String CONSUMED_KEY_PREFIX = "auth:operation-token:consumed:";
 
-    private final UserMapper userMapper;
+    private final UserAccountGateway userAccountGateway;
     private final VerificationCodeService verificationCodeService;
     private final JwtUtils jwtUtils;
     private final StringRedisTemplate redisTemplate;
     private final AuthSessionProperties properties;
     private final AuthSessionService authSessionService;
 
-    public AuthOperationTokenServiceImpl(UserMapper userMapper,
+    public AuthOperationTokenServiceImpl(UserAccountGateway userAccountGateway,
                                          VerificationCodeService verificationCodeService,
                                          JwtUtils jwtUtils,
                                          StringRedisTemplate redisTemplate,
                                          AuthSessionProperties properties,
                                          AuthSessionService authSessionService) {
-        this.userMapper = userMapper;
+        this.userAccountGateway = userAccountGateway;
         this.verificationCodeService = verificationCodeService;
         this.jwtUtils = jwtUtils;
         this.redisTemplate = redisTemplate;
@@ -61,7 +61,12 @@ public class AuthOperationTokenServiceImpl implements AuthOperationTokenService 
         if (!StringUtils.hasText(sessionId)) {
             throw ApiStatusException.forbidden("当前登录会话不支持高风险操作，请重新登录");
         }
-        User user = userMapper.selectById(userId);
+        UserAuthenticationSnapshotVO user;
+        try {
+            user = userAccountGateway.findAuthenticationById(userId);
+        } catch (RuntimeException exception) {
+            throw userAccountGateway.mapFailure("账号读取", exception);
+        }
         if (user == null || !Integer.valueOf(1).equals(user.getStatus())) {
             throw ApiStatusException.forbidden("用户当前不可用");
         }
@@ -147,9 +152,13 @@ public class AuthOperationTokenServiceImpl implements AuthOperationTokenService 
         return result;
     }
 
-    private void verifyStepUp(User user, OperationTokenIssueRequest request, String clientIp) {
+    private void verifyStepUp(
+            UserAuthenticationSnapshotVO user,
+            OperationTokenIssueRequest request,
+            String clientIp) {
         if (StringUtils.hasText(request.getPassword())
-                && PasswordUtils.matches(request.getPassword(), user.getPassword())) {
+                && PasswordUtils.matches(
+                request.getPassword(), user.getPasswordHash())) {
             return;
         }
         if (!StringUtils.hasText(request.getTarget()) || !StringUtils.hasText(request.getCode())) {

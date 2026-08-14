@@ -16,6 +16,9 @@ spring:
     out-of-order: false
     clean-disabled: true
     connect-retries: 3
+    target: "${DB_MIGRATION_TARGET:2.9.1}"
+    placeholders:
+      p3cCodeReady: "${DB_MIGRATION_P3C_CODE_READY:false}"
 
     # 空库保持 false，依次执行 V1.1 到当前最新版本。
     # 已存在的旧开发库首次接管时设为 true，登记为 1.6 后继续执行 V1.7 及后续迁移。

@@ -14,7 +14,8 @@ public class DeviceCommandController {
     private DeviceCommandQueryService deviceCommandQueryService;
 
     @GetMapping
-    public ApiResponse<DeviceCommandPageResult> pageCommands(@RequestParam(defaultValue = "1") Long current,
+    public ApiResponse<DeviceCommandPageResult> pageCommands(@RequestHeader("X-Tenant-Id") Long tenantId,
+                                                             @RequestParam(defaultValue = "1") Long current,
                                                              @RequestParam(defaultValue = "10") Long size,
                                                              @RequestParam(required = false) String requestId,
                                                              @RequestParam(required = false) String deviceCode,
@@ -24,6 +25,6 @@ public class DeviceCommandController {
                                                              @RequestParam(required = false) Long sessionId,
                                                              @RequestParam(required = false) String mac) {
 
-        return ApiResponse.success(deviceCommandQueryService.pageCommands(current, size, requestId, deviceCode, commandType, purpose, status, sessionId, mac));
+        return ApiResponse.success(deviceCommandQueryService.pageCommands(tenantId, current, size, requestId, deviceCode, commandType, purpose, status, sessionId, mac));
     }
 }

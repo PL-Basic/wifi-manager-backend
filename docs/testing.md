@@ -372,6 +372,99 @@
 - 外部写测试统一用 `ExternalWriteTestTemplate.start(...)` 创建唯一 Run ID，并在 `try-with-resources` 中逐资源登记主键/业务键、逆序精确清理和零残留探针；禁止前缀删除、全表删除或归属不明资源清理。
 - 1.2-E 的自测只验证缺环境 fail closed、危险 Schema/URI 被拒绝、只读客户端拒绝写入和清理模板语义；不读取本机凭据，不访问 localhost，不连接 MySQL、HTTP 服务或 MQTT Broker。
 
+### 1.3-C Monitor 持久化与迁移证据
+
+- `TenantMonitorMigrationScriptTest` 以离线方式验证 V2.4.1 expand、V2.10 contract、audit action 注册表、默认 V2.9.1 target 和 `p3cCodeReady` 门禁；当前 4 个测试通过。
+- 空链和真实 `V2_3_2` 快照升级链均成功到达 `V2_4_1`；真实 `wifi` 经用户确认恢复点后只执行 `V2_4_1`。
+- 真实库 Flyway installed rank 为 `9`、checksum 为 `848930306`、`success=1`；十项 contract 前置计数全部为 0。
+- 原候选 V2.4.2 从未执行，已整体后移为 V2.10；P-3C 具名 tenant 查询、条件更新和业务 Mapper 测试归 2.3。
+- 完整证据见 [Demo 1.3-C P-3C Monitor Expand 实施记录](demo-1.3-c-p3c-expand.md)。
+
+### 1.3-D SaaS 配额与套餐分配证据
+
+- `SaasQuotaMigrationScriptTest` 离线验证 V2.1 表复用、数据/partial DDL 门禁、Assignment/Reservation 唯一键和单有效订阅生成列唯一约束；4 个测试通过。
+- `TenantPersistenceMappingContractTest` 验证七个 Tenant 新增 Mapper 均为纯 `BaseMapper`，不声明锁行、claim 或条件更新方法；1 个测试通过。
+- 真实 `wifi` 只读复核仍为 Flyway rank `9` / `V2_4_1` / checksum `848930306`；五张 V2.1 SaaS 表存在且均为 0 行，数据门禁全部为 0。
+- V2.5 在真实库未执行；Reservation 锁、额度条件更新和并发 MySQL IT 归 2.3。
+- 完整证据见 [Demo 1.3-D SaaS 配额与套餐分配实施记录](demo-1.3-d-saas-quota.md)。
+
+### 1.3-E Demo 商城持久化证据
+
+- 新增持久化 `marketplace-service`，只包含五个 Entity、五个纯 `BaseMapper` 和离线映射测试，不包含启动类、运行配置、Controller、Service 编排或公共 API。
+- `V2_5_1__marketplace_demo_schema.sql` 仅作为未执行候选迁移：新增商品、SKU、订单、订单项和履约五张表，并为 `t_entitlement_order` 增加 Marketplace 来源语义；不创建库存、租赁、资产、物流或第二笔支付表。
+- 三类 SKU 分别保存稳定权益 `productCode`、不可变 `planVersionId` 和硬件型号；订单项保存金额分与不可变价格/规格快照，硬件履约只允许 `TRACK_ONLY`。
+- Marketplace 订单只允许 `LOCAL_DEMO/MANUAL_DEMO`；个人权益履约复用 `t_entitlement_order` 的来源列和唯一键，1.3 不提供专用幂等插入/锁行 Mapper。
+- `MarketplaceMigrationScriptTest` 5 项和 `MarketplacePersistenceMappingContractTest` 1 项通过。
+- 真实 `wifi` 仍为 V2.4.1；V2.5/V2.5.1 均未执行。
+- 完整证据见 [Demo 1.3-E Demo 商城持久化实施记录](demo-1.3-e-marketplace-persistence.md)。
+
+### 1.3-F 公告与 AI 持久化证据
+
+- 新增持久化 `support-service` 与 `ai-service`；对应 Entity 和 Mapper 均为模块私有，Mapper 只继承 `BaseMapper`。
+- 未执行的 `V2_6__announcement_schema.sql` 建立公告聚合、不可变内容版本、租户分区评论、独立能力限制和无正文审核 Outbox 五张表。
+- 未执行的 `V2_7__ai_review_schema.sql` 建立非秘密 Provider 元数据、策略、不可变策略版本、审核任务和人工复核五张表。
+- AI 表不保存公告/问题原文、完整 prompt、完整 Provider 响应、密钥、Token、Cookie 或 endpoint 凭据；AI Mapper 不引用公告发布表。
+- `AnnouncementAiMigrationScriptTest` 5 项、`SupportPersistenceMappingContractTest` 1 项和 `AiPersistenceMappingContractTest` 1 项通过。
+- 公告条件发布、Outbox/AI task claim 和人工决定条件更新归 1.5/2.3。
+- 真实 `wifi` 仍为 V2.4.1；V2.6/V2.7 均未执行。
+- 完整证据见 [Demo 1.3-F 公告与 AI 持久化实施记录](demo-1.3-f-announcement-ai-persistence.md)。
+
+### 1.3-G 问题提交与基础工单持久化证据
+
+- 未执行的 `V2_8__support_ticket_schema.sql` 新增两张 guard、submission、ticket、message 和 transition 六张表，并复用 F 的双场景审核 Outbox。
+- submission 保存 tenant/user/clientRequestId 幂等键和 fingerprint；审核应用同时比较 contentVersion/hash、状态和 version。
+- AI/垃圾拒绝与成功转工单不返还每日额度；只有 AI 任务形成前的系统放弃可通过唯一补偿 event key 返还一次。
+- ticket 只能从同租户 ACCEPTED submission 创建，首条消息直接复制 submission 原文；一个提交最多一张工单，关闭工单不能追加消息。
+- `SupportTicketMigrationScriptTest` 5 项通过；Support 的十二个当前 Mapper 由 `SupportPersistenceMappingContractTest` 统一验证为纯 `BaseMapper`。
+- guard 锁行、每日额度更新、Ticket/Message/Transition 具名 Mapper 和事务测试归 2.3/2.4。
+- 真实 `wifi` 仍停在 `V2_4_1`，`V2_8` 未执行，六张 G 表均不存在。
+- 完整证据见 [Demo 1.3-G 问题提交与基础工单持久化实施记录](demo-1.3-g-support-ticket-persistence.md)。
+
+### 1.3-R1 至 R7 最终验证证据
+
+- R1：Auth 真实 `AuthApplication` Context 加载 6 个允许 Mapper；两个 Refresh
+  XML 共 11 个关键 statement 均从模块资源装配。两个无作用空 XML 已移除。
+- R2：`UserAccountPersistenceMigrationScriptTest` 当前 6 项通过，冻结
+  V2.9.1 的未创建/完整/部分错误三态、普通列非 generated 签名和收据表完整
+  constraint 签名。
+- R3：Marketplace 迁移静态测试 5 项及独立
+  `MarketplaceGeneratedSourceTypeMySqlIT` 已验收；独立 MySQL 用例验证三种
+  合法类型映射和非法类型拒绝。R7 的 `generated-columns` 动作在三条隔离链
+  复核 `PURCHASE -> DIRECT_PURCHASE`，并验证 generated 列不会进入
+  BaseMapper insert/update、select 可以回填。
+- R4：`wifi-common-mybatis` 只提供带 `@ConditionalOnMissingBean` 的分页
+  自动配置和逻辑删除配置，由 User、Device、Monitor、Tenant 四个模块消费；
+  公共模块业务 Entity、Mapper 和 XML 均为 0。
+- R5：Audit Starter 只保留受控追加 Writer；Monitor 只持有两个 Audit 具名
+  SELECT。全部 `@Audited` action 的 PLATFORM/TENANT/CONTEXT 与
+  REQUEST/ARGUMENT 作用域矩阵已验收，普通客户端 Header 不能伪造可信作用域。
+- R6：独立验收确认 Auth 21 项、User 9 项、所有权架构 7 项，共 37 项通过；
+  最新并发修正聚焦测试 7/7 通过。`sys_user`、账号命令收据和默认成员
+  Outbox 仅由 User 直接持久化，Auth 经受控账号契约访问。
+- R7：Auth、User、Device、Tenant、Monitor、Admin 六个真实服务
+  Application Context 测试各 1 项，共 6 项通过，失败、错误、跳过均为 0。
+  持久化服务分别只注册 6/12/9/12/10 个允许 Mapper；Admin 无 DataSource、
+  MyBatis 类、Mapper/Entity Bean 或 Mapper XML。
+- R7 XML：Auth、User、Device、Monitor 的 15 个打包 XML 均由真实服务
+  Context 装配；User、Device、Monitor 冻结预期 statement 精确集合，Tenant
+  明确为 0 XML。R7 同时修正 User、Device 无法解析递归
+  `classpath:` glob 的生产配置，改为模块自有 XML 的显式资源列表。
+- R7 迁移：`UserAccountPersistenceMigrationScriptTest` 6/6 通过。最终
+  Run `20260814r7c` 的 create、三链默认升级、expand 验证、generated
+  columns、三链 contract、verify、diff、cleanup 和最终 identity 共 15 次
+  独立动作均为 1/1，失败、错误、跳过均为 0。
+- 三链默认均到 V2.9.1/70 张业务表，显式 contract 后均到 V2.10/70 张业务
+  表；columns/index/constraint 指纹一致。两条快照链的 43 张基线表原有
+  行数逐表保持。
+- 三个隔离 Schema 中真实注册 10 个 generated-column BaseMapper，并执行
+  insert/select/update；事务回滚后行数保持。最终
+  `wifi_test_13h_* = 0`、`wifi_test_13r3_* = 0`。
+- 最终 identity 证明真实 `wifi` 仍为 rank `9` / V2.4.1 / checksum
+  `848930306`，V2.5-V2.10 均未执行。
+- 仓库最终清点为 22 个迁移、70 张业务表、68 个生产 Entity、71 个 Java
+  Mapper 和 15 个 Mapper XML。完整证据见
+  [Demo 1.3 三域迁移回放与恢复点记录](demo-1.3-h-migration-replay.md)。
+
 ### 1.2-G 最终入口摘要
 
 - 后端：`.\mvnw.cmd -pl wifi-test-kit,wifi-common-api,wifi-service-security-spring-boot-starter -am test`；已通过 `52` 个测试，其中 Kit `25` 个，失败、错误、跳过均为 `0`。

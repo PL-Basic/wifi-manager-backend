@@ -3,8 +3,8 @@ package com.plagod.service.impl;
 import com.plagod.configuration.AuthSessionProperties;
 import com.plagod.dto.auth.OperationTokenConsumeRequest;
 import com.plagod.exception.ApiStatusException;
-import com.plagod.mapper.UserMapper;
 import com.plagod.service.AuthSessionService;
+import com.plagod.service.UserAccountGateway;
 import com.plagod.service.VerificationCodeService;
 import com.plagod.utils.JwtUtils;
 import com.plagod.vo.auth.OperationTokenConsumptionVO;
@@ -40,7 +40,8 @@ class AuthOperationTokenServiceImplTest {
     @SuppressWarnings("unchecked")
     @BeforeEach
     void setUp() {
-        UserMapper userMapper = mock(UserMapper.class);
+        UserAccountGateway userAccountGateway =
+                mock(UserAccountGateway.class);
         VerificationCodeService verificationCodeService =
                 mock(VerificationCodeService.class);
         StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
@@ -53,7 +54,7 @@ class AuthOperationTokenServiceImplTest {
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
         service = new AuthOperationTokenServiceImpl(
-                userMapper,
+                userAccountGateway,
                 verificationCodeService,
                 jwtUtils,
                 redisTemplate,

@@ -185,6 +185,11 @@ POST /admin/users/{userId}/entitlement/unlimited-adjustments
 POST /admin/users/{userId}/entitlement/reward-orders
 ```
 
+`/admin/users/**` 当前是全局账号管理接口，仅允许 `role=0`。租户工作区不能把
+全局 `sys_user` 列表当作当前组织成员列表；组织成员身份以
+`t_tenant_member` 为准，租户成员管理必须使用独立的 tenant-service 契约。
+在该契约完成前，前端不展示旧的全局用户管理和敏感操作审批入口。
+
 `unlimited-adjustments` 仅允许 role=0，请求体为
 `requestId`、`action=GRANT|REVOKE`、`reason`。相同租户内稳定 `requestId`
 重复调用不重复改变权益；role=1/2 返回 403。无限权益只跳过用户时长扣减，
@@ -210,6 +215,11 @@ GET /admin/devices/blacklist; POST /admin/devices/blacklist
 DELETE /admin/devices/blacklist/{mac}
 GET /admin/device-commands
 ```
+
+六类生产 MQTT 命令都携带全局唯一 `requestId`。固件保存最近 16 条命令终态；
+QoS 1 重投、MQTT 重连或 KICK 重启后收到相同 `requestId` 时不重复执行，
+只重新发布原 `command-result`。KICK `reason` 为可选字段，最多 255 个 UTF-8
+字节，不再受 MAC 长度限制。
 
 ### Session、流量、规则、告警和审计
 
@@ -281,6 +291,7 @@ GET /health/gateway
 
 ```text
 /internal/users/**
+/internal/user-accounts/**
 /internal/entitlements/**
 /internal/social-identities/**
 /internal/location-sessions/**
@@ -292,6 +303,21 @@ GET /health/gateway
 /internal/tenants/context/resolve
 /internal/tenants/context/validate
 ```
+
+`/internal/user-accounts/**` 是 Auth 调用 User 权威账号持久化能力的受控契约：
+
+```text
+POST /internal/user-accounts
+GET  /internal/user-accounts/{userId}
+GET  /internal/user-accounts/{userId}/authentication
+GET  /internal/user-accounts/login
+POST /internal/user-accounts/password
+POST /internal/user-accounts/{userId}/default-membership/dispatch
+```
+
+User 是 `sys_user`、账号命令收据和默认成员 Outbox 的唯一直接写入方。Auth
+只通过上述契约创建账号、读取认证快照、条件替换密码和触发默认成员投递；
+请求携带幂等键及 fingerprint，跨服务调用不包含在 Auth 本地事务中。
 
 `POST /internal/entitlements/lease` 的首次租约只接受可信
 `X-Tenant-Id` 上下文；无 Servlet 请求上下文的后台续租必须携带已持久化的

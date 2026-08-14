@@ -44,6 +44,10 @@ public class ClientDisconnectEventServiceImpl implements ClientDisconnectEventSe
         }
 
         String deviceCode = cleanDeviceCode(event.getDeviceCode());
+        Esp32Node topicNode = esp32NodeMapper.selectByDeviceCodeIncludeDeleted(deviceCode);
+        if (topicNode == null || !deviceCode.equals(topicNode.getDeviceCode())) {
+            throw new IllegalArgumentException("断线事件目标设备不存在");
+        }
         Long sessionId = event.getSessionId();
 
         if (sessionId == null || sessionId < 0) {
@@ -69,7 +73,8 @@ public class ClientDisconnectEventServiceImpl implements ClientDisconnectEventSe
         }
 
         // 串行化断线、定时续租、主动退出和管理员撤销。
-        SessionRecord session = sessionRecordMapper.selectByIdForUpdate(sessionId);
+        SessionRecord session = sessionRecordMapper.selectByIdForUpdate(
+                topicNode.getTenantId(), sessionId);
 
         // 未知 Session 只忽略，绝不根据固件数据反向创建。
         if (session == null) {
@@ -112,7 +117,8 @@ public class ClientDisconnectEventServiceImpl implements ClientDisconnectEventSe
             throw new IllegalStateException("Session 缺少关联节点");
         }
 
-        Esp32Node node = esp32NodeMapper.selectByNodeIdIncludeDeleted(session.getNodeId());
+        Esp32Node node = esp32NodeMapper.selectByNodeIdAndTenantIncludeDeleted(
+                session.getTenantId(), session.getNodeId());
 
         // 即使节点已经退役，也允许处理它此前产生的断线事件。
         if (node == null || !StringUtils.hasText(node.getDeviceCode())) {

@@ -47,7 +47,10 @@ public class RefundServiceImpl implements RefundService {
     private TradeStatusLogMapper statusLogMapper;
 
     @Override
-    @Audited(action = "refund.apply")
+    @Audited(
+            action = "refund.apply",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     @Transactional(rollbackFor = Exception.class)
     public RefundVO apply(Long tenantId, Long userId, RefundApplyRequest request) {
 
@@ -238,7 +241,10 @@ public class RefundServiceImpl implements RefundService {
     }
 
     @Override
-    @Audited(action = "refund.review")
+    @Audited(
+            action = "refund.review",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     @Transactional(rollbackFor = Exception.class)
     public RefundVO review(Long tenantId, String rawRefundNo, Long reviewerId, String reviewerName, RefundReviewRequest request) {
 
@@ -308,7 +314,10 @@ public class RefundServiceImpl implements RefundService {
     }
 
     @Override
-    @Audited(action = "refund.channel.result")
+    @Audited(
+            action = "refund.channel.result",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     @Transactional(rollbackFor = Exception.class)
     public RefundVO handleChannelResult(VerifiedRefundResult result) {
 

@@ -35,7 +35,10 @@ public class GeofenceAdminServiceImpl implements GeofenceAdminService {
     @Autowired
     private GeofenceEventMapper eventMapper;
 
-    @Audited(action = "geofence.create")
+    @Audited(
+            action = "geofence.create",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     public GeofenceVO create(GeofenceCreateDTO dto) {
         Geofence entity = new Geofence();
         entity.setName(requireName(dto.getName()));
@@ -53,7 +56,10 @@ public class GeofenceAdminServiceImpl implements GeofenceAdminService {
         return get(entity.getFenceId());
     }
 
-    @Audited(action = "geofence.update")
+    @Audited(
+            action = "geofence.update",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     @Transactional(rollbackFor = Exception.class)
     public GeofenceVO update(Long fenceId, GeofenceUpdateDTO dto) {
         Geofence entity = requireFence(fenceId);
@@ -100,7 +106,10 @@ public class GeofenceAdminServiceImpl implements GeofenceAdminService {
         return get(fenceId);
     }
 
-    @Audited(action = "geofence.toggle")
+    @Audited(
+            action = "geofence.toggle",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     @Transactional(rollbackFor = Exception.class)
     public GeofenceVO toggle(Long fenceId, Integer enabled) {
         Geofence entity = requireFence(fenceId);
@@ -120,7 +129,10 @@ public class GeofenceAdminServiceImpl implements GeofenceAdminService {
         return get(fenceId);
     }
 
-    @Audited(action = "geofence.delete")
+    @Audited(
+            action = "geofence.delete",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     @Transactional(rollbackFor = Exception.class)
     public void delete(Long fenceId) {
         requireFence(fenceId);

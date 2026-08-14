@@ -37,6 +37,9 @@ mybatis-plus:
       logic-delete-field: delFlag
       logic-delete-value: 1
       logic-not-delete-value: 0
+  mapper-locations:
+    - classpath:com/plagod/mapper/xml/AuthRefreshSessionMapper.xml
+    - classpath:com/plagod/mapper/xml/AuthRefreshTokenMapper.xml
 
 verification-code:
   target-interval-seconds: 60
@@ -93,12 +96,6 @@ wifi:
       - /internal/
   internal:
     token: ${WIFI_INTERNAL_TOKEN:local-internal-token-change-me}
-  tenant-membership-outbox:
-    scan-delay-ms: 5000
-    executor:
-      core-size: 1
-      max-size: 2
-      queue-capacity: 100
   rate-limit:
     redis-enabled: ${REDIS_RATE_LIMIT_ENABLED:true}
     redis-fallback-cooldown-millis: 30000

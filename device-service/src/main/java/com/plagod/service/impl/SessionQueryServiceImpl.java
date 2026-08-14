@@ -11,6 +11,7 @@ import com.plagod.vo.device.SessionRecordVO;
 import com.plagod.entity.device.SessionRecord;
 import com.plagod.mapper.SessionRecordMapper;
 import com.plagod.service.SessionQueryService;
+import com.plagod.utils.TenantScopeUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -39,11 +40,13 @@ public class SessionQueryServiceImpl implements SessionQueryService {
     private long heartbeatTimeoutSeconds;
 
     @Override
-    public SessionPageResult pageSessions(long current, long size, String mac, Long nodeId, Long userId, Integer status) {
+    public SessionPageResult pageSessions(Long tenantId, long current, long size, String mac, Long nodeId, Long userId, Integer status) {
+        TenantScopeUtils.requireTenantId(tenantId);
         long pageCurrent = current <= 0 ? 1 : current;
         long pageSize = size <= 0 ? 10 : Math.min(size, 100);
 
         QueryWrapper<SessionRecord> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("tenant_id", tenantId);
         if (StringUtils.hasText(mac)) {
             queryWrapper.like("mac", mac);
         }
@@ -76,8 +79,10 @@ public class SessionQueryServiceImpl implements SessionQueryService {
     }
     @Override
     @Transactional(readOnly = true)
-    public LocationSessionContextVO getLocationContext(Long ownerUserId,
+    public LocationSessionContextVO getLocationContext(Long tenantId,
+                                                       Long ownerUserId,
                                                        Long sessionId) {
+        TenantScopeUtils.requireTenantId(tenantId);
 
         if (ownerUserId == null || ownerUserId <= 0 || sessionId == null || sessionId <= 0) {
             throw new IllegalArgumentException("缺少有效用户或 Session");
@@ -87,7 +92,11 @@ public class SessionQueryServiceImpl implements SessionQueryService {
             throw new IllegalStateException("位置 Session 校验配置无效");
         }
 
-        SessionRecord session = sessionRecordMapper.selectById(sessionId);
+        SessionRecord session = sessionRecordMapper.selectOne(
+                new QueryWrapper<SessionRecord>()
+                        .eq("tenant_id", tenantId)
+                        .eq("session_id", sessionId)
+                        .last("limit 1"));
 
         if (session == null || !Objects.equals(ownerUserId, session.getUserId())) {
 
@@ -109,7 +118,8 @@ public class SessionQueryServiceImpl implements SessionQueryService {
             throw ApiStatusException.conflict("Session 已经离线");
         }
 
-        Esp32Node node = esp32NodeMapper.selectById(session.getNodeId());
+        Esp32Node node = esp32NodeMapper.selectByNodeIdAndTenantIncludeDeleted(
+                tenantId, session.getNodeId());
         LocalDateTime nodeCutoff = now.minusSeconds(heartbeatTimeoutSeconds);
 
         if (node == null || !Integer.valueOf(1).equals(node.getStatus()) || node.getLastHeartbeat() == null || !node.getLastHeartbeat().isAfter(nodeCutoff)) {

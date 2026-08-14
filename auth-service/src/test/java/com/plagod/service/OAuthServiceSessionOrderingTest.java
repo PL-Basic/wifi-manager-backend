@@ -11,10 +11,13 @@ import com.plagod.service.oauth.OAuthProviderAdapter;
 import com.plagod.service.oauth.OAuthProviderRegistry;
 import com.plagod.vo.user.SocialIdentityResolveResultVO;
 import com.plagod.vo.user.SocialLoginPrincipalVO;
+import com.plagod.vo.user.UserAccountSnapshotVO;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -26,9 +29,70 @@ class OAuthServiceSessionOrderingTest {
 
     @Test
     void oauthStateIsNotCompletedWhenRefreshSessionCreationFails() {
+        Fixture fixture = fixture();
+        when(fixture.userAccountGateway.findById(7L))
+                .thenReturn(account(true));
+        when(fixture.authSessionService.open(
+                any(),
+                anyString(),
+                anyString(),
+                anyString())).thenThrow(
+                ApiStatusException.serviceUnavailable(
+                        "租户上下文服务暂时不可用"));
+
+        assertThrows(
+                ApiStatusException.class,
+                () -> fixture.service.callback(
+                        "github",
+                        "state",
+                        "code",
+                        "client-instance",
+                        "test-agent",
+                        "192.168.1.23"));
+
+        verify(fixture.stateService, never()).complete(
+                any(),
+                anyString(),
+                any(),
+                anyString());
+        verify(fixture.stateService).fail(any(), anyString());
+    }
+
+    @Test
+    void oauthMembershipPendingDoesNotOpenRefreshSession() {
+        Fixture fixture = fixture();
+        when(fixture.userAccountGateway.findById(7L))
+                .thenReturn(account(false));
+
+        com.plagod.vo.OAuthCallbackIssue issue = fixture.service.callback(
+                "github",
+                "state",
+                "code",
+                "client-instance",
+                "test-agent",
+                "192.168.1.23");
+
+        assertEquals(
+                "TENANT_MEMBERSHIP_PENDING",
+                issue.getResult().getAccountState());
+        assertNull(issue.getResult().getToken());
+        assertNull(issue.getSessionIssue());
+        verify(fixture.userAccountGateway).dispatchDefaultMembership(7L);
+        verify(fixture.authSessionService, never()).open(
+                any(),
+                anyString(),
+                anyString(),
+                anyString());
+        verify(fixture.stateService).complete(
+                any(),
+                anyString(),
+                any(),
+                anyString());
+    }
+
+    private Fixture fixture() {
         OAuthService service = new OAuthService();
-        DefaultTenantMembershipOutboxService outboxService =
-                mock(DefaultTenantMembershipOutboxService.class);
+        UserAccountGateway userAccountGateway = mock(UserAccountGateway.class);
         OAuthProviderRegistry providerRegistry = mock(OAuthProviderRegistry.class);
         OAuthStateTransactionService stateService =
                 mock(OAuthStateTransactionService.class);
@@ -38,8 +102,8 @@ class OAuthServiceSessionOrderingTest {
 
         ReflectionTestUtils.setField(
                 service,
-                "defaultTenantMembershipOutboxService",
-                outboxService);
+                "userAccountGateway",
+                userAccountGateway);
         ReflectionTestUtils.setField(service, "providerRegistry", providerRegistry);
         ReflectionTestUtils.setField(service, "stateService", stateService);
         ReflectionTestUtils.setField(service, "userClient", userClient);
@@ -61,30 +125,18 @@ class OAuthServiceSessionOrderingTest {
         when(adapter.exchange("code")).thenReturn(profile());
         when(userClient.resolve(anyString(), any()))
                 .thenReturn(ApiResponse.success(loginReady()));
-        when(outboxService.isMembershipReady(7L)).thenReturn(true);
-        when(authSessionService.open(
-                any(),
-                anyString(),
-                anyString(),
-                anyString())).thenThrow(
-                ApiStatusException.serviceUnavailable("租户上下文服务暂时不可用"));
+        return new Fixture(
+                service,
+                userAccountGateway,
+                stateService,
+                authSessionService);
+    }
 
-        assertThrows(
-                ApiStatusException.class,
-                () -> service.callback(
-                        "github",
-                        "state",
-                        "code",
-                        "client-instance",
-                        "test-agent",
-                        "192.168.1.23"));
-
-        verify(stateService, never()).complete(
-                any(),
-                anyString(),
-                any(),
-                anyString());
-        verify(stateService).fail(any(), anyString());
+    private UserAccountSnapshotVO account(boolean membershipReady) {
+        UserAccountSnapshotVO account = new UserAccountSnapshotVO();
+        account.setUserId(7L);
+        account.setMembershipReady(membershipReady);
+        return account;
     }
 
     private OAuthProfile profile() {
@@ -105,5 +157,23 @@ class OAuthServiceSessionOrderingTest {
         principal.setNickname("Alice");
         principal.setRole(2);
         return SocialIdentityResolveResultVO.loginReady(principal, null);
+    }
+
+    private static final class Fixture {
+        private final OAuthService service;
+        private final UserAccountGateway userAccountGateway;
+        private final OAuthStateTransactionService stateService;
+        private final AuthSessionService authSessionService;
+
+        private Fixture(
+                OAuthService service,
+                UserAccountGateway userAccountGateway,
+                OAuthStateTransactionService stateService,
+                AuthSessionService authSessionService) {
+            this.service = service;
+            this.userAccountGateway = userAccountGateway;
+            this.stateService = stateService;
+            this.authSessionService = authSessionService;
+        }
     }
 }

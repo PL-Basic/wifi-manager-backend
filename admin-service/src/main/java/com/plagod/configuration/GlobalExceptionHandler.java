@@ -2,6 +2,9 @@ package com.plagod.configuration;
 
 import com.plagod.dto.ApiResponse;
 import com.plagod.exception.ApiStatusException;
+import feign.FeignException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -20,6 +23,8 @@ import java.util.stream.Collectors;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     /**
      * 处理 @Valid 请求体字段校验失败。
@@ -114,6 +119,43 @@ public class GlobalExceptionHandler {
         String message = exception.getMessage() == null ? "请求处理失败" : exception.getMessage();
 
         return response.body(ApiResponse.fail(exception.getCode(), message));
+    }
+
+    /**
+     * BFF 下游错误必须保留业务状态，同时隐藏服务间认证细节。
+     */
+    @ExceptionHandler(FeignException.class)
+    public ResponseEntity<ApiResponse<Void>> handleFeignException(FeignException exception) {
+
+        int downstreamStatus = exception.status();
+        LOGGER.warn(
+                "admin downstream request failed: status={}, exception={}",
+                downstreamStatus,
+                exception.getClass().getSimpleName());
+
+        if (downstreamStatus == HttpStatus.BAD_REQUEST.value()) {
+            return downstreamError(HttpStatus.BAD_REQUEST, "下游服务拒绝了请求参数");
+        }
+        if (downstreamStatus == HttpStatus.NOT_FOUND.value()) {
+            return downstreamError(HttpStatus.NOT_FOUND, "资源不存在");
+        }
+        if (downstreamStatus == HttpStatus.CONFLICT.value()) {
+            return downstreamError(HttpStatus.CONFLICT, "资源状态冲突");
+        }
+        if (downstreamStatus == HttpStatus.TOO_MANY_REQUESTS.value()) {
+            return downstreamError(HttpStatus.TOO_MANY_REQUESTS, "请求过于频繁，请稍后再试");
+        }
+        if (downstreamStatus == HttpStatus.UNAUTHORIZED.value()
+                || downstreamStatus == HttpStatus.FORBIDDEN.value()) {
+            return downstreamError(HttpStatus.SERVICE_UNAVAILABLE, "服务间认证暂时不可用");
+        }
+        return downstreamError(HttpStatus.SERVICE_UNAVAILABLE, "下游服务暂时不可用");
+    }
+
+    private ResponseEntity<ApiResponse<Void>> downstreamError(HttpStatus status, String message) {
+        return ResponseEntity
+                .status(status)
+                .body(ApiResponse.fail(status.value(), message));
     }
 
     /**

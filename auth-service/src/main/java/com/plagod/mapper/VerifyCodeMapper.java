@@ -30,6 +30,7 @@ public interface VerifyCodeMapper extends BaseMapper<VerifyCode> {
     @Update("update t_verify_code " +
             "set status = 1, " +
             "consume_time = #{consumeTime}, " +
+            "consume_request_key = #{consumeRequestKey}, " +
             "verify_ip = #{verifyIp} " +
             "where id = #{id} " +
             "and send_status = 1 " +
@@ -38,5 +39,7 @@ public interface VerifyCodeMapper extends BaseMapper<VerifyCode> {
             "and expire_time > #{consumeTime}")
     int consumeVerifiedCode(@Param("id") Long id,
                             @Param("consumeTime") LocalDateTime consumeTime,
-                            @Param("verifyIp") String verifyIp);
+                            @Param("verifyIp") String verifyIp,
+                            @Param("consumeRequestKey") String consumeRequestKey);
+
 }

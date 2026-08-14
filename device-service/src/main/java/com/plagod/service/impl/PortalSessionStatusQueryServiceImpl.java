@@ -1,5 +1,6 @@
 package com.plagod.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.plagod.client.UserEntitlementClient;
 import com.plagod.constant.DeviceCommandPurpose;
 import com.plagod.constant.DeviceCommandStatus;
@@ -8,12 +9,14 @@ import com.plagod.dto.ApiResponse;
 import com.plagod.entity.device.DeviceCommandRecord;
 import com.plagod.entity.device.Esp32Node;
 import com.plagod.entity.device.SessionRecord;
+import com.plagod.exception.ApiStatusException;
 import com.plagod.mapper.DeviceCommandRecordMapper;
 import com.plagod.mapper.Esp32NodeMapper;
 import com.plagod.mapper.SessionRecordMapper;
 import com.plagod.service.PortalSessionStatusQueryService;
 import com.plagod.vo.portal.PortalSessionStatusVO;
 import com.plagod.vo.user.EntitlementSnapshotVO;
+import com.plagod.utils.TenantScopeUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -38,19 +41,25 @@ public class PortalSessionStatusQueryServiceImpl implements PortalSessionStatusQ
     private String internalToken;
 
     @Override
-    public PortalSessionStatusVO getOwnedStatus(Long sessionId, Long userId) {
+    public PortalSessionStatusVO getOwnedStatus(Long tenantId, Long sessionId, Long userId) {
+        TenantScopeUtils.requireTenantId(tenantId);
         if (sessionId == null || sessionId <= 0 || userId == null || userId <= 0) {
             throw new IllegalArgumentException("Session 或用户身份无效");
         }
 
-        SessionRecord session = sessionRecordMapper.selectById(sessionId);
+        SessionRecord session = sessionRecordMapper.selectOne(
+                new QueryWrapper<SessionRecord>()
+                        .eq("tenant_id", tenantId)
+                        .eq("session_id", sessionId)
+                        .last("limit 1"));
 
         // 不区分不存在和不属于本人，避免枚举其他用户 Session。
         if (session == null || !userId.equals(session.getUserId())) {
-            throw new IllegalArgumentException("Session 不存在或无权访问");
+            throw ApiStatusException.notFound("Session 不存在");
         }
 
-        Esp32Node node = esp32NodeMapper.selectByNodeIdIncludeDeleted(session.getNodeId());
+        Esp32Node node = esp32NodeMapper.selectByNodeIdAndTenantIncludeDeleted(
+                tenantId, session.getNodeId());
 
         if (node == null) {
             throw new IllegalStateException("Session 关联的 ESP32 节点不存在");
@@ -79,7 +88,8 @@ public class PortalSessionStatusQueryServiceImpl implements PortalSessionStatusQ
     }
 
     private DeviceCommandRecord findDisplayCommand(SessionRecord session) {
-        DeviceCommandRecord allow = commandRecordMapper.selectLatestSessionAllowCommand(session.getSessionId());
+        DeviceCommandRecord allow = commandRecordMapper.selectLatestSessionAllowCommand(
+                session.getTenantId(), session.getSessionId());
 
         if (allow != null) {
             return allow;
@@ -89,7 +99,8 @@ public class PortalSessionStatusQueryServiceImpl implements PortalSessionStatusQ
             return null;
         }
 
-        return commandRecordMapper.selectLatestForceReplacementCommand(session.getReplacedSessionId());
+        return commandRecordMapper.selectLatestForceReplacementCommand(
+                session.getTenantId(), session.getReplacedSessionId());
     }
 
     private EntitlementSnapshotVO loadEntitlementSnapshot(SessionRecord session) {
@@ -99,7 +110,11 @@ public class PortalSessionStatusQueryServiceImpl implements PortalSessionStatusQ
 
         ApiResponse<EntitlementSnapshotVO> response;
         try {
-            response = userEntitlementClient.getSnapshot(internalToken, session.getUserId(), session.getEntitlementId());
+            response = userEntitlementClient.getSnapshot(
+                    internalToken,
+                    String.valueOf(session.getTenantId()),
+                    session.getUserId(),
+                    session.getEntitlementId());
         } catch (RuntimeException exception) {
             throw new IllegalStateException("权益快照服务暂时不可用", exception);
         }

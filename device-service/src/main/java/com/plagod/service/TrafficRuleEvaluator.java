@@ -54,7 +54,7 @@ public class TrafficRuleEvaluator {
         TrafficEvaluationResult result = callEvaluate(event, trafficLog, sessionRecord);
 
         if (result != null && result.isHit()) {
-            executeActions(event, sessionRecord, result);
+            executeActions(event, trafficLog, sessionRecord, result);
         }
     }
 
@@ -75,7 +75,8 @@ public class TrafficRuleEvaluator {
         request.setEventTime(trafficLog.getLogTime());
 
         try {
-            ApiResponse<TrafficEvaluationResult> response = monitorServiceClient.evaluate(internalToken, request);
+            ApiResponse<TrafficEvaluationResult> response = monitorServiceClient.evaluate(
+                    internalToken, String.valueOf(trafficLog.getTenantId()), request);
 
             if (response == null || response.getData() == null) {
                 return null;
@@ -94,7 +95,10 @@ public class TrafficRuleEvaluator {
         }
     }
 
-    private void executeActions(DeviceTrafficEvent event, SessionRecord sessionRecord, TrafficEvaluationResult result) {
+    private void executeActions(DeviceTrafficEvent event,
+                                TrafficLog trafficLog,
+                                SessionRecord sessionRecord,
+                                TrafficEvaluationResult result) {
         Integer action = pickStrongestAction(result.getHits());
         if (action == null || action == ACTION_ALERT_ONLY) {
             return;
@@ -109,9 +113,18 @@ public class TrafficRuleEvaluator {
 
         try {
             if (action == ACTION_KICK) {
-                ruleActionExecutor.disconnectMac(deviceCode, event.getMac(), result.getAlertId());
+                ruleActionExecutor.disconnectMac(
+                        trafficLog.getTenantId(),
+                        deviceCode,
+                        event.getMac(),
+                        result.getAlertId());
             } else if (action == ACTION_BLOCK_TRAFFIC) {
-                ruleActionExecutor.blockTraffic(deviceCode, event.getDstIp(), event.getSni(), result.getAlertId());
+                ruleActionExecutor.blockTraffic(
+                        trafficLog.getTenantId(),
+                        deviceCode,
+                        event.getDstIp(),
+                        event.getSni(),
+                        result.getAlertId());
             }
         } catch (Exception ex) {
             log.warn("auto-action publish failed action={} mac={} alertId={}: {}",
@@ -141,7 +154,8 @@ public class TrafficRuleEvaluator {
         if (sessionRecord == null || sessionRecord.getNodeId() == null) {
             return null;
         }
-        Esp32Node node = esp32NodeMapper.selectById(sessionRecord.getNodeId());
+        Esp32Node node = esp32NodeMapper.selectByNodeIdAndTenantIncludeDeleted(
+                sessionRecord.getTenantId(), sessionRecord.getNodeId());
         return node == null ? null : node.getDeviceCode();
     }
 }

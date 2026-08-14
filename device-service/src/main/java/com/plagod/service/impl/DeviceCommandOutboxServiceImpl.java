@@ -4,8 +4,11 @@ import com.plagod.constant.DeviceCommandPurpose;
 import com.plagod.constant.DeviceCommandStatus;
 import com.plagod.constant.DeviceCommandType;
 import com.plagod.entity.device.DeviceCommandRecord;
+import com.plagod.entity.device.Esp32Node;
 import com.plagod.mapper.DeviceCommandRecordMapper;
+import com.plagod.mapper.Esp32NodeMapper;
 import com.plagod.service.DeviceCommandOutboxService;
+import com.plagod.utils.TenantScopeUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -22,12 +25,25 @@ public class DeviceCommandOutboxServiceImpl implements DeviceCommandOutboxServic
 
     @Autowired
     private DeviceCommandRecordMapper commandRecordMapper;
+    @Autowired
+    private Esp32NodeMapper nodeMapper;
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY, rollbackFor = Exception.class)
     public Long enqueue(DeviceCommandRecord command) {
         if (command == null) {
             throw new IllegalArgumentException("待入队命令不能为空");
+        }
+
+        TenantScopeUtils.requireTenantId(command.getTenantId());
+        if (command.getNodeId() == null || command.getNodeId() <= 0) {
+            throw new IllegalArgumentException("命令缺少有效 nodeId");
+        }
+        Esp32Node node = nodeMapper.selectByNodeIdIncludeDeleted(command.getNodeId());
+        if (node == null
+                || !command.getTenantId().equals(node.getTenantId())
+                || !java.util.Objects.equals(command.getDeviceCode(), node.getDeviceCode())) {
+            throw new IllegalArgumentException("命令目标设备不存在");
         }
 
         if (command.getNodeId() == null || command.getNodeId() <= 0) {

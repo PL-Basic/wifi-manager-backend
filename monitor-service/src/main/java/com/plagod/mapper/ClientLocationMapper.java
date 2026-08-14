@@ -13,11 +13,27 @@ import java.util.List;
 public interface ClientLocationMapper extends BaseMapper<ClientLocation> {
 
     @Select("select * from t_client_location " +
+            "where tenant_id = #{tenantId} " +
+            "and id = #{id} limit 1")
+    ClientLocation selectByIdAndTenant(@Param("tenantId") Long tenantId,
+                                       @Param("id") Long id);
+
+    @Select("select * from t_client_location " +
             "where user_id = #{userId} " +
             "and session_id = #{sessionId} " +
             "and trusted_binding = 1 " +
             "order by report_time desc, id desc limit 1")
     ClientLocation selectLatestTrustedPoint(@Param("userId") Long userId, @Param("sessionId") Long sessionId);
+
+    @Select("select * from t_client_location " +
+            "where tenant_id = #{tenantId} " +
+            "and user_id = #{userId} " +
+            "and session_id = #{sessionId} " +
+            "and trusted_binding = 1 " +
+            "order by report_time desc, id desc limit 1")
+    ClientLocation selectLatestTrustedPointByTenant(@Param("tenantId") Long tenantId,
+                                                    @Param("userId") Long userId,
+                                                    @Param("sessionId") Long sessionId);
 
     List<ClientLocation> selectTrustedPointsForGis(@Param("sessionId") Long sessionId,
                                                    @Param("userId") Long userId,
@@ -26,4 +42,13 @@ public interface ClientLocationMapper extends BaseMapper<ClientLocation> {
                                                    @Param("startTime") LocalDateTime startTime,
                                                    @Param("endTime") LocalDateTime endTime,
                                                    @Param("limit") Integer limit);
+
+    List<ClientLocation> selectTrustedPointsForGisByTenant(@Param("tenantId") Long tenantId,
+                                                           @Param("sessionId") Long sessionId,
+                                                           @Param("userId") Long userId,
+                                                           @Param("nodeId") Long nodeId,
+                                                           @Param("mac") String mac,
+                                                           @Param("startTime") LocalDateTime startTime,
+                                                           @Param("endTime") LocalDateTime endTime,
+                                                           @Param("limit") Integer limit);
 }

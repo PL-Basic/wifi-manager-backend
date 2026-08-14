@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.plagod.mapper.AuditLogMapper">
+
+    <resultMap id="auditLogResultMap"
+               type="com.plagod.entity.monitor.AuditLog">
+        <id column="id" property="id"/>
+        <result column="tenant_id" property="tenantId"/>
+        <result column="scope_type" property="scopeType"/>
+        <result column="operator_id" property="operatorId"/>
+        <result column="operator_name" property="operatorName"/>
+        <result column="action" property="action"/>
+        <result column="target" property="target"/>
+        <result column="detail" property="detail"/>
+        <result column="ip" property="ip"/>
+        <result column="create_time" property="createTime"/>
+    </resultMap>
+
+    <select id="selectAuditPage" resultMap="auditLogResultMap">
+        select
+            id,
+            tenant_id,
+            scope_type,
+            operator_id,
+            operator_name,
+            action,
+            target,
+            detail,
+            ip,
+            create_time
+        from t_audit_log
+        <where>
+            <if test="action != null">
+                and action like concat('%', #{action}, '%')
+            </if>
+            <if test="operatorName != null">
+                and operator_name like concat('%', #{operatorName}, '%')
+            </if>
+            <if test="target != null">
+                and target like concat('%', #{target}, '%')
+            </if>
+            <if test="startTime != null">
+                and create_time <![CDATA[ >= ]]> #{startTime}
+            </if>
+            <if test="endTime != null">
+                and create_time <![CDATA[ <= ]]> #{endTime}
+            </if>
+        </where>
+        order by create_time desc
+    </select>
+
+    <select id="selectAuditById" resultMap="auditLogResultMap">
+        select
+            id,
+            tenant_id,
+            scope_type,
+            operator_id,
+            operator_name,
+            action,
+            target,
+            detail,
+            ip,
+            create_time
+        from t_audit_log
+        where id = #{id}
+        limit 1
+    </select>
+
+</mapper>

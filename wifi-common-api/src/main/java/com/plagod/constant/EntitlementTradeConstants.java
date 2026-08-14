@@ -9,6 +9,9 @@ public final class EntitlementTradeConstants {
     public static final String MODE_SUBSCRIPTION = "SUBSCRIPTION";
     public static final String MODE_UNLIMITED = "UNLIMITED";
 
+    public static final String ORDER_TYPE_MARKETPLACE = "MARKETPLACE";
+    public static final String SOURCE_MARKETPLACE = "MARKETPLACE";
+
     public static final String ORDER_PENDING_PAYMENT = "PENDING_PAYMENT";
     public static final String ORDER_PAID = "PAID";
     public static final String ORDER_FULFILLED = "FULFILLED";

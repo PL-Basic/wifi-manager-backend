@@ -4,9 +4,9 @@ import com.plagod.vo.device.DeviceCommandResult;
 
 public interface ManagedDeviceCommandService {
 
-    DeviceCommandResult enqueueDisconnectMac(String deviceCode, String mac, Long alertId, String purpose);
+    DeviceCommandResult enqueueDisconnectMac(Long tenantId, String deviceCode, String mac, Long alertId, String purpose);
 
-    DeviceCommandResult enqueueBlockTraffic(String deviceCode, String dstIp, String sni, Long alertId, String purpose);
+    DeviceCommandResult enqueueBlockTraffic(Long tenantId, String deviceCode, String dstIp, String sni, Long alertId, String purpose);
 
-    DeviceCommandResult enqueueKick(String deviceCode, String reason, String purpose);
+    DeviceCommandResult enqueueKick(Long tenantId, String deviceCode, String reason, String purpose);
 }

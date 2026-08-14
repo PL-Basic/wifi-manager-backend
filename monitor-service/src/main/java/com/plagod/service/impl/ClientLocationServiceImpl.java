@@ -56,7 +56,11 @@ public class ClientLocationServiceImpl implements ClientLocationService {
 
 
     @Override
-    @Audited(action = "location.report", includeArgs = false)
+    @Audited(
+            action = "location.report",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST,
+            includeArgs = false)
     @Transactional(rollbackFor = Exception.class)
     public Long report(Long sessionId, ClientLocationReportDTO dto, Long userId) {
         validateIdentity(userId, sessionId);
@@ -115,7 +119,11 @@ public class ClientLocationServiceImpl implements ClientLocationService {
     }
 
     @Override
-    @Audited(action = "location.consent.grant", includeArgs = false)
+    @Audited(
+            action = "location.consent.grant",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST,
+            includeArgs = false)
     @Transactional(rollbackFor = Exception.class)
     public LocationAuthorizationVO grantAuthorization(Long userId) {
         validateUserId(userId);
@@ -147,7 +155,11 @@ public class ClientLocationServiceImpl implements ClientLocationService {
     }
 
     @Override
-    @Audited(action = "location.consent.revoke", includeArgs = false)
+    @Audited(
+            action = "location.consent.revoke",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST,
+            includeArgs = false)
     @Transactional(rollbackFor = Exception.class)
     public LocationAuthorizationVO revokeAuthorization(Long userId) {
         validateUserId(userId);
@@ -174,7 +186,11 @@ public class ClientLocationServiceImpl implements ClientLocationService {
     }
 
     @Override
-    @Audited(action = "location.history.clear", includeArgs = false)
+    @Audited(
+            action = "location.history.clear",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST,
+            includeArgs = false)
     @Transactional(rollbackFor = Exception.class)
     public long clearOwnedHistory(Long userId) {
         validateUserId(userId);

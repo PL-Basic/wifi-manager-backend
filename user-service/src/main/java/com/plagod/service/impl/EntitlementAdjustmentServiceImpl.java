@@ -35,7 +35,10 @@ public class EntitlementAdjustmentServiceImpl implements EntitlementAdjustmentSe
     private EntitlementUsageLogMapper usageLogMapper;
 
     @Override
-    @Audited(action = "entitlement.adjust")
+    @Audited(
+            action = "entitlement.adjust",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     @Transactional(rollbackFor = Exception.class)
     public EntitlementSnapshotVO adjust(Long tenantId, Long userId, Long operatorId, String operatorName, EntitlementAdjustmentRequest request) {
 
@@ -79,7 +82,10 @@ public class EntitlementAdjustmentServiceImpl implements EntitlementAdjustmentSe
     }
 
     @Override
-    @Audited(action = "entitlement.unlimited.adjust")
+    @Audited(
+            action = "entitlement.unlimited.adjust",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     @Transactional(rollbackFor = Exception.class)
     public EntitlementSnapshotVO adjustUnlimited(Long tenantId,
                                                  Long userId,

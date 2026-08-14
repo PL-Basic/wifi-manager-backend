@@ -78,6 +78,10 @@ spring:
 wifi:
   internal:
     token: ${WIFI_INTERNAL_TOKEN:local-internal-token-change-me}
+  internal-http:
+    max-idle-millis: ${WIFI_INTERNAL_HTTP_MAX_IDLE_MILLIS:5000}
+    max-life-millis: ${WIFI_INTERNAL_HTTP_MAX_LIFE_MILLIS:300000}
+    eviction-interval-millis: ${WIFI_INTERNAL_HTTP_EVICTION_INTERVAL_MILLIS:5000}
   jwt:
     # 默认关闭旧 JWT；灰度部署时只允许设置一个明确的 ISO-8601 UTC 截止时间。
     legacy-accept-until: ${WIFI_JWT_LEGACY_ACCEPT_UNTIL:1970-01-01T00:00:00Z}
