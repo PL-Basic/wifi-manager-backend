@@ -1,5 +1,7 @@
 package com.plagod.client;
 
+import com.plagod.configuration.InternalWebClientConfiguration;
+import com.plagod.request.RequestId;
 import com.plagod.service.GatewayValidationException;
 import com.plagod.vo.auth.SessionValidationVO;
 import org.junit.jupiter.api.Test;
@@ -13,6 +15,7 @@ import reactor.core.publisher.Mono;
 
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -55,9 +58,49 @@ class AuthSessionWebClientTest {
         assertEquals(503, exception.getHttpStatus());
     }
 
+    @Test
+    void mapsRejectedSessionToStableSessionExpiredError() {
+        ExchangeFunction exchange = request -> Mono.just(
+                ClientResponse.create(HttpStatus.UNAUTHORIZED).build());
+        AuthSessionWebClient client = client(exchange);
+
+        GatewayValidationException exception = assertThrows(
+                GatewayValidationException.class,
+                () -> client.validate(
+                        "session-id",
+                        7L,
+                        "access-jti").block());
+
+        assertEquals(401, exception.getHttpStatus());
+        assertEquals("SESSION_EXPIRED", exception.getErrorKey());
+    }
+
+    @Test
+    void propagatesGatewayRequestIdToAuthValidation() {
+        String requestId = "request_01JABCDEF1234";
+        AtomicReference<String> forwarded = new AtomicReference<>();
+        ExchangeFunction exchange = request -> {
+            forwarded.set(request.headers().getFirst(
+                    RequestId.HEADER_NAME));
+            return Mono.just(successResponse());
+        };
+        AuthSessionWebClient client = client(exchange);
+
+        client.validate("session-id", 7L, "access-jti")
+                .subscriberContext(context -> context.put(
+                        RequestId.REQUEST_ATTRIBUTE,
+                        requestId))
+                .block();
+
+        assertEquals(requestId, forwarded.get());
+    }
+
     private AuthSessionWebClient client(ExchangeFunction exchange) {
         return new AuthSessionWebClient(
-                WebClient.builder().exchangeFunction(exchange),
+                WebClient.builder()
+                        .filter(new InternalWebClientConfiguration()
+                                .internalRequestIdExchangeFilter())
+                        .exchangeFunction(exchange),
                 INTERNAL_TOKEN,
                 2000L);
     }

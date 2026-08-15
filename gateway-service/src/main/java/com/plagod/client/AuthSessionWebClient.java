@@ -1,6 +1,7 @@
 package com.plagod.client;
 
 import com.plagod.dto.ApiResponse;
+import com.plagod.exception.ApiErrorKey;
 import com.plagod.service.GatewayValidationException;
 import com.plagod.vo.auth.SessionValidationVO;
 import org.slf4j.Logger;
@@ -58,7 +59,10 @@ public class AuthSessionWebClient {
                             int status = response.statusCode().value();
                             LOGGER.warn("gateway auth session validation rejected: status={}", status);
                             return Mono.error(new GatewayValidationException(
-                                    status, status, "登录会话已经失效"));
+                                    status,
+                                    status,
+                                    ApiErrorKey.SESSION_EXPIRED.value(),
+                                    "登录会话已经失效"));
                         })
                 .onStatus(
                         HttpStatus::isError,
