@@ -13,7 +13,12 @@ public interface EntitlementOrderService {
 
     EntitlementOrderVO createOrder(Long tenantId, Long userId, EntitlementOrderCreateRequest request);
 
-    EntitlementOrderPageResult pageOwnOrders(Long tenantId, Long userId, long current, long size, String status);
+    EntitlementOrderPageResult pageOwnOrders(
+            Long tenantId,
+            Long userId,
+            Integer current,
+            Integer size,
+            String status);
 
     EntitlementOrderVO getOwnOrder(Long tenantId, Long userId, String orderNo);
 

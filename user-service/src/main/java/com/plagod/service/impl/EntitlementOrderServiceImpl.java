@@ -16,6 +16,7 @@ import com.plagod.mapper.TradeStatusLogMapper;
 import com.plagod.mapper.UserMapper;
 import com.plagod.service.EntitlementOrderService;
 import com.plagod.service.EntitlementPricingService;
+import com.plagod.support.PageBounds;
 import com.plagod.vo.entitlement.EntitlementOrderPageResult;
 import com.plagod.vo.entitlement.EntitlementOrderVO;
 import com.plagod.vo.entitlement.EntitlementProductVO;
@@ -170,13 +171,17 @@ public class EntitlementOrderServiceImpl implements EntitlementOrderService {
 
     @Override
     @Transactional(readOnly = true)
-    public EntitlementOrderPageResult pageOwnOrders(Long tenantId, Long userId, long current, long size, String status) {
+    public EntitlementOrderPageResult pageOwnOrders(
+            Long tenantId,
+            Long userId,
+            Integer current,
+            Integer size,
+            String status) {
 
         requireTenantId(tenantId);
         requireUserId(userId);
 
-        long pageCurrent = current <= 0 ? 1 : current;
-        long pageSize = size <= 0 ? 10 : Math.min(size, 100);
+        PageBounds pageBounds = PageBounds.of(current, size);
 
         QueryWrapper<EntitlementOrder> wrapper = new QueryWrapper<>();
         wrapper.eq("tenant_id", tenantId).eq("user_id", userId);
@@ -186,8 +191,13 @@ public class EntitlementOrderServiceImpl implements EntitlementOrderService {
         }
 
         wrapper.orderByDesc("create_time");
+        wrapper.orderByDesc("order_id");
 
-        Page<EntitlementOrder> page = orderMapper.selectPage(new Page<>(pageCurrent, pageSize), wrapper);
+        Page<EntitlementOrder> page = orderMapper.selectPage(
+                new Page<>(
+                        pageBounds.getCurrent(),
+                        pageBounds.getSize()),
+                wrapper);
 
         List<EntitlementOrderVO> records = new ArrayList<>();
         for (EntitlementOrder order : page.getRecords()) {

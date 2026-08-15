@@ -37,8 +37,8 @@ public class EntitlementOrderController {
     @GetMapping("/orders")
     public ApiResponse<EntitlementOrderPageResult> pageOrders(@RequestHeader("X-Tenant-Id") String tenantId,
                                                               @RequestHeader("X-User-Id") Long userId,
-                                                              @RequestParam(defaultValue = "1") Long current,
-                                                              @RequestParam(defaultValue = "10") Long size,
+                                                              @RequestParam(defaultValue = "1") Integer current,
+                                                              @RequestParam(defaultValue = "10") Integer size,
                                                               @RequestParam(required = false) String status) {
 
         return ApiResponse.success(orderService.pageOwnOrders(

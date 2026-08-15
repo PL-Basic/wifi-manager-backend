@@ -18,6 +18,7 @@ import com.plagod.vo.user.UserRoleSnapshotVO;
 import com.plagod.entity.user.User;
 import com.plagod.mapper.UserMapper;
 import com.plagod.service.UserManageService;
+import com.plagod.support.PageBounds;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -48,9 +49,11 @@ public class UserManageServiceImpl implements UserManageService {
     private String internalToken;
 
     @Override
-    public UserPageResult pageUsers(long current, long size, String keyword) {
-        long pageCurrent = current <= 0 ? 1 : current;
-        long pageSize = size <= 0 ? 10 : Math.min(size, 100);
+    public UserPageResult pageUsers(
+            Integer current,
+            Integer size,
+            String keyword) {
+        PageBounds pageBounds = PageBounds.of(current, size);
 
         QueryWrapper<User> queryWrapper = new QueryWrapper<>();
         if (StringUtils.hasText(keyword)) {
@@ -61,8 +64,13 @@ public class UserManageServiceImpl implements UserManageService {
                     .or().like("phone", keyword));
         }
         queryWrapper.orderByDesc("create_time");
+        queryWrapper.orderByDesc("user_id");
 
-        Page<User> page = userMapper.selectPage(new Page<>(pageCurrent, pageSize), queryWrapper);
+        Page<User> page = userMapper.selectPage(
+                new Page<>(
+                        pageBounds.getCurrent(),
+                        pageBounds.getSize()),
+                queryWrapper);
         List<UserVO> records = new ArrayList<>();
         for (User user : page.getRecords()) {
             records.add(toVO(user));

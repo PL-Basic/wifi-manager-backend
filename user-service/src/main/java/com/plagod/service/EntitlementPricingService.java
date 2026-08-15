@@ -1,6 +1,7 @@
 package com.plagod.service;
 
 import com.plagod.configuration.EntitlementProductProperties;
+import com.plagod.support.StableUnits;
 import com.plagod.constant.EntitlementTradeConstants;
 import lombok.Data;
 import org.springframework.stereotype.Service;
@@ -11,6 +12,10 @@ import java.util.List;
 
 @Service
 public class EntitlementPricingService {
+
+    private static final long SECONDS_PER_HOUR =
+            (long) StableUnits.SECONDS_PER_MINUTE
+                    * StableUnits.SECONDS_PER_MINUTE;
 
     private final EntitlementProductProperties properties;
 
@@ -84,10 +89,11 @@ public class EntitlementPricingService {
                     properties.normalizeMode(product.getMode()))) {
                 continue;
             }
-            if (product.getGrantSeconds() % 3600 != 0) {
+            if (product.getGrantSeconds() % SECONDS_PER_HOUR != 0) {
                 throw new IllegalStateException("固定时长商品必须按整小时配置");
             }
-            int hours = Math.toIntExact(product.getGrantSeconds() / 3600);
+            int hours = Math.toIntExact(
+                    product.getGrantSeconds() / SECONDS_PER_HOUR);
             maxHours = Math.max(maxHours, hours);
             durationProducts.add(product);
         }
@@ -103,7 +109,8 @@ public class EntitlementPricingService {
 
         for (int hour = 1; hour <= limit; hour++) {
             for (EntitlementProductProperties.Product product : durationProducts) {
-                int productHours = Math.toIntExact(product.getGrantSeconds() / 3600);
+                int productHours = Math.toIntExact(
+                        product.getGrantSeconds() / SECONDS_PER_HOUR);
                 if (hour >= productHours && costs[hour - productHours] != unreachable) {
                     costs[hour] = Math.min(
                             costs[hour],

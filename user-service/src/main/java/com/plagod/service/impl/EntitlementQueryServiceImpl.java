@@ -10,6 +10,7 @@ import com.plagod.mapper.DurationPurchaseMapper;
 import com.plagod.mapper.EntitlementUsageLogMapper;
 import com.plagod.mapper.NetworkEntitlementMapper;
 import com.plagod.service.EntitlementQueryService;
+import com.plagod.support.PageBounds;
 import com.plagod.vo.entitlement.*;
 import com.plagod.vo.user.EntitlementSnapshotVO;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -60,19 +61,26 @@ public class EntitlementQueryServiceImpl implements EntitlementQueryService {
     }
 
     @Override
-    public DurationPurchasePageResult pagePurchases(Long tenantId, Long userId, long current, long size) {
+    public DurationPurchasePageResult pagePurchases(
+            Long tenantId,
+            Long userId,
+            Integer current,
+            Integer size) {
 
         requireTenantId(tenantId);
         requireUserId(userId);
-        long pageCurrent = current <= 0 ? 1 : current;
-        long pageSize = size <= 0 ? 10 : Math.min(size, 100);
+        PageBounds pageBounds = PageBounds.of(current, size);
 
         QueryWrapper<DurationPurchase> wrapper = new QueryWrapper<>();
         wrapper.eq("tenant_id", tenantId).eq("user_id", userId)
                 .orderByDesc("create_time")
                 .orderByDesc("purchase_id");
 
-        Page<DurationPurchase> page = purchaseMapper.selectPage(new Page<>(pageCurrent, pageSize), wrapper);
+        Page<DurationPurchase> page = purchaseMapper.selectPage(
+                new Page<>(
+                        pageBounds.getCurrent(),
+                        pageBounds.getSize()),
+                wrapper);
 
         List<DurationPurchaseVO> records = new ArrayList<>();
         for (DurationPurchase purchase : page.getRecords()) {
@@ -88,19 +96,26 @@ public class EntitlementQueryServiceImpl implements EntitlementQueryService {
     }
 
     @Override
-    public EntitlementUsagePageResult pageUsageLogs(Long tenantId, Long userId, long current, long size) {
+    public EntitlementUsagePageResult pageUsageLogs(
+            Long tenantId,
+            Long userId,
+            Integer current,
+            Integer size) {
 
         requireTenantId(tenantId);
         requireUserId(userId);
-        long pageCurrent = current <= 0 ? 1 : current;
-        long pageSize = size <= 0 ? 10 : Math.min(size, 100);
+        PageBounds pageBounds = PageBounds.of(current, size);
 
         QueryWrapper<EntitlementUsageLog> wrapper = new QueryWrapper<>();
         wrapper.eq("tenant_id", tenantId).eq("user_id", userId)
                 .orderByDesc("create_time")
                 .orderByDesc("id");
 
-        Page<EntitlementUsageLog> page = usageLogMapper.selectPage(new Page<>(pageCurrent, pageSize), wrapper);
+        Page<EntitlementUsageLog> page = usageLogMapper.selectPage(
+                new Page<>(
+                        pageBounds.getCurrent(),
+                        pageBounds.getSize()),
+                wrapper);
 
         List<EntitlementUsageLogVO> records = new ArrayList<>();
 

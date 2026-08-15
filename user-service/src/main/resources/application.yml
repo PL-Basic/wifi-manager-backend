@@ -1,6 +1,13 @@
 server:
   port: 8382
 
+management:
+  endpoint:
+    health:
+      group:
+        readiness:
+          include: readinessState,db
+
 spring:
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver

@@ -10,7 +10,15 @@ public interface EntitlementQueryService {
 
     EntitlementSnapshotVO getByUserId(Long tenantId, Long userId);
 
-    DurationPurchasePageResult pagePurchases(Long tenantId, Long userId, long current, long size);
+    DurationPurchasePageResult pagePurchases(
+            Long tenantId,
+            Long userId,
+            Integer current,
+            Integer size);
 
-    EntitlementUsagePageResult pageUsageLogs(Long tenantId, Long userId, long current, long size);
+    EntitlementUsagePageResult pageUsageLogs(
+            Long tenantId,
+            Long userId,
+            Integer current,
+            Integer size);
 }

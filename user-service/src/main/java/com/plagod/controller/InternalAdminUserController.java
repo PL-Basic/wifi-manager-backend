@@ -27,8 +27,8 @@ public class InternalAdminUserController {
     private UserOperationRequestService userOperationRequestService;
 
     @GetMapping
-    public ApiResponse<UserPageResult> pageUsers(@RequestParam(defaultValue = "1") Long current,
-                                                 @RequestParam(defaultValue = "10") Long size,
+    public ApiResponse<UserPageResult> pageUsers(@RequestParam(defaultValue = "1") Integer current,
+                                                 @RequestParam(defaultValue = "10") Integer size,
                                                  @RequestParam(required = false) String keyword) {
 
         return ApiResponse.success(userManageService.pageUsers(current, size, keyword));
@@ -140,8 +140,8 @@ public class InternalAdminUserController {
 
     @GetMapping("/operation-requests")
     public ApiResponse<UserOperationRequestPageResult>
-    pageOperationRequests(@RequestParam(defaultValue = "1") Long current,
-                          @RequestParam(defaultValue = "10") Long size,
+    pageOperationRequests(@RequestParam(defaultValue = "1") Integer current,
+                          @RequestParam(defaultValue = "10") Integer size,
                           @RequestParam(required = false) Integer status) {
 
         return ApiResponse.success(userOperationRequestService.pageRequests(current, size, status));

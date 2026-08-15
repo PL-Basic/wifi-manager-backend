@@ -55,7 +55,7 @@ public class InternalAdminEntitlementController {
     public ApiResponse<DurationPurchasePageResult> pagePurchases(
                                                                  @RequestHeader("X-Tenant-Id") String tenantId,
                                                                  @PathVariable Long userId,
-                                                                 @RequestParam(defaultValue = "1") Long current, @RequestParam(defaultValue = "10") Long size) {
+                                                                 @RequestParam(defaultValue = "1") Integer current, @RequestParam(defaultValue = "10") Integer size) {
 
         return ApiResponse.success(queryService.pagePurchases(
                 TenantScopeUtils.requireTenantId(tenantId), userId, current, size));
@@ -65,8 +65,8 @@ public class InternalAdminEntitlementController {
     public ApiResponse<EntitlementUsagePageResult> pageUsageLogs(
                                                                  @RequestHeader("X-Tenant-Id") String tenantId,
                                                                  @PathVariable Long userId,
-                                                                 @RequestParam(defaultValue = "1") Long current,
-                                                                 @RequestParam(defaultValue = "10") Long size) {
+                                                                 @RequestParam(defaultValue = "1") Integer current,
+                                                                 @RequestParam(defaultValue = "10") Integer size) {
 
         return ApiResponse.success(queryService.pageUsageLogs(
                 TenantScopeUtils.requireTenantId(tenantId), userId, current, size));
@@ -145,9 +145,9 @@ public class InternalAdminEntitlementController {
     }
 
     @GetMapping("/refunds")
-    public ApiResponse<RefundPageResult> pageRefunds(@RequestParam(defaultValue = "1") Long current,
+    public ApiResponse<RefundPageResult> pageRefunds(@RequestParam(defaultValue = "1") Integer current,
                                                      @RequestHeader("X-Tenant-Id") String tenantId,
-                                                     @RequestParam(defaultValue = "10") Long size,
+                                                     @RequestParam(defaultValue = "10") Integer size,
                                                      @RequestParam(required = false) Long userId,
                                                      @RequestParam(required = false) String status) {
 

@@ -2,6 +2,7 @@ package com.plagod.configuration;
 
 import com.plagod.constant.EntitlementTradeConstants;
 import lombok.Data;
+import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -18,7 +19,7 @@ import java.util.stream.Collectors;
 @Data
 @Component
 @ConfigurationProperties(prefix = "wifi.entitlement")
-public class EntitlementProductProperties {
+public class EntitlementProductProperties implements InitializingBean {
 
     public static final String CUSTOM_DURATION_PRODUCT_CODE = "DURATION_CUSTOM";
     private static final Set<Integer> ALLOWED_SUBSCRIPTION_MONTHS =
@@ -31,6 +32,26 @@ public class EntitlementProductProperties {
     private long customDurationMinAmountCents = 100L;
     private long customDurationMaxAmountCents = 100000L;
     private long customDurationSecondsPerCent = 180L;
+
+    @Override
+    public void afterPropertiesSet() {
+        if (orderExpireMinutes < 1 || orderExpireMinutes > 1440) {
+            throw new IllegalStateException(
+                    "wifi.entitlement.order-expire-minutes "
+                            + "must be between 1 and 1440");
+        }
+        effectivePricingVersion();
+        validateCustomDurationConfiguration();
+        try {
+            Math.multiplyExact(
+                    customDurationMaxAmountCents,
+                    customDurationSecondsPerCent);
+        } catch (ArithmeticException exception) {
+            throw new IllegalStateException(
+                    "自定义时长商品最大金额与秒数换算溢出");
+        }
+        getEnabledProducts();
+    }
 
     public Product requireOrderProduct(String rawProductCode, Long customAmountCents) {
         String productCode = normalizeProductCode(rawProductCode);
@@ -114,10 +135,7 @@ public class EntitlementProductProperties {
     }
 
     public int effectiveOrderExpireMinutes() {
-        if (orderExpireMinutes <= 0) {
-            return 15;
-        }
-        return Math.min(orderExpireMinutes, 1440);
+        return orderExpireMinutes;
     }
 
     public int effectivePricingVersion() {

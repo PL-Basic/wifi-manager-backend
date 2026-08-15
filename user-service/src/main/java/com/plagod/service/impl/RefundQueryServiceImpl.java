@@ -7,6 +7,7 @@ import com.plagod.entity.entitlement.RefundRecord;
 import com.plagod.exception.ApiStatusException;
 import com.plagod.mapper.RefundRecordMapper;
 import com.plagod.service.RefundQueryService;
+import com.plagod.support.PageBounds;
 import com.plagod.vo.entitlement.RefundPageResult;
 import com.plagod.vo.entitlement.RefundVO;
 import org.springframework.beans.BeanUtils;
@@ -40,7 +41,12 @@ public class RefundQueryServiceImpl implements RefundQueryService {
 
     @Override
     @Transactional(readOnly = true)
-    public RefundPageResult pageOwnRefunds(Long tenantId, Long userId, long current, long size, String status) {
+    public RefundPageResult pageOwnRefunds(
+            Long tenantId,
+            Long userId,
+            Integer current,
+            Integer size,
+            String status) {
 
         requireTenantId(tenantId);
         requireUserId(userId);
@@ -66,7 +72,12 @@ public class RefundQueryServiceImpl implements RefundQueryService {
 
     @Override
     @Transactional(readOnly = true)
-    public RefundPageResult pageForAdmin(Long tenantId, long current, long size, Long userId, String status) {
+    public RefundPageResult pageForAdmin(
+            Long tenantId,
+            Integer current,
+            Integer size,
+            Long userId,
+            String status) {
 
         requireTenantId(tenantId);
         if (userId != null && userId <= 0) {
@@ -87,10 +98,14 @@ public class RefundQueryServiceImpl implements RefundQueryService {
         return toVO(refund);
     }
 
-    private RefundPageResult page(Long tenantId, long current, long size, Long userId, String status) {
+    private RefundPageResult page(
+            Long tenantId,
+            Integer current,
+            Integer size,
+            Long userId,
+            String status) {
 
-        long pageCurrent = current <= 0 ? 1 : current;
-        long pageSize = size <= 0 ? 10 : Math.min(size, 100);
+        PageBounds pageBounds = PageBounds.of(current, size);
 
         QueryWrapper<RefundRecord> wrapper = new QueryWrapper<>();
         wrapper.eq("tenant_id", tenantId);
@@ -107,7 +122,11 @@ public class RefundQueryServiceImpl implements RefundQueryService {
         wrapper.orderByDesc("create_time");
         wrapper.orderByDesc("refund_id");
 
-        Page<RefundRecord> page = refundMapper.selectPage(new Page<>(pageCurrent, pageSize), wrapper);
+        Page<RefundRecord> page = refundMapper.selectPage(
+                new Page<>(
+                        pageBounds.getCurrent(),
+                        pageBounds.getSize()),
+                wrapper);
 
         List<RefundVO> records = new ArrayList<>();
         for (RefundRecord refund : page.getRecords()) {

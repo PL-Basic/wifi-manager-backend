@@ -26,8 +26,8 @@ public class EntitlementQueryController {
     @GetMapping("/purchases")
     public ApiResponse<DurationPurchasePageResult> pagePurchases(@RequestHeader("X-Tenant-Id") String tenantId,
                                                                  @RequestHeader("X-User-Id") Long userId,
-                                                                 @RequestParam(defaultValue = "1") Long current,
-                                                                 @RequestParam(defaultValue = "10") Long size) {
+                                                                 @RequestParam(defaultValue = "1") Integer current,
+                                                                 @RequestParam(defaultValue = "10") Integer size) {
         return ApiResponse.success(queryService.pagePurchases(
                 TenantScopeUtils.requireTenantId(tenantId), userId, current, size));
     }
@@ -35,8 +35,8 @@ public class EntitlementQueryController {
     @GetMapping("/usage-logs")
     public ApiResponse<EntitlementUsagePageResult> pageUsageLogs(@RequestHeader("X-Tenant-Id") String tenantId,
                                                                  @RequestHeader("X-User-Id") Long userId,
-                                                                 @RequestParam(defaultValue = "1") Long current,
-                                                                 @RequestParam(defaultValue = "10") Long size) {
+                                                                 @RequestParam(defaultValue = "1") Integer current,
+                                                                 @RequestParam(defaultValue = "10") Integer size) {
 
         return ApiResponse.success(queryService.pageUsageLogs(
                 TenantScopeUtils.requireTenantId(tenantId), userId, current, size));

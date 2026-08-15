@@ -34,8 +34,8 @@ public class EntitlementRefundController {
     @GetMapping
     public ApiResponse<RefundPageResult> pageOwnRefunds(@RequestHeader("X-User-Id") Long userId,
                                                         @RequestHeader("X-Tenant-Id") String tenantId,
-                                                        @RequestParam(defaultValue = "1") Long current,
-                                                        @RequestParam(defaultValue = "10") Long size,
+                                                        @RequestParam(defaultValue = "1") Integer current,
+                                                        @RequestParam(defaultValue = "10") Integer size,
                                                         @RequestParam(required = false) String status) {
 
         return ApiResponse.success(refundQueryService.pageOwnRefunds(
