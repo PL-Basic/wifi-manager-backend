@@ -3,6 +3,7 @@ package com.plagod.ws;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.plagod.web.SafeExceptionLogFormatter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -95,7 +96,10 @@ public class AlertWebSocketHandler extends TextWebSocketHandler implements SubPr
         sessions.remove(session.getId());
         lastPongTimes.remove(session.getId());
 
-        log.warn("alert websocket transport error: sessionId={}, message={}", session.getId(), exception.getMessage());
+        log.warn(
+                "alert websocket transport error: sessionId={}, safeStack={}",
+                session.getId(),
+                SafeExceptionLogFormatter.format(exception));
 
         if (session.isOpen()) {
             session.close(CloseStatus.SERVER_ERROR);
@@ -112,7 +116,9 @@ public class AlertWebSocketHandler extends TextWebSocketHandler implements SubPr
         try {
             json = objectMapper.writeValueAsString(payload);
         } catch (JsonProcessingException exception) {
-            log.warn("alert websocket serialization failed: {}", exception.getMessage());
+            log.warn(
+                    "alert websocket serialization failed: safeStack={}",
+                    SafeExceptionLogFormatter.format(exception));
             return;
         }
 
@@ -131,7 +137,10 @@ public class AlertWebSocketHandler extends TextWebSocketHandler implements SubPr
             } catch (Exception exception) {
                 sessions.remove(session.getId());
 
-                log.warn("alert websocket send failed: sessionId={}, message={}", session.getId(), exception.getMessage());
+                log.warn(
+                        "alert websocket send failed: sessionId={}, safeStack={}",
+                        session.getId(),
+                        SafeExceptionLogFormatter.format(exception));
 
                 closeQuietly(session);
             }
@@ -164,7 +173,10 @@ public class AlertWebSocketHandler extends TextWebSocketHandler implements SubPr
             try {
                 session.sendMessage(ping);
             } catch (Exception exception) {
-                log.warn("alert websocket heartbeat failed: sessionId={}, message={}", session.getId(), exception.getMessage());
+                log.warn(
+                        "alert websocket heartbeat failed: sessionId={}, safeStack={}",
+                        session.getId(),
+                        SafeExceptionLogFormatter.format(exception));
                 removeAndClose(session, CloseStatus.SERVER_ERROR);
             }
         }

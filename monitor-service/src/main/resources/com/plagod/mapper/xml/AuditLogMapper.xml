@@ -47,7 +47,7 @@
                 and create_time <![CDATA[ <= ]]> #{endTime}
             </if>
         </where>
-        order by create_time desc
+        order by create_time desc, id desc
     </select>
 
     <select id="selectAuditById" resultMap="auditLogResultMap">

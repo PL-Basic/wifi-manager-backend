@@ -7,6 +7,7 @@ import com.plagod.vo.monitor.AlertEventVO;
 import com.plagod.entity.monitor.AlertEvent;
 import com.plagod.mapper.AlertEventMapper;
 import com.plagod.service.AlertEventService;
+import com.plagod.support.PageBounds;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -25,8 +26,13 @@ public class AlertEventServiceImpl implements AlertEventService {
     @Override
     public AlertEventPageResult pageAlerts(long current, long size, Integer level, Integer status, String mac,
                                            LocalDateTime startTime, LocalDateTime endTime) {
-        long pageCurrent = current <= 0 ? 1 : current;
-        long pageSize = size <= 0 ? 10 : Math.min(size, 100);
+        PageBounds pageBounds = PageBounds.of(
+                current <= 0L
+                        ? null
+                        : (int) Math.min(current, Integer.MAX_VALUE),
+                size <= 0L
+                        ? null
+                        : (int) Math.min(size, Integer.MAX_VALUE));
 
         QueryWrapper<AlertEvent> queryWrapper = new QueryWrapper<>();
         if (level != null) {
@@ -44,10 +50,14 @@ public class AlertEventServiceImpl implements AlertEventService {
         if (endTime != null) {
             queryWrapper.le("create_time", endTime);
         }
-        queryWrapper.orderByDesc("create_time");
+        queryWrapper.orderByDesc("create_time").orderByDesc("id");
 
         com.baomidou.mybatisplus.extension.plugins.pagination.Page<AlertEvent> page =
-                alertEventMapper.selectPage(new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(pageCurrent, pageSize), queryWrapper);
+                alertEventMapper.selectPage(
+                        new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(
+                                pageBounds.getCurrent(),
+                                pageBounds.getSize()),
+                        queryWrapper);
 
         List<AlertEventVO> records = new ArrayList<>();
         for (AlertEvent item : page.getRecords()) {

@@ -17,6 +17,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.time.LocalDateTime;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -118,6 +119,23 @@ class AuditLogMapperBoundaryTest {
         assertEquals(
                 expectedColumnMappings(),
                 columnToProperty);
+    }
+
+    @Test
+    void auditPageUsesStableCreateTimeAndIdSort() throws Exception {
+        MappedStatement statement = mapperConfiguration()
+                .getMappedStatement(
+                        NAMESPACE + "selectAuditPage",
+                        false);
+        String sql = statement.getBoundSql(new HashMap<String, Object>())
+                .getSql()
+                .replaceAll("\\s+", " ")
+                .trim()
+                .toLowerCase(java.util.Locale.ROOT);
+
+        assertTrue(
+                sql.endsWith("order by create_time desc, id desc"),
+                sql);
     }
 
     private Method declaredMethod(String name, Class<?>... parameterTypes) {

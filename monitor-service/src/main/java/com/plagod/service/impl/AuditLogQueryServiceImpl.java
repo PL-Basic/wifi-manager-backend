@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.plagod.entity.monitor.AuditLog;
 import com.plagod.mapper.AuditLogMapper;
 import com.plagod.service.AuditLogQueryService;
+import com.plagod.support.PageBounds;
 import com.plagod.vo.monitor.AuditLogPageResult;
 import com.plagod.vo.monitor.AuditLogVO;
 import org.springframework.beans.BeanUtils;
@@ -24,11 +25,18 @@ public class AuditLogQueryServiceImpl implements AuditLogQueryService {
     @Override
     public AuditLogPageResult pageAudits(long current, long size, String action, String operatorName, String target,
                                          LocalDateTime startTime, LocalDateTime endTime) {
-        long pageCurrent = current <= 0 ? 1 : current;
-        long pageSize = size <= 0 ? 10 : Math.min(size, 100);
+        PageBounds pageBounds = PageBounds.of(
+                current <= 0L
+                        ? null
+                        : (int) Math.min(current, Integer.MAX_VALUE),
+                size <= 0L
+                        ? null
+                        : (int) Math.min(size, Integer.MAX_VALUE));
 
         Page<AuditLog> page = auditLogMapper.selectAuditPage(
-                new Page<>(pageCurrent, pageSize),
+                new Page<>(
+                        pageBounds.getCurrent(),
+                        pageBounds.getSize()),
                 normalizeFilter(action),
                 normalizeFilter(operatorName),
                 normalizeFilter(target),

@@ -12,6 +12,8 @@ import com.plagod.exception.ApiStatusException;
 import com.plagod.mapper.ClientLocationMapper;
 import com.plagod.mapper.LocationAuthorizationMapper;
 import com.plagod.service.ClientLocationService;
+import com.plagod.support.PageBounds;
+import com.plagod.support.StableUnits;
 import com.plagod.service.GeofenceEvaluationService;
 import com.plagod.util.GeoMath;
 import com.plagod.vo.device.LocationSessionContextVO;
@@ -230,8 +232,13 @@ public class ClientLocationServiceImpl implements ClientLocationService {
             throw new IllegalArgumentException("结束时间不能早于开始时间");
         }
 
-        long pageCurrent = current <= 0 ? 1 : current;
-        long pageSize = size <= 0 ? 10 : Math.min(size, 100);
+        PageBounds pageBounds = PageBounds.of(
+                current <= 0L
+                        ? null
+                        : (int) Math.min(current, Integer.MAX_VALUE),
+                size <= 0L
+                        ? null
+                        : (int) Math.min(size, Integer.MAX_VALUE));
 
         QueryWrapper<ClientLocation> query = new QueryWrapper<>();
 
@@ -250,7 +257,11 @@ public class ClientLocationServiceImpl implements ClientLocationService {
         query.orderByDesc("report_time")
                 .orderByDesc("id");
 
-        Page<ClientLocation> resultPage = clientLocationMapper.selectPage(new Page<>(pageCurrent, pageSize), query);
+        Page<ClientLocation> resultPage = clientLocationMapper.selectPage(
+                new Page<>(
+                        pageBounds.getCurrent(),
+                        pageBounds.getSize()),
+                query);
 
         List<ClientLocationVO> records = new ArrayList<>();
 
@@ -397,7 +408,12 @@ public class ClientLocationServiceImpl implements ClientLocationService {
 
         long remainingMillis = java.time.Duration.between(now, nextAllowedTime).toMillis();
 
-        long retryAfterSeconds = Math.max(1L, (remainingMillis + 999L) / 1000L);
+        long retryAfterSeconds = Math.max(
+                1L,
+                (remainingMillis
+                        + StableUnits.MILLISECONDS_PER_SECOND
+                        - 1L)
+                        / StableUnits.MILLISECONDS_PER_SECOND);
 
         throw ApiStatusException.tooManyRequests("位置上报过于频繁，请稍后再试", retryAfterSeconds);
     }
@@ -418,7 +434,8 @@ public class ClientLocationServiceImpl implements ClientLocationService {
             throw new IllegalArgumentException("位置上报时间顺序异常");
         }
 
-        double elapsedSeconds = elapsedMillis / 1000.0D;
+        double elapsedSeconds = elapsedMillis
+                / (double) StableUnits.MILLISECONDS_PER_SECOND;
 
         double distanceMeters = GeoMath.distanceMeters(previous.getLatitude(), previous.getLongitude(), current.getLatitude(), current.getLongitude());
 

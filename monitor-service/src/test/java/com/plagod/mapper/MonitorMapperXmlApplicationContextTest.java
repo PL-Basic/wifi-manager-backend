@@ -4,14 +4,19 @@ import com.baomidou.mybatisplus.autoconfigure.MybatisPlusProperties;
 import com.plagod.MonitorApplication;
 import com.plagod.service.AccessRuleCache;
 import com.plagod.testkit.MapperContextAssertions;
+import com.plagod.web.ApiErrorResponseFactory;
+import com.plagod.web.LowCardinalityTagPolicy;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.apache.ibatis.mapping.MappedStatement;
 import org.apache.ibatis.mapping.SqlCommandType;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.actuate.health.HealthEndpoint;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.ApplicationContext;
+import org.springframework.core.env.Environment;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.core.io.Resource;
 
@@ -65,6 +70,43 @@ class MonitorMapperXmlApplicationContextTest {
 
     @Autowired
     private SqlSessionFactory sqlSessionFactory;
+
+    @Autowired
+    private Environment environment;
+
+    @Autowired
+    private HealthEndpoint healthEndpoint;
+
+    @Autowired
+    private MeterRegistry meterRegistry;
+
+    @Autowired
+    private LowCardinalityTagPolicy lowCardinalityTagPolicy;
+
+    @Autowired
+    private ApiErrorResponseFactory apiErrorResponseFactory;
+
+    @Test
+    void realMonitorContextConsumesSharedStableWebInfrastructure() {
+        assertNotNull(healthEndpoint);
+        assertNotNull(meterRegistry);
+        assertNotNull(lowCardinalityTagPolicy);
+        assertNotNull(apiErrorResponseFactory);
+        assertTrue(applicationContext.containsBean(
+                "requestIdFilterRegistration"));
+        assertEquals(
+                "health,info",
+                environment.getProperty(
+                        "management.endpoints.web.exposure.include"));
+        assertEquals(
+                "readinessState,db",
+                environment.getProperty(
+                        "management.endpoint.health.group.readiness.include"));
+        assertEquals(
+                "never",
+                environment.getProperty(
+                        "management.endpoint.health.show-details"));
+    }
 
     @Test
     void realMonitorContextLoadsOwnedMapperXmlStatements() throws Exception {

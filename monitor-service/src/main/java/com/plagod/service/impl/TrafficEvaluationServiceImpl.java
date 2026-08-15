@@ -10,8 +10,10 @@ import com.plagod.vo.device.TrafficEvaluationResult;
 import com.plagod.entity.monitor.AccessRule;
 import com.plagod.entity.monitor.AlertEvent;
 import com.plagod.mapper.AlertEventMapper;
+import com.plagod.observability.MonitorMetrics;
 import com.plagod.service.AccessRuleCache;
 import com.plagod.service.TrafficEvaluationService;
+import com.plagod.support.StableUnits;
 import com.plagod.ws.AlertWebSocketHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,6 +50,9 @@ public class TrafficEvaluationServiceImpl implements TrafficEvaluationService {
     @Autowired
     private RuleHitRecordMapper ruleHitRecordMapper;
 
+    @Autowired
+    private MonitorMetrics monitorMetrics;
+
     @Value("${monitor.evaluation.cooldown-seconds:30}")
     private long cooldownSeconds;
 
@@ -67,7 +72,8 @@ public class TrafficEvaluationServiceImpl implements TrafficEvaluationService {
         validateEventIdentity(request);
 
         long now = System.currentTimeMillis();
-        long cooldownMillis = cooldownSeconds * 1000L;
+        long cooldownMillis = cooldownSeconds
+                * StableUnits.MILLISECONDS_PER_SECOND;
 
         List<RuleHitVO> actionableHits = new ArrayList<>();
         Map<String, Long> cooldownReservations = new LinkedHashMap<>();
@@ -103,10 +109,22 @@ public class TrafficEvaluationServiceImpl implements TrafficEvaluationService {
         }
 
         if (suppressedCount > 0) {
-            log.debug("evaluation persisted {} suppressed hit(s), eventId={}", suppressedCount, request.getEventId());
+            log.debug(
+                    "evaluation persisted {} suppressed hit(s)",
+                    suppressedCount);
         }
 
+        final int committedSuppressedCount = suppressedCount;
         if (actionableHits.isEmpty()) {
+            TransactionSynchronizationManager.registerSynchronization(
+                    new TransactionSynchronizationAdapter() {
+                        @Override
+                        public void afterCommit() {
+                            monitorMetrics.recordTrafficEvaluation(
+                                    false,
+                                    committedSuppressedCount);
+                        }
+                    });
             return result;
         }
 
@@ -134,6 +152,9 @@ public class TrafficEvaluationServiceImpl implements TrafficEvaluationService {
                     @Override
                     public void afterCommit() {
                         broadcast(alert, actionableHits);
+                        monitorMetrics.recordTrafficEvaluation(
+                                true,
+                                committedSuppressedCount);
                     }
                 }
         );
