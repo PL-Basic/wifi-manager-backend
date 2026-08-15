@@ -5,8 +5,10 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.plagod.entity.device.TrafficLog;
 import com.plagod.mapper.TrafficLogMapper;
 import com.plagod.service.TrafficQueryService;
+import com.plagod.support.PageBounds;
 import com.plagod.vo.device.TrafficLogVO;
 import com.plagod.vo.device.TrafficPageResult;
+import com.plagod.utils.DevicePageBounds;
 import com.plagod.utils.TenantScopeUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -46,8 +48,7 @@ public class TrafficQueryServiceImpl implements TrafficQueryService {
             throw new IllegalArgumentException("结束时间不能早于开始时间");
         }
 
-        long pageCurrent = current <= 0 ? 1 : current;
-        long pageSize = size <= 0 ? 10 : Math.min(size, 100);
+        PageBounds pageBounds = DevicePageBounds.normalize(current, size);
 
         QueryWrapper<TrafficLog> query = new QueryWrapper<>();
         query.eq("tenant_id", tenantId);
@@ -79,7 +80,7 @@ public class TrafficQueryServiceImpl implements TrafficQueryService {
                 .orderByDesc("id");
 
         Page<TrafficLog> resultPage = trafficLogMapper.selectPage(
-                new Page<>(pageCurrent, pageSize), query);
+                new Page<>(pageBounds.getCurrent(), pageBounds.getSize()), query);
 
         List<TrafficLogVO> records = new ArrayList<>();
 

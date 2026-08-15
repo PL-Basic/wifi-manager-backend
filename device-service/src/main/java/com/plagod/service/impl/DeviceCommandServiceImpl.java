@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.plagod.audit.Audited;
 import com.plagod.constant.DeviceCommandPurpose;
+import com.plagod.constant.DeviceCommandType;
 import com.plagod.constant.MqttTopics;
 import com.plagod.constant.SessionStatus;
 import com.plagod.dto.AllowClientCommand;
@@ -22,7 +23,9 @@ import com.plagod.mapper.Esp32NodeMapper;
 import com.plagod.mapper.MacBlacklistMapper;
 import com.plagod.mapper.SessionRecordMapper;
 import com.plagod.service.DeviceCommandService;
+import com.plagod.support.PageBounds;
 import com.plagod.utils.TenantScopeUtils;
+import com.plagod.utils.DevicePageBounds;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -370,7 +373,7 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
             command.setRequestId(requestId);
             command.setNodeId(nodeId);
             command.setDeviceCode(normalizedDeviceCode);
-            command.setCommandType("REVOKE_ACCESS");
+            command.setCommandType(DeviceCommandType.REVOKE_ACCESS);
             command.setPurpose(purpose);
             command.setSessionId(sessionId);
             command.setMac(normalizedMac);
@@ -438,8 +441,7 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     @Override
     public DevicePageResult pageDevices(Long tenantId, long current, long size, String keyword) {
         TenantScopeUtils.requireTenantId(tenantId);
-        long pageCurrent = current <= 0 ? 1 : current;
-        long pageSize = size <= 0 ? 10 : Math.min(size, 100);
+        PageBounds pageBounds = DevicePageBounds.normalize(current, size);
 
         QueryWrapper<Esp32Node> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("tenant_id", tenantId);
@@ -450,10 +452,14 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
                     .or().like("location", keyword)
                     .or().like("ip", keyword));
         }
-        queryWrapper.orderByDesc("create_time");
+        queryWrapper.orderByDesc("create_time")
+                .orderByDesc("node_id");
 
         com.baomidou.mybatisplus.extension.plugins.pagination.Page<Esp32Node> page =
-                esp32NodeMapper.selectPage(new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(pageCurrent, pageSize), queryWrapper);
+                esp32NodeMapper.selectPage(
+                        new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(
+                                pageBounds.getCurrent(), pageBounds.getSize()),
+                        queryWrapper);
 
         List<DeviceNodeVO> records = new ArrayList<>();
         for (Esp32Node node : page.getRecords()) {
@@ -473,8 +479,7 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     @Override
     public MacBlacklistPageResult pageBlacklist(Long tenantId, long current, long size, String keyword) {
         TenantScopeUtils.requireTenantId(tenantId);
-        long pageCurrent = current <= 0 ? 1 : current;
-        long pageSize = size <= 0 ? 10 : Math.min(size, 100);
+        PageBounds pageBounds = DevicePageBounds.normalize(current, size);
 
         QueryWrapper<MacBlacklist> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("tenant_id", tenantId);
@@ -483,10 +488,14 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
                     .like("mac", keyword)
                     .or().like("reason", keyword));
         }
-        queryWrapper.orderByDesc("create_time");
+        queryWrapper.orderByDesc("create_time")
+                .orderByDesc("id");
 
         com.baomidou.mybatisplus.extension.plugins.pagination.Page<MacBlacklist> page =
-                macBlacklistMapper.selectPage(new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(pageCurrent, pageSize), queryWrapper);
+                macBlacklistMapper.selectPage(
+                        new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(
+                                pageBounds.getCurrent(), pageBounds.getSize()),
+                        queryWrapper);
 
         List<MacBlacklistVO> records = new ArrayList<>();
         for (MacBlacklist item : page.getRecords()) {
@@ -582,7 +591,7 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
             command.setRequestId(requestId);
             command.setNodeId(nodeId);
             command.setDeviceCode(normalizedDeviceCode);
-            command.setCommandType("ALLOW");
+            command.setCommandType(DeviceCommandType.ALLOW);
             command.setPurpose(purpose);
             command.setSessionId(sessionId);
             command.setMac(normalizedMac);

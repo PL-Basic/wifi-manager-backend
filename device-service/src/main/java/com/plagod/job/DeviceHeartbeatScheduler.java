@@ -1,6 +1,7 @@
 package com.plagod.job;
 
 import com.plagod.service.DeviceHeartbeatService;
+import com.plagod.web.SafeExceptionLogFormatter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -49,7 +50,11 @@ public class DeviceHeartbeatScheduler {
             }
         } catch (Exception exception) {
             // 一次扫描失败不能终止后续定时执行。
-            log.error("设备心跳超时扫描失败，cutoff={}", cutoff, exception);
+            log.error(
+                    "设备心跳超时扫描失败，cutoff={}, type={}, safeStack={}",
+                    cutoff,
+                    exception.getClass().getName(),
+                    SafeExceptionLogFormatter.format(exception));
         }
     }
 }

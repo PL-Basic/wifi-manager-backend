@@ -11,6 +11,7 @@ import com.plagod.security.WifiCommandPayloadCrypto;
 import com.plagod.service.DeviceCommandDispatchService;
 import com.plagod.service.DeviceWifiConfigLifecycleService;
 import com.plagod.service.SessionCommandLifecycleService;
+import com.plagod.web.SafeExceptionLogFormatter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -177,7 +178,13 @@ public class DeviceCommandDispatchServiceImpl implements DeviceCommandDispatchSe
             wifiConfigLifecycleService.handleTerminalCommand(command);
             sessionCommandLifecycleService.handleTerminalCommand(command);
         }
-        log.warn("设备命令发布失败，commandId={}, requestId={}, attempts={}", command.getCommandId(), command.getRequestId(), failedAttempts, exception);
+        log.warn(
+                "设备命令发布失败，commandId={}, requestId={}, attempts={}, type={}, safeStack={}",
+                command.getCommandId(),
+                command.getRequestId(),
+                failedAttempts,
+                exception.getClass().getName(),
+                SafeExceptionLogFormatter.format(exception));
     }
 
     // 显式保存命令运行状态。

@@ -5,6 +5,8 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.plagod.entity.device.ClientSignalRecord;
 import com.plagod.mapper.ClientSignalMapper;
 import com.plagod.service.ClientSignalQueryService;
+import com.plagod.support.PageBounds;
+import com.plagod.utils.DevicePageBounds;
 import com.plagod.vo.device.ClientSignalPageResult;
 import com.plagod.vo.device.ClientSignalVO;
 import com.plagod.utils.TenantScopeUtils;
@@ -47,8 +49,7 @@ public class ClientSignalQueryServiceImpl implements ClientSignalQueryService {
             throw new IllegalArgumentException("结束时间不能早于开始时间");
         }
 
-        long pageCurrent = current <= 0 ? 1 : current;
-        long pageSize = size <= 0 ? 10 : Math.min(size, 100);
+        PageBounds pageBounds = DevicePageBounds.normalize(current, size);
 
         QueryWrapper<ClientSignalRecord> query = new QueryWrapper<>();
         query.eq("tenant_id", tenantId);
@@ -91,7 +92,8 @@ public class ClientSignalQueryServiceImpl implements ClientSignalQueryService {
         query.orderByDesc("report_time")
                 .orderByDesc("id");
 
-        Page<ClientSignalRecord> resultPage = clientSignalMapper.selectPage(new Page<>(pageCurrent, pageSize), query);
+        Page<ClientSignalRecord> resultPage = clientSignalMapper.selectPage(
+                new Page<>(pageBounds.getCurrent(), pageBounds.getSize()), query);
 
         List<ClientSignalVO> records = new ArrayList<>();
 

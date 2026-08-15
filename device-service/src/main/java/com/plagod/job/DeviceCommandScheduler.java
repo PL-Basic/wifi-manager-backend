@@ -3,6 +3,7 @@ package com.plagod.job;
 import com.plagod.constant.DeviceCommandStatus;
 import com.plagod.mapper.DeviceCommandRecordMapper;
 import com.plagod.service.DeviceCommandDispatchService;
+import com.plagod.web.SafeExceptionLogFormatter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -44,7 +45,11 @@ public class DeviceCommandScheduler {
                 // 每条命令通过独立 Bean 获取自己的事务和行锁。
                 commandDispatchService.dispatchOne(commandId);
             } catch (Exception exception) {
-                log.error("Outbox 命令发布处理失败，commandId={}", commandId, exception);
+                log.error(
+                        "Outbox 命令发布处理失败，commandId={}, type={}, safeStack={}",
+                        commandId,
+                        exception.getClass().getName(),
+                        SafeExceptionLogFormatter.format(exception));
             }
         }
     }
@@ -59,7 +64,11 @@ public class DeviceCommandScheduler {
             try {
                 commandDispatchService.timeoutOne(commandId);
             } catch (Exception exception) {
-                log.error("命令结果超时处理失败，commandId={}", commandId, exception);
+                log.error(
+                        "命令结果超时处理失败，commandId={}, type={}, safeStack={}",
+                        commandId,
+                        exception.getClass().getName(),
+                        SafeExceptionLogFormatter.format(exception));
             }
         }
     }

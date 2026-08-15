@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.plagod.entity.device.SessionRecord;
 import com.plagod.mapper.SessionRecordMapper;
 import com.plagod.service.SessionLeaseService;
+import com.plagod.web.SafeExceptionLogFormatter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -42,7 +43,11 @@ public class SessionLeaseScheduler {
                 sessionLeaseService.processSession(sessionId);
             } catch (Exception exception) {
                 // 单个 Session 失败不能阻止其他 Session 继续处理。
-                log.error("Session 续租处理失败，sessionId={}", sessionId, exception);
+                log.error(
+                        "Session 续租处理失败，sessionId={}, type={}, safeStack={}",
+                        sessionId,
+                        exception.getClass().getName(),
+                        SafeExceptionLogFormatter.format(exception));
             }
         }
     }

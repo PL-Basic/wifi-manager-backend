@@ -56,7 +56,7 @@ public class ClientDisconnectEventServiceImpl implements ClientDisconnectEventSe
 
         // 未认证客户端没有后端 Session，不能反向创建。
         if (sessionId == 0) {
-            log.info("忽略未认证客户端断线事件，deviceCode={}, mac={}", deviceCode, event.getMac());
+            log.info("忽略未认证客户端断线事件，deviceCode={}", deviceCode);
             return;
         }
 
@@ -108,7 +108,7 @@ public class ClientDisconnectEventServiceImpl implements ClientDisconnectEventSe
         }
 
         // 客户端已经物理断线，因此这里不能再创建 REVOKE_ACCESS 命令。
-        log.info("客户端断线 Session 已关闭，deviceCode={}, mac={}, sessionId={}", deviceCode, mac, sessionId);
+        log.info("客户端断线 Session 已关闭，deviceCode={}, sessionId={}", deviceCode, sessionId);
     }
 
     private void validateRelationship(SessionRecord session, String deviceCode, String eventMac) {

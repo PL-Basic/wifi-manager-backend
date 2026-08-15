@@ -8,6 +8,7 @@ public class DeviceStatusEvent {
     private String ip;
     private String firmwareVersion;
     private String wifiStatus;
+    private Integer rssi;
     private Integer status;
     private Integer currentClients;
     private String activeWifiConfigRequestId;

@@ -11,7 +11,9 @@ import com.plagod.vo.device.SessionRecordVO;
 import com.plagod.entity.device.SessionRecord;
 import com.plagod.mapper.SessionRecordMapper;
 import com.plagod.service.SessionQueryService;
+import com.plagod.support.PageBounds;
 import com.plagod.utils.TenantScopeUtils;
+import com.plagod.utils.DevicePageBounds;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -42,8 +44,7 @@ public class SessionQueryServiceImpl implements SessionQueryService {
     @Override
     public SessionPageResult pageSessions(Long tenantId, long current, long size, String mac, Long nodeId, Long userId, Integer status) {
         TenantScopeUtils.requireTenantId(tenantId);
-        long pageCurrent = current <= 0 ? 1 : current;
-        long pageSize = size <= 0 ? 10 : Math.min(size, 100);
+        PageBounds pageBounds = DevicePageBounds.normalize(current, size);
 
         QueryWrapper<SessionRecord> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("tenant_id", tenantId);
@@ -59,9 +60,14 @@ public class SessionQueryServiceImpl implements SessionQueryService {
         if (status != null) {
             queryWrapper.eq("status", status);
         }
-        queryWrapper.orderByDesc("login_time");
+        queryWrapper.orderByDesc("login_time")
+                .orderByDesc("session_id");
 
-        com.baomidou.mybatisplus.extension.plugins.pagination.Page<SessionRecord> page = sessionRecordMapper.selectPage(new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(pageCurrent, pageSize), queryWrapper);
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<SessionRecord> page =
+                sessionRecordMapper.selectPage(
+                        new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(
+                                pageBounds.getCurrent(), pageBounds.getSize()),
+                        queryWrapper);
 
         List<SessionRecordVO> records = new ArrayList<>();
         for (SessionRecord item : page.getRecords()) {

@@ -5,6 +5,8 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.plagod.entity.device.DeviceCommandRecord;
 import com.plagod.mapper.DeviceCommandRecordMapper;
 import com.plagod.service.DeviceCommandQueryService;
+import com.plagod.support.PageBounds;
+import com.plagod.utils.DevicePageBounds;
 import com.plagod.vo.device.DeviceCommandPageResult;
 import com.plagod.vo.device.DeviceCommandVO;
 import com.plagod.utils.TenantScopeUtils;
@@ -27,8 +29,7 @@ public class DeviceCommandQueryServiceImpl implements DeviceCommandQueryService 
     public DeviceCommandPageResult pageCommands(Long tenantId, long current, long size, String requestId, String deviceCode, String commandType, String purpose, Integer status, Long sessionId, String mac) {
         TenantScopeUtils.requireTenantId(tenantId);
 
-        long pageCurrent = current <= 0 ? 1 : current;
-        long pageSize = size <= 0 ? 10 : Math.min(size, 100);
+        PageBounds pageBounds = DevicePageBounds.normalize(current, size);
 
         QueryWrapper<DeviceCommandRecord> query = new QueryWrapper<>();
         query.eq("tenant_id", tenantId);
@@ -56,7 +57,8 @@ public class DeviceCommandQueryServiceImpl implements DeviceCommandQueryService 
 
         query.orderByDesc("command_id");
 
-        Page<DeviceCommandRecord> page = deviceCommandRecordMapper.selectPage(new Page<>(pageCurrent, pageSize), query);
+        Page<DeviceCommandRecord> page = deviceCommandRecordMapper.selectPage(
+                new Page<>(pageBounds.getCurrent(), pageBounds.getSize()), query);
 
         List<DeviceCommandVO> records = new ArrayList<>();
 

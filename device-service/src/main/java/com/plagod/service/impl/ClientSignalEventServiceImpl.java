@@ -81,7 +81,7 @@ public class ClientSignalEventServiceImpl implements ClientSignalEventService {
             // 已分配 sessionId 的 RSSI 必须属于当前节点上的开放 Session。
             if (sessionId > 0 && !isOpenSessionRelationshipValid(
                     node.getTenantId(), sessionId, node.getNodeId(), mac)) {
-                log.warn("忽略会话关系不匹配的 RSSI，device={},mac={},sessionId={}", deviceCode, mac, sessionId);
+                log.warn("忽略会话关系不匹配的 RSSI，deviceCode={}, sessionId={}", deviceCode, sessionId);
                 ignoredCount++;
                 continue;
             }
@@ -119,30 +119,30 @@ public class ClientSignalEventServiceImpl implements ClientSignalEventService {
         String mac = normalizeMac(item.getMac());
 
         if (mac == null) {
-            log.warn("忽略非法 MAC 的 RSSI 记录，mac={}", item.getMac());
+            log.warn("忽略非法 MAC 的 RSSI 记录");
             return false;
         }
 
        if (item.getSessionId() == null || item.getSessionId() < 0) {
-           log.warn("忽略非法 SessionId 的 RSSI 记录，mac={},sessionId={}", mac, item.getSessionId());
+           log.warn("忽略非法 SessionId 的 RSSI 记录，sessionId={}", item.getSessionId());
            return false;
        }
 
         // ESP32 的 RSSI 使用 int8_t, 0表示无有效测量，因此这里只接受 -127 到 -1。
         if (item.getRssi() == null || item.getRssi() < -127 || item.getRssi() >= 0) {
-            log.warn("忽略非法 RSSI 记录，mac={},rssi={}", mac, item.getRssi());
+            log.warn("忽略非法 RSSI 记录，sessionId={}, rssi={}", item.getSessionId(), item.getRssi());
             return false;
         }
 
         if (!StringUtils.hasText(item.getState())) {
-            log.warn("忽略空客户端状态，mac={}", mac);
+            log.warn("忽略空客户端状态，sessionId={}", item.getSessionId());
             return false;
         }
 
         String state = item.getState().trim();
 
         if (state.length() > 32) {
-            log.warn("忽略非法客户端状态，mac={}, state={}", mac, state);
+            log.warn("忽略非法客户端状态，sessionId={}", item.getSessionId());
             return false;
         }
         return true;
@@ -180,8 +180,8 @@ public class ClientSignalEventServiceImpl implements ClientSignalEventService {
         int affectedRows = sessionRecordMapper.update(null, update);
 
         if (affectedRows != 1) {
-            log.warn("RSSI 已保存但活跃 Session 在线时间未更新，sessionId={},nodeId={},mac={}",
-                    sessionId, nodeId, mac);
+            log.warn("RSSI 已保存但活跃 Session 在线时间未更新，sessionId={}, nodeId={}",
+                    sessionId, nodeId);
             return false;
         }
 

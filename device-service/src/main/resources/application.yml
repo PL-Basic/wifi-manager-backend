@@ -1,6 +1,22 @@
 server:
   port: 8383
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState,db,mqtt
+
 spring:
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -28,6 +44,7 @@ mqtt:
   username: ${MQTT_USERNAME:}
   password: ${MQTT_PASSWORD:}
   qos: 1
+  retained: false
   status-topic: wifi/device/+/event/status
   traffic-topic: wifi/device/+/event/traffic
   command-result-topic: wifi/device/+/event/command-result

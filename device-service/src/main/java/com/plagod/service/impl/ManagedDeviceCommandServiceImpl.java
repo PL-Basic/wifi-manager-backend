@@ -3,7 +3,11 @@ package com.plagod.service.impl;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.plagod.constant.DeviceCommandPurpose;
+import com.plagod.constant.DeviceCommandType;
 import com.plagod.constant.MqttTopics;
+import com.plagod.dto.BlockTrafficCommand;
+import com.plagod.dto.DisconnectMacCommand;
+import com.plagod.dto.KickCommand;
 import com.plagod.entity.device.DeviceCommandRecord;
 import com.plagod.entity.device.Esp32Node;
 import com.plagod.exception.ApiStatusException;
@@ -18,9 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.nio.charset.StandardCharsets;
-import java.util.LinkedHashMap;
 import java.util.Locale;
-import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -55,13 +57,13 @@ public class ManagedDeviceCommandServiceImpl implements ManagedDeviceCommandServ
         String requestId = UUID.randomUUID().toString();
         String topic = MqttTopics.deviceDisconnectMac(node.getDeviceCode());
 
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("requestId", requestId);
-        body.put("mac", normalizedMac);
         // 固件当前要求 alertId 字段存在；手动命令使用 0。
-        body.put("alertId", alertId == null ? 0L : alertId);
+        DisconnectMacCommand body = new DisconnectMacCommand(
+                requestId,
+                normalizedMac,
+                alertId == null ? 0L : alertId);
 
-        return enqueue(node, requestId, "DISCONNECT_MAC", purpose, normalizedMac, alertId, topic, body);
+        return enqueue(node, requestId, DeviceCommandType.DISCONNECT_MAC, purpose, normalizedMac, alertId, topic, body);
     }
 
     @Override
@@ -82,15 +84,13 @@ public class ManagedDeviceCommandServiceImpl implements ManagedDeviceCommandServ
         String requestId = UUID.randomUUID().toString();
         String topic = MqttTopics.deviceBlockTraffic(node.getDeviceCode());
 
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("requestId", requestId);
-        body.put("dstIp", cleanedDstIp);
-        if (cleanedSni != null) {
-            body.put("sni", cleanedSni);
-        }
-        body.put("alertId", alertId == null ? 0L : alertId);
+        BlockTrafficCommand body = new BlockTrafficCommand(
+                requestId,
+                cleanedDstIp,
+                cleanedSni,
+                alertId == null ? 0L : alertId);
 
-        return enqueue(node, requestId, "BLOCK_TRAFFIC", purpose, null, alertId, topic, body);
+        return enqueue(node, requestId, DeviceCommandType.BLOCK_TRAFFIC, purpose, null, alertId, topic, body);
     }
 
     @Override
@@ -106,15 +106,15 @@ public class ManagedDeviceCommandServiceImpl implements ManagedDeviceCommandServ
         String requestId = UUID.randomUUID().toString();
         String topic = MqttTopics.deviceKick(node.getDeviceCode());
 
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("requestId", requestId);
-        body.put("deviceCode", node.getDeviceCode());
-        body.put("reason", cleanedReason == null ? "" : cleanedReason);
+        KickCommand body = new KickCommand(
+                requestId,
+                node.getDeviceCode(),
+                cleanedReason == null ? "" : cleanedReason);
 
-        return enqueue(node, requestId, "KICK", purpose, null, null, topic, body);
+        return enqueue(node, requestId, DeviceCommandType.KICK, purpose, null, null, topic, body);
     }
 
-    private DeviceCommandResult enqueue(Esp32Node node, String requestId, String commandType, String purpose, String mac, Long alertId, String topic, Map<String, Object> body) {
+    private DeviceCommandResult enqueue(Esp32Node node, String requestId, String commandType, String purpose, String mac, Long alertId, String topic, Object body) {
 
         try {
             String payload = objectMapper.writeValueAsString(body);

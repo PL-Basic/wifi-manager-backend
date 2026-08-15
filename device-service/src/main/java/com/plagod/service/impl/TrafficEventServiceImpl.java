@@ -11,6 +11,7 @@ import com.plagod.mapper.SessionRecordMapper;
 import com.plagod.mapper.TrafficLogMapper;
 import com.plagod.service.TrafficEventService;
 import com.plagod.service.TrafficRuleEvaluator;
+import com.plagod.web.SafeExceptionLogFormatter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -209,7 +210,11 @@ public class TrafficEventServiceImpl implements TrafficEventService {
                         try {
                             trafficRuleEvaluator.evaluateAndAct(event, trafficLog, session);
                         } catch (Exception exception) {
-                            log.warn("提交后规则评估调度失败，eventId={}", event.getEventId(), exception);
+                            log.warn(
+                                    "提交后规则评估调度失败，eventId={}, type={}, safeStack={}",
+                                    event.getEventId(),
+                                    exception.getClass().getName(),
+                                    SafeExceptionLogFormatter.format(exception));
                         }
                     }
                 }

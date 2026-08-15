@@ -2,8 +2,10 @@ package com.plagod.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Data
+@NoArgsConstructor
 @AllArgsConstructor
 public class AllowClientCommand {
     // 用于关联 ESP32 返回的 command-result。

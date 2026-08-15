@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.plagod.audit.Audited;
 import com.plagod.constant.*;
+import com.plagod.dto.StageWifiConfigCommand;
 import com.plagod.dto.device.WifiConfigStageDTO;
 import com.plagod.entity.device.DeviceCommandRecord;
 import com.plagod.entity.device.DeviceWifiConfigRecord;
@@ -99,12 +100,12 @@ public class DeviceWifiConfigServiceImpl implements DeviceWifiConfigService {
         boolean passwordConfigured = !password.isEmpty();
 
         try {
-            Map<String, Object> realBody = new LinkedHashMap<>();
-            realBody.put("requestId", requestId);
-            realBody.put("deviceCode", node.getDeviceCode());
-            realBody.put("configVersion", configVersion);
-            realBody.put("ssid", ssid);
-            realBody.put("password", password);
+            StageWifiConfigCommand realBody = new StageWifiConfigCommand(
+                    requestId,
+                    node.getDeviceCode(),
+                    ssid,
+                    password,
+                    configVersion);
 
             String realPayload = objectMapper.writeValueAsString(realBody);
             String encryptedPayload = payloadCrypto.encrypt(realPayload, requestId);

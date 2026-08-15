@@ -20,6 +20,7 @@ import com.plagod.service.PortalSessionService;
 import com.plagod.service.SessionLeaseService;
 import com.plagod.vo.device.SessionRecordVO;
 import com.plagod.vo.user.EntitlementLeaseResult;
+import com.plagod.web.SafeExceptionLogFormatter;
 import com.plagod.vo.user.UserConnectionPolicyVO;
 import com.plagod.utils.TenantScopeUtils;
 import lombok.extern.slf4j.Slf4j;
@@ -222,7 +223,11 @@ public class PortalSessionServiceImpl implements PortalSessionService {
         } catch (RuntimeException exception) {
             // 旧授权已经撤销成功，不能因权益服务临时异常回滚该 command-result。
             // 关闭等待 Session 后允许用户重新发起认证。
-            log.warn("强制替换撤销成功，但新 Session 权益暂时不可用，sessionId={}", waiting.getSessionId(), exception);
+            log.warn(
+                    "强制替换撤销成功，但新 Session 权益暂时不可用，sessionId={}, type={}, safeStack={}",
+                    waiting.getSessionId(),
+                    exception.getClass().getName(),
+                    SafeExceptionLogFormatter.format(exception));
             closeWaitingSession(waiting, now, "REPLACEMENT_ENTITLEMENT_UNAVAILABLE");
             return;
         }

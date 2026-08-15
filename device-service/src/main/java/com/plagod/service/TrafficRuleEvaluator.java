@@ -90,7 +90,8 @@ public class TrafficRuleEvaluator {
 
             return result;
         } catch (Exception exception) {
-            log.warn("monitor evaluate failed for eventId={} mac={}: {}", event.getEventId(), event.getMac(), exception.getMessage());
+            log.warn("monitor evaluate failed for eventId={}, type={}",
+                    event.getEventId(), exception.getClass().getName());
             return null;
         }
     }
@@ -106,8 +107,8 @@ public class TrafficRuleEvaluator {
 
         String deviceCode = resolveDeviceCode(event, sessionRecord);
         if (deviceCode == null) {
-            log.warn("auto-action skipped, deviceCode unknown for mac={} sessionId={} alertId={}",
-                    event.getMac(), sessionRecord == null ? null : sessionRecord.getSessionId(), result.getAlertId());
+            log.warn("auto-action skipped, deviceCode unknown for sessionId={} alertId={}",
+                    sessionRecord == null ? null : sessionRecord.getSessionId(), result.getAlertId());
             return;
         }
 
@@ -127,8 +128,8 @@ public class TrafficRuleEvaluator {
                         result.getAlertId());
             }
         } catch (Exception ex) {
-            log.warn("auto-action publish failed action={} mac={} alertId={}: {}",
-                    action, event.getMac(), result.getAlertId(), ex.getMessage());
+            log.warn("auto-action publish failed action={} alertId={} type={}",
+                    action, result.getAlertId(), ex.getClass().getName());
         }
     }
 

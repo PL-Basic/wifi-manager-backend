@@ -16,28 +16,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
-import java.util.Arrays;
-import java.util.HashSet;
 import java.util.Locale;
-import java.util.Set;
 
 
 @Slf4j
 @Service
 public class CommandResultEventServiceImpl implements CommandResultEventService {
-
-    private static final Set<String> SUPPORTED_TYPES =
-            new HashSet<>(Arrays.asList(
-                    "ALLOW",
-                    "REVOKE_ACCESS",
-                    "KICK",
-                    "DISCONNECT_MAC",
-                    "BLOCK_TRAFFIC",
-                    "PING",
-                    "GET_STATUS",
-                    DeviceCommandType.STAGE_WIFI_CONFIG
-            ));
 
     @Autowired
     private DeviceCommandRecordMapper commandRecordMapper;
@@ -63,7 +49,7 @@ public class CommandResultEventServiceImpl implements CommandResultEventService 
 
         String message;
         String deviceCode = cleanRequired(event.getDeviceCode(), 64, "命令结果缺少 deviceCode");
-        String requestId = cleanRequired(event.getRequestId(), 64, "命令结果缺少 requestId");
+        String requestId = cleanRequestId(event.getRequestId());
         String commandType = normalizeCommandType(event.getType());
 
         if (DeviceCommandType.STAGE_WIFI_CONFIG.equals(commandType)) {
@@ -137,7 +123,7 @@ public class CommandResultEventServiceImpl implements CommandResultEventService 
     private String normalizeCommandType(String value) {
         String type = cleanRequired(value, 32, "命令结果缺少 type").toUpperCase(Locale.ROOT);
 
-        if (!SUPPORTED_TYPES.contains(type)) {
+        if (!DeviceCommandType.isTerminalType(type)) {
             throw new IllegalArgumentException("未知的 command-result 类型：" + type);
         }
 
@@ -157,6 +143,21 @@ public class CommandResultEventServiceImpl implements CommandResultEventService 
         }
 
         return cleaned;
+    }
+
+    private String cleanRequestId(String value) {
+        String requestId = cleanRequired(value, 63, "命令结果缺少 requestId");
+
+        if (requestId.getBytes(StandardCharsets.US_ASCII).length > 63) {
+            throw new IllegalArgumentException("命令结果 requestId 长度超限");
+        }
+        for (int index = 0; index < requestId.length(); index++) {
+            char current = requestId.charAt(index);
+            if (current < 0x21 || current > 0x7E) {
+                throw new IllegalArgumentException("命令结果 requestId 必须使用可见 ASCII 字符");
+            }
+        }
+        return requestId;
     }
 
     private String cleanNullable(String value, int maxLength) {
