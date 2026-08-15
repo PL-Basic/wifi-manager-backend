@@ -8,6 +8,7 @@ import com.plagod.service.GatewayIdentityValidationService;
 import com.plagod.service.GatewayValidationException;
 import com.plagod.utils.JwtUtils;
 import com.plagod.vo.tenant.TenantContextVO;
+import com.plagod.web.GatewayErrorResponseWriter;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import org.junit.jupiter.api.BeforeEach;
@@ -55,7 +56,10 @@ class GatewaySecurityRegressionTest {
         filter = new JwtAuthGlobalFilter();
 
         ReflectionTestUtils.setField(filter, "jwtUtils", jwtUtils);
-        ReflectionTestUtils.setField(filter, "objectMapper", new ObjectMapper());
+        ReflectionTestUtils.setField(
+                filter,
+                "errorResponseWriter",
+                new GatewayErrorResponseWriter(new ObjectMapper()));
         ReflectionTestUtils.setField(filter, "gatewayRateLimiter", gatewayRateLimiter);
         ReflectionTestUtils.setField(filter, "identityValidationService", identityValidationService);
 
@@ -220,7 +224,11 @@ class GatewaySecurityRegressionTest {
 
         assertNull(forwarded.get());
         assertEquals(HttpStatus.FORBIDDEN, exchange.getResponse().getStatusCode());
-        assertTrue(exchange.getResponse().getBodyAsString().block().contains("\"code\":403"));
+        String body = exchange.getResponse().getBodyAsString().block();
+        assertTrue(body.contains("\"code\":403"));
+        assertTrue(body.contains("\"errorKey\":\"PERMISSION_DENIED\""));
+        assertTrue(body.contains("\"requestId\":"));
+        assertNotNull(exchange.getResponse().getHeaders().getFirst("X-Request-Id"));
     }
 
     @Test
@@ -243,7 +251,9 @@ class GatewaySecurityRegressionTest {
         assertNull(forwarded.get());
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, exchange.getResponse().getStatusCode());
         assertEquals("17", exchange.getResponse().getHeaders().getFirst(HttpHeaders.RETRY_AFTER));
-        assertTrue(exchange.getResponse().getBodyAsString().block().contains("\"code\":429"));
+        String body = exchange.getResponse().getBodyAsString().block();
+        assertTrue(body.contains("\"code\":429"));
+        assertTrue(body.contains("\"errorKey\":\"RATE_LIMITED\""));
     }
 
     @Test
@@ -304,7 +314,10 @@ class GatewaySecurityRegressionTest {
         filter.filter(exchange, capture(new AtomicReference<>())).block();
 
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, exchange.getResponse().getStatusCode());
-        assertTrue(exchange.getResponse().getBodyAsString().block().contains("\"code\":503"));
+        String body = exchange.getResponse().getBodyAsString().block();
+        assertTrue(body.contains("\"code\":503"));
+        assertTrue(body.contains("\"errorKey\":\"DEPENDENCY_UNAVAILABLE\""));
+        assertFalse(body.contains("租户上下文校验服务暂时不可用"));
     }
 
     @Test
