@@ -21,6 +21,12 @@ public class ServletWebSupportAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean(name = "wifiLowCardinalityMeterFilter")
+    public LowCardinalityTagPolicy wifiLowCardinalityMeterFilter() {
+        return new LowCardinalityTagPolicy();
+    }
+
+    @Bean
     @ConditionalOnMissingBean(name = "requestIdFilterRegistration")
     public FilterRegistrationBean<RequestIdFilter>
     requestIdFilterRegistration() {

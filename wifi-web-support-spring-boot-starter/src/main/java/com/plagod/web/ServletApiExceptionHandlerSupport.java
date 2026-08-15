@@ -136,12 +136,12 @@ public class ServletApiExceptionHandlerSupport {
                 null,
                 null);
         LOGGER.error(
-                "unhandled API exception: requestId={}, type={}",
+                "unhandled API exception: requestId={}, type={}, safeStack={}",
                 response.getBody() == null
                         ? null
                         : response.getBody().getRequestId(),
                 exception.getClass().getName(),
-                exception);
+                SafeExceptionLogFormatter.format(exception));
         return response;
     }
 

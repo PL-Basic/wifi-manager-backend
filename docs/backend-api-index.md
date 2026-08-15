@@ -21,6 +21,13 @@ Demo 1.4 S1 已在共享入口实现 `http-envelope-v1`：`ApiResponse` 保留
 结论、基础错误键、MQTT/AI 样本和 P14 文件所有权见
 [Demo 1.4 S0 公共能力与兼容契约冻结](demo-1.4-s0-contract-freeze.md)。
 
+Demo 1.4 C0 在不改变业务接口的前提下补充两组共享入口：
+`wifi-common-api` 提供 `PageBounds`、稳定单位/时区常量、结构化 allowlist
+脱敏和不回显配置值的纯 Java 校验；`wifi-web-support-spring-boot-starter`
+提供无异常 message 的可定位安全堆栈、默认仅暴露 `health/info` 的 Actuator
+基线，以及只约束 `wifi.*` 自定义指标的低基数 `MeterFilter`。服务可显式扩展
+readiness 必要依赖，但不得把外部依赖加入 liveness。
+
 受保护接口使用：
 
 ```http
