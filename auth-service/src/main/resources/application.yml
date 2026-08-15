@@ -28,6 +28,18 @@ spring:
       shutdown-timeout: 100ms
 server:
   port: 8381
+management:
+  health:
+    # 邮件和 Redis 都有安全降级路径，不作为 Auth readiness 阻断项。
+    mail:
+      enabled: false
+    redis:
+      enabled: false
+  endpoint:
+    health:
+      group:
+        readiness:
+          include: readinessState,db
 mybatis-plus:
   configuration:
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl

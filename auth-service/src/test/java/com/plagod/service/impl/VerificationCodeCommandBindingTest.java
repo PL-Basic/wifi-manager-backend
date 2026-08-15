@@ -10,6 +10,7 @@ import com.plagod.sender.phone.PhoneVerificationProviderRegistry;
 import com.plagod.service.VerificationCodeStateService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.env.MockEnvironment;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -33,7 +34,8 @@ class VerificationCodeCommandBindingTest {
         stateService = mock(VerificationCodeStateService.class);
         service = new VerificationCodeServiceImpl(
                 new VerificationCodeProperties(),
-                new PhoneVerificationProperties(),
+                new PhoneVerificationProperties(
+                        new MockEnvironment()),
                 mapper,
                 mock(VerifyCodeSender.class),
                 mock(PhoneVerificationProviderRegistry.class),

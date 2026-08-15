@@ -2,6 +2,8 @@ package com.plagod.ratelimit;
 
 import com.plagod.configuration.VerificationCodeProperties;
 import com.plagod.exception.VerificationCodeRateLimitException;
+import com.plagod.verification.VerificationCodeTime;
+import com.plagod.web.SafeExceptionLogFormatter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
@@ -13,8 +15,7 @@ import org.springframework.util.StringUtils;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Duration;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -81,7 +82,11 @@ public class VerificationCodeRedisRateLimiter {
      * 返回 true 表示 Redis 已完成原子限流；
      * 返回 false 表示 Redis 不可用，调用方必须回退数据库检查。
      */
-    public boolean acquire(String target, String scene, String sendIp, LocalDateTime now) {
+    public boolean acquire(
+            String target,
+            String scene,
+            String sendIp,
+            ZonedDateTime now) {
 
         if (!redisEnabled || redisTemplate == null) {
             return false;
@@ -105,18 +110,18 @@ public class VerificationCodeRedisRateLimiter {
         String prefix = "wifi:rate-limit:v1:{verification}:";
         String cleanScene = sanitizeScene(scene);
         String targetHash = sha256(normalizeIdentity(target));
-        String date = now.toLocalDate().format(DateTimeFormatter.BASIC_ISO_DATE);
+        String date = VerificationCodeTime.dateKey(now);
 
         addDimension(keys, arguments, prefix + "target-interval:" + cleanScene + ":" + targetHash, 1, Duration.ofSeconds(properties.getTargetIntervalSeconds()).toMillis());
 
-        addDimension(keys, arguments, prefix + "target-day:" + date + ":" + cleanScene + ":" + targetHash, properties.getTargetDailyLimit(), millisUntilTomorrow(now));
+        addDimension(keys, arguments, prefix + "target-day:" + date + ":" + cleanScene + ":" + targetHash, properties.getTargetDailyLimit(), VerificationCodeTime.millisUntilNextDay(now));
 
         if (StringUtils.hasText(sendIp)) {
             String ipHash = sha256(normalizeIdentity(sendIp));
 
             addDimension(keys, arguments, prefix + "ip-minute:" + cleanScene + ":" + ipHash, properties.getIpMinuteLimit(), Duration.ofMinutes(1).toMillis());
 
-            addDimension(keys, arguments, prefix + "ip-day:" + date + ":" + cleanScene + ":" + ipHash, properties.getIpDailyLimit(), millisUntilTomorrow(now));
+            addDimension(keys, arguments, prefix + "ip-day:" + date + ":" + cleanScene + ":" + ipHash, properties.getIpDailyLimit(), VerificationCodeTime.millisUntilNextDay(now));
         }
 
         try {
@@ -178,12 +183,6 @@ public class VerificationCodeRedisRateLimiter {
         return new VerificationCodeRateLimitException("当前网络验证码请求次数已达上限", retryAfter);
     }
 
-    private long millisUntilTomorrow(LocalDateTime now) {
-        LocalDateTime tomorrow = now.toLocalDate().plusDays(1).atStartOfDay();
-
-        return Math.max(1000L, Duration.between(now, tomorrow).toMillis());
-    }
-
     private String sanitizeScene(String scene) {
         return StringUtils.hasText(scene) ? scene.replaceAll("[^A-Za-z0-9_-]", "_") : "unknown";
     }
@@ -224,7 +223,13 @@ public class VerificationCodeRedisRateLimiter {
 
         if (now - previous >= 60_000L && lastFallbackWarningTime.compareAndSet(previous, now)) {
 
-            log.warn("Redis 验证码限流不可用，已回退数据库检查: {}", exception.getMessage());
+            log.warn(
+                    "Redis 验证码限流不可用，已回退数据库检查："
+                            + "exceptionType={}, safeStack={}",
+                    exception == null
+                            ? "unknown"
+                            : exception.getClass().getName(),
+                    SafeExceptionLogFormatter.format(exception));
         }
     }
 }
