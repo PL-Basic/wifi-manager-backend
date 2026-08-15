@@ -13,11 +13,11 @@ import com.plagod.vo.tenant.TenantVO;
 import java.util.List;
 
 public interface TenantService {
-    TenantPageResult pageTenants(long current, long size, String keyword);
+    TenantPageResult pageTenants(Integer current, Integer size, String keyword);
 
     TenantVO getTenant(String tenantId);
 
-    TenantMemberPageResult pageMembers(String tenantId, long current, long size);
+    TenantMemberPageResult pageMembers(String tenantId, Integer current, Integer size);
 
     List<SaasPlanVO> listPlans();
 

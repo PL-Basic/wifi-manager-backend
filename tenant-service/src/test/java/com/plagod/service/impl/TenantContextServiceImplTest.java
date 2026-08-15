@@ -125,6 +125,18 @@ class TenantContextServiceImplTest {
     }
 
     @Test
+    void staleMemberVersionReturnsUnauthorized() {
+        mockCurrentUser(7L, 2);
+        when(tenantMemberMapper.selectOne(any())).thenReturn(member(7L, 11L, "MEMBER", 6L));
+        when(tenantMapper.selectById(11L)).thenReturn(tenant(11L, "tenant-a", "ACTIVE", 9L));
+
+        ApiStatusException exception = assertThrows(ApiStatusException.class,
+                () -> service.validate(validationRequest(true)));
+
+        assertEquals(401, exception.getHttpStatus());
+    }
+
+    @Test
     void staleReadReturnsCurrentTrustedDisabledContext() {
         mockCurrentUser(7L, 2);
         when(tenantMemberMapper.selectOne(any())).thenReturn(member(7L, 11L, "MEMBER", 5L));
@@ -166,6 +178,17 @@ class TenantContextServiceImplTest {
                 () -> service.validate(validationRequest(false)));
 
         assertEquals(403, exception.getHttpStatus());
+    }
+
+    @Test
+    void missingPlatformTenantReturnsNotFound() {
+        mockCurrentUser(1L, 0);
+        when(tenantMapper.selectById(22L)).thenReturn(null);
+
+        ApiStatusException exception = assertThrows(ApiStatusException.class,
+                () -> service.resolve(resolveRequest(1L, 0, "PLATFORM_TENANT", "22")));
+
+        assertEquals(404, exception.getHttpStatus());
     }
 
     @Test

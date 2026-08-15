@@ -1,5 +1,6 @@
 package com.plagod.service.impl;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.plagod.client.UserRoleClient;
 import com.plagod.dto.ApiResponse;
 import com.plagod.dto.tenant.DefaultTenantMembershipRequest;
@@ -12,14 +13,20 @@ import com.plagod.mapper.SaasPlanMapper;
 import com.plagod.mapper.TenantMapper;
 import com.plagod.mapper.TenantMemberMapper;
 import com.plagod.mapper.TenantSubscriptionMapper;
+import com.plagod.support.StableUnits;
+import com.plagod.vo.tenant.TenantMemberPageResult;
+import com.plagod.vo.tenant.TenantPageResult;
 import com.plagod.vo.user.UserRoleSnapshotVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
+import java.time.LocalDateTime;
 import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -100,6 +107,49 @@ class TenantServiceImplTest {
         assertDoesNotThrow(() -> service.ensureDefaultMembership(request));
         verify(tenantMemberMapper, never()).insert(any(TenantMember.class));
         verify(tenantMemberMapper, never()).update(any(), any());
+    }
+
+    @Test
+    void tenantPagingUsesSharedPageBounds() {
+        when(tenantMapper.selectPage(any(Page.class), any()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(tenantMemberMapper.selectPage(any(Page.class), any()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(tenantMapper.selectById(1L)).thenReturn(tenant(1L, "tenant-a"));
+
+        TenantPageResult tenants = service.pageTenants(-1, 0, null);
+        TenantMemberPageResult members = service.pageMembers("1", 0, 101);
+
+        assertEquals(1, tenants.getCurrent());
+        assertEquals(10, tenants.getSize());
+        assertEquals(1, members.getCurrent());
+        assertEquals(100, members.getSize());
+    }
+
+    @Test
+    void newDefaultMembershipUsesSharedBusinessZone() {
+        UserRoleSnapshotVO user = new UserRoleSnapshotVO();
+        user.setUserId("7");
+        user.setRole(2);
+        user.setStatus(1);
+        when(userRoleClient.getRoleSnapshots(any()))
+                .thenReturn(ApiResponse.success(Collections.singletonList(user)));
+        when(tenantMapper.selectOne(any())).thenReturn(tenant(1L, "default-tenant"));
+        when(tenantMemberMapper.selectOne(any())).thenReturn(null);
+
+        DefaultTenantMembershipRequest request = new DefaultTenantMembershipRequest();
+        request.setEventId("event-2");
+        request.setUserId(7L);
+        request.setRole(2);
+        LocalDateTime before = LocalDateTime.now(StableUnits.ASIA_SHANGHAI).minusSeconds(1);
+
+        service.ensureDefaultMembership(request);
+
+        LocalDateTime after = LocalDateTime.now(StableUnits.ASIA_SHANGHAI).plusSeconds(1);
+        ArgumentCaptor<TenantMember> memberCaptor = ArgumentCaptor.forClass(TenantMember.class);
+        verify(tenantMemberMapper).insert(memberCaptor.capture());
+        assertFalse(memberCaptor.getValue().getJoinTime().isBefore(before));
+        assertFalse(memberCaptor.getValue().getJoinTime().isAfter(after));
     }
 
     private Tenant tenant(Long id, String code) {
