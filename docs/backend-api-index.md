@@ -60,6 +60,14 @@ TENANT 不签发平台权限、PLATFORM_TENANT 不签发 tenantRole/memberVersio
 其余 `P15-*` 业务包只消费 Resolver/Context，不复制 Header 解析器。以上是
 批次 B 的冻结输入，不表示对应业务目录已经完成接入或真实环境联调。
 
+Demo 1.5 B0 为两个内部跨服务对象增加显式租户载体：
+`TrafficEvaluationRequest.tenantId` 必须由 Device 根据已持久化的
+TrafficLog/Session 关系确定；`LocationSessionContextVO.tenantId` 必须来自
+Device 的 tenant-scoped Session 查询。Monitor 必须拒绝字段缺失、非法或与
+当前可信 Context 不一致的请求，不能从浏览器 Header、请求体用户标识或默认
+租户补全。该变更不修改 entitlement lease/snapshot 契约；现有
+`entitlementId + userId` 的租户重新解析路径继续复用。
+
 `mqtt-protocol-v1` 的最终规范化 SHA-256 为
 `26ABC67B1DCA9A99173D079359B87C57366F74D9D243728EDFB4AE52A5E8AE87`。
 后端与固件本地副本按 UTF-8、LF 换行规范化后必须得到该值；原始文件换行符
