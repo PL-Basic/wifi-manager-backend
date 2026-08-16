@@ -15,6 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+@SuppressWarnings("deprecation")
 class TrustedFeignRequestInterceptorTest {
 
     private static final String INTERNAL_TOKEN = "a-valid-internal-token-value";
@@ -58,7 +59,8 @@ class TrustedFeignRequestInterceptorTest {
                         TrustedHeaderNames.TENANT_ROLE,
                         TrustedHeaderNames.TENANT_CONTEXT_VERSION,
                         TrustedHeaderNames.MEMBER_CONTEXT_VERSION,
-                        TrustedHeaderNames.PLATFORM_AUTHORITIES),
+                        TrustedHeaderNames.PLATFORM_AUTHORITIES,
+                        RequestId.HEADER_NAME),
                 TrustedHeaderNames.PROPAGATED_CONTEXT_HEADERS);
     }
 
@@ -82,7 +84,6 @@ class TrustedFeignRequestInterceptorTest {
         request.addHeader(TrustedHeaderNames.TENANT_ROLE, "TENANT_ADMIN");
         request.addHeader(TrustedHeaderNames.TENANT_CONTEXT_VERSION, "4");
         request.addHeader(TrustedHeaderNames.MEMBER_CONTEXT_VERSION, "5");
-        request.addHeader(TrustedHeaderNames.PLATFORM_AUTHORITIES, "TENANT_MANAGE");
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
 
         RequestTemplate template = templateWithUntrustedHeaders();
@@ -93,9 +94,12 @@ class TrustedFeignRequestInterceptorTest {
         assertHeader(template, TrustedHeaderNames.SESSION_ID, "session-1");
         assertHeader(template, TrustedHeaderNames.TOKEN_ID, "token-1");
         assertHeader(template, TrustedHeaderNames.CONTEXT_TYPE, "TENANT");
+        assertHeader(template, TrustedHeaderNames.TENANT_ID, "3");
         assertHeader(template, TrustedHeaderNames.TENANT_CONTEXT_VERSION, "4");
         assertHeader(template, TrustedHeaderNames.MEMBER_CONTEXT_VERSION, "5");
         assertHeader(template, RequestId.HEADER_NAME, "request-id-00000001");
+        assertFalse(template.headers().containsKey(
+                TrustedHeaderNames.PLATFORM_AUTHORITIES));
         assertFalse(template.headers().containsKey(TrustedHeaderNames.GATEWAY_TOKEN));
         assertFalse(template.headers().containsKey(TrustedHeaderNames.AUTHORIZATION));
         assertFalse(template.headers().containsKey(TrustedHeaderNames.COOKIE));
@@ -116,6 +120,38 @@ class TrustedFeignRequestInterceptorTest {
         assertFalse(template.headers().containsKey(TrustedHeaderNames.GATEWAY_TOKEN));
         assertFalse(template.headers().containsKey(TrustedHeaderNames.AUTHORIZATION));
         assertFalse(template.headers().containsKey(TrustedHeaderNames.COOKIE));
+    }
+
+    @Test
+    void internalServicePropagatesRequestIdWithoutUserAuthority() {
+        MockHttpServletRequest request =
+                new MockHttpServletRequest("POST", "/internal/jobs/run");
+        request.setAttribute(
+                TrustedRequestHeaders.TRUSTED_SOURCE_ATTRIBUTE,
+                TrustedRequestHeaders.SOURCE_INTERNAL);
+        request.setAttribute(
+                RequestId.REQUEST_ATTRIBUTE,
+                "request-id-00000001");
+        RequestContextHolder.setRequestAttributes(
+                new ServletRequestAttributes(request));
+
+        RequestTemplate template = templateWithUntrustedHeaders();
+        new TrustedFeignRequestInterceptor(INTERNAL_TOKEN).apply(template);
+
+        assertHeader(
+                template,
+                TrustedRequestHeaders.INTERNAL_TOKEN,
+                INTERNAL_TOKEN);
+        assertHeader(
+                template,
+                RequestId.HEADER_NAME,
+                "request-id-00000001");
+        assertFalse(template.headers().containsKey(
+                TrustedRequestHeaders.USER_ID));
+        assertFalse(template.headers().containsKey(
+                TrustedRequestHeaders.TENANT_ID));
+        assertFalse(template.headers().containsKey(
+                TrustedRequestHeaders.PLATFORM_AUTHORITIES));
     }
 
     private RequestTemplate templateWithUntrustedHeaders() {

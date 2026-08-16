@@ -6,7 +6,6 @@ import com.plagod.exception.ApiErrorKey;
 import com.plagod.request.RequestId;
 import com.plagod.vo.tenant.TenantContextValidationVO;
 import feign.FeignException;
-import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import javax.servlet.FilterChain;
@@ -15,13 +14,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Enumeration;
-import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Locale;
-import java.util.Set;
 
 /**
  * 对租户上下文中的业务写请求执行下游实时授权校验。
@@ -29,16 +22,25 @@ import java.util.Set;
 public class TenantContextWriteValidationFilter extends OncePerRequestFilter {
 
     private static final String TENANT_SERVICE = "tenant-service";
-    private static final String CONTEXT_TENANT = "TENANT";
-    private static final String CONTEXT_PLATFORM_TENANT = "PLATFORM_TENANT";
-    private static final String CONTEXT_PLATFORM = "PLATFORM";
 
     private final TenantContextValidationClient validationClient;
+    private final TrustedRequestContextResolver contextResolver;
     private final String applicationName;
 
     public TenantContextWriteValidationFilter(TenantContextValidationClient validationClient,
                                               String applicationName) {
+        this(
+                validationClient,
+                new TrustedRequestContextResolver(),
+                applicationName);
+    }
+
+    public TenantContextWriteValidationFilter(
+            TenantContextValidationClient validationClient,
+            TrustedRequestContextResolver contextResolver,
+            String applicationName) {
         this.validationClient = validationClient;
+        this.contextResolver = contextResolver;
         this.applicationName = applicationName;
     }
 
@@ -46,14 +48,39 @@ public class TenantContextWriteValidationFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain chain) throws ServletException, IOException {
-        if (!requiresValidation(request)) {
+        if (skipsValidation(request)) {
+            chain.doFilter(request, response);
+            return;
+        }
+
+        TrustedRequestContext context;
+        try {
+            context = contextResolver.resolve(request);
+        } catch (TrustedRequestContextException exception) {
+            reject(
+                    request,
+                    response,
+                    exception.getHttpStatus(),
+                    exception.getMessage(),
+                    exception.getErrorKey().value());
+            return;
+        }
+        if (context == null) {
+            reject(
+                    request,
+                    response,
+                    HttpServletResponse.SC_UNAUTHORIZED,
+                    "可信用户上下文缺失");
+            return;
+        }
+        if (!requiresValidation(context)) {
             chain.doFilter(request, response);
             return;
         }
 
         TenantContextValidationRequest validationRequest;
         try {
-            validationRequest = buildValidationRequest(request);
+            validationRequest = buildValidationRequest(context);
         } catch (IllegalArgumentException exception) {
             reject(
                     request,
@@ -96,24 +123,25 @@ public class TenantContextWriteValidationFilter extends OncePerRequestFilter {
         chain.doFilter(request, response);
     }
 
-    private boolean requiresValidation(HttpServletRequest request) {
+    private boolean skipsValidation(HttpServletRequest request) {
         if (TENANT_SERVICE.equalsIgnoreCase(applicationName)
                 || isSafeMethod(request.getMethod())
                 || isExcludedPath(request.getRequestURI())
                 || !isTrustedRequest(request)) {
-            return false;
+            return true;
         }
+        return false;
+    }
 
-        String contextType = normalize(request.getHeader(TrustedHeaderNames.CONTEXT_TYPE));
-        if (contextType == null
-                && TrustedHeaderNames.SOURCE_INTERNAL.equals(
-                request.getAttribute(TrustedHeaderNames.TRUSTED_SOURCE_ATTRIBUTE))) {
+    private boolean requiresValidation(TrustedRequestContext context) {
+        if (!context.hasUserActor()
+                && context.getTrustedSource()
+                == TrustedSource.INTERNAL_SERVICE) {
             // 后台内部任务没有浏览器租户上下文，由其专用业务凭据和资源所有权校验负责。
             return false;
         }
         // PLATFORM 写由平台角色和专用接口授权；其余普通业务写必须携带租户上下文。
-        // 缺失或未知上下文也进入校验并以 401 拒绝，不能静默绕过。
-        return !CONTEXT_PLATFORM.equals(contextType);
+        return context.getContextType() != TrustedContextType.PLATFORM;
     }
 
     private boolean isSafeMethod(String method) {
@@ -132,30 +160,27 @@ public class TenantContextWriteValidationFilter extends OncePerRequestFilter {
     }
 
     private boolean isTrustedRequest(HttpServletRequest request) {
-        Object source = request.getAttribute(TrustedHeaderNames.TRUSTED_SOURCE_ATTRIBUTE);
-        return TrustedHeaderNames.SOURCE_GATEWAY.equals(source)
-                || TrustedHeaderNames.SOURCE_INTERNAL.equals(source);
+        Object source = request.getAttribute(
+                TrustedRequestHeaders.TRUSTED_SOURCE_ATTRIBUTE);
+        return TrustedRequestHeaders.SOURCE_GATEWAY.equals(source)
+                || TrustedRequestHeaders.SOURCE_INTERNAL.equals(source);
     }
 
-    private TenantContextValidationRequest buildValidationRequest(HttpServletRequest request) {
+    private TenantContextValidationRequest buildValidationRequest(
+            TrustedRequestContext context) {
         TenantContextValidationRequest validationRequest = new TenantContextValidationRequest();
-        validationRequest.setUserId(requiredHeader(request, TrustedHeaderNames.USER_ID));
-        validationRequest.setGlobalRole(integerHeader(request, TrustedHeaderNames.USER_ROLE));
-        String contextType = requiredHeader(request, TrustedHeaderNames.CONTEXT_TYPE);
-        validationRequest.setContextType(contextType);
-        validationRequest.setTenantId(requiredHeader(request, TrustedHeaderNames.TENANT_ID));
-        validationRequest.setTenantCode(requiredHeader(request, TrustedHeaderNames.TENANT_CODE));
-        validationRequest.setTenantRole(CONTEXT_TENANT.equals(contextType)
-                ? requiredHeader(request, TrustedHeaderNames.TENANT_ROLE)
-                : optionalHeader(request, TrustedHeaderNames.TENANT_ROLE));
+        validationRequest.setUserId(String.valueOf(context.getUserId()));
+        validationRequest.setGlobalRole(context.getGlobalRole());
+        validationRequest.setContextType(context.getContextType().name());
+        validationRequest.setTenantId(context.getTenantId());
+        validationRequest.setTenantCode(context.getTenantCode());
+        validationRequest.setTenantRole(context.getTenantRole());
         validationRequest.setContextVersion(
-                longHeader(request, TrustedHeaderNames.TENANT_CONTEXT_VERSION, true));
+                context.getTenantContextVersion());
         validationRequest.setMemberContextVersion(
-                longHeader(
-                        request,
-                        TrustedHeaderNames.MEMBER_CONTEXT_VERSION,
-                        CONTEXT_TENANT.equals(contextType)));
-        validationRequest.setAuthorities(authorities(request));
+                context.getMemberContextVersion());
+        validationRequest.setAuthorities(
+                context.getPlatformAuthorities());
         validationRequest.setWriteRequest(true);
         validationRequest.setLegacyToken(false);
         return validationRequest;
@@ -181,79 +206,27 @@ public class TenantContextWriteValidationFilter extends OncePerRequestFilter {
                 : HttpServletResponse.SC_FORBIDDEN;
     }
 
-    private String requiredHeader(HttpServletRequest request, String name) {
-        String value = optionalHeader(request, name);
-        if (value == null) {
-            throw new IllegalArgumentException("可信租户上下文缺少 " + name);
-        }
-        return value;
-    }
-
-    private String optionalHeader(HttpServletRequest request, String name) {
-        return normalize(request.getHeader(name));
-    }
-
-    private Integer integerHeader(HttpServletRequest request, String name) {
-        String value = requiredHeader(request, name);
-        try {
-            return Integer.valueOf(value);
-        } catch (NumberFormatException exception) {
-            throw new IllegalArgumentException("可信租户上下文中的 " + name + " 格式错误");
-        }
-    }
-
-    private Long longHeader(HttpServletRequest request, String name, boolean required) {
-        String value = optionalHeader(request, name);
-        if (value == null) {
-            if (required) {
-                throw new IllegalArgumentException("可信租户上下文缺少 " + name);
-            }
-            return null;
-        }
-        try {
-            return Long.valueOf(value);
-        } catch (NumberFormatException exception) {
-            throw new IllegalArgumentException("可信租户上下文中的 " + name + " 格式错误");
-        }
-    }
-
-    private List<String> authorities(HttpServletRequest request) {
-        Enumeration<String> values = request.getHeaders(TrustedHeaderNames.PLATFORM_AUTHORITIES);
-        if (values == null) {
-            return Collections.emptyList();
-        }
-
-        Set<String> authorities = new LinkedHashSet<>();
-        while (values.hasMoreElements()) {
-            String value = values.nextElement();
-            if (!StringUtils.hasText(value)) {
-                continue;
-            }
-            for (String authority : value.split(",")) {
-                if (StringUtils.hasText(authority)) {
-                    authorities.add(authority.trim());
-                }
-            }
-        }
-        return new ArrayList<>(authorities);
-    }
-
-    private String normalize(String value) {
-        return StringUtils.hasText(value) ? value.trim() : null;
+    private void reject(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            int status,
+            String message) throws IOException {
+        String errorKey = status == HttpServletResponse.SC_UNAUTHORIZED
+                ? ApiErrorKey.SESSION_EXPIRED.value()
+                : ApiErrorKey.defaultForHttpStatus(status).value();
+        reject(request, response, status, message, errorKey);
     }
 
     private void reject(
             HttpServletRequest request,
             HttpServletResponse response,
             int status,
-            String message) throws IOException {
+            String message,
+            String errorKey) throws IOException {
         String safeMessage = message == null
                 ? "租户上下文校验失败"
                 : message.replace("\\", "\\\\").replace("\"", "\\\"");
         String requestId = requestId(request);
-        String errorKey = status == HttpServletResponse.SC_UNAUTHORIZED
-                ? ApiErrorKey.SESSION_EXPIRED.value()
-                : ApiErrorKey.defaultForHttpStatus(status).value();
         byte[] body = String.format(
                 Locale.ROOT,
                 "{\"code\":%d,\"message\":\"%s\",\"data\":null,"

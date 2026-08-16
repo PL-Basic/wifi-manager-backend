@@ -32,8 +32,10 @@ public class TrustedRequestFilter extends OncePerRequestFilter {
         }
 
         String path = request.getRequestURI();
-        String gatewayToken = request.getHeader(TrustedHeaderNames.GATEWAY_TOKEN);
-        String internalToken = request.getHeader(TrustedHeaderNames.INTERNAL_TOKEN);
+        String gatewayToken = request.getHeader(
+                TrustedRequestHeaders.GATEWAY_TOKEN);
+        String internalToken = request.getHeader(
+                TrustedRequestHeaders.INTERNAL_TOKEN);
 
         boolean trusted;
         String trustedSource;
@@ -41,15 +43,15 @@ public class TrustedRequestFilter extends OncePerRequestFilter {
         if (properties.isInternalPath(path)) {
             // 内部路径只能使用内部凭据，Gateway 凭据不能越权调用。
             trusted = tokenMatches(internalToken, properties.getInternalToken());
-            trustedSource = TrustedHeaderNames.SOURCE_INTERNAL;
+            trustedSource = TrustedRequestHeaders.SOURCE_INTERNAL;
         } else {
             // 迁移期间允许 Gateway 或可信 Feign 调用现有业务路径。
             boolean gatewayTrusted = tokenMatches(gatewayToken, properties.getGatewayToken());
             boolean internalTrusted = tokenMatches(internalToken, properties.getInternalToken());
             trusted = gatewayTrusted || internalTrusted;
             trustedSource = gatewayTrusted
-                    ? TrustedHeaderNames.SOURCE_GATEWAY
-                    : TrustedHeaderNames.SOURCE_INTERNAL;
+                    ? TrustedRequestHeaders.SOURCE_GATEWAY
+                    : TrustedRequestHeaders.SOURCE_INTERNAL;
         }
 
         if (!trusted) {
@@ -72,7 +74,9 @@ public class TrustedRequestFilter extends OncePerRequestFilter {
             return;
         }
 
-        request.setAttribute(TrustedHeaderNames.TRUSTED_SOURCE_ATTRIBUTE, trustedSource);
+        request.setAttribute(
+                TrustedRequestHeaders.TRUSTED_SOURCE_ATTRIBUTE,
+                trustedSource);
         chain.doFilter(request, response);
     }
 

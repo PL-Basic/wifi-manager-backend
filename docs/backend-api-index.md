@@ -35,6 +35,31 @@ Demo 1.4 S2 将安全堆栈的唯一实现固定为
 Gateway 未分类 500 使用同一实现记录有界的异常类型和定位帧，不记录异常
 message、suppressed 内容或 Throwable 参数。
 
+Demo 1.5 S0 将身份/Header 共享输入冻结为 `trusted-context-v1`：
+
+- `wifi-common-api` 的 `TrustedRequestHeaders` 是 Gateway、Servlet Starter
+  与 Feign 后续唯一可信 Header 常量来源；旧 `TrustedHeaderNames` 仅保留
+  兼容委托。`X-Request-Id` 已进入可信传播清单，但不作为可伪造的身份字段。
+- `TrustedRequestContext` 是不可变快照，分别保存 `trustedSource`、用户与
+  session/jti、`PLATFORM/TENANT/PLATFORM_TENANT`、租户双版本、平台权限和
+  requestId。`GATEWAY_USER`、`INTERNAL_SERVICE`、`SCHEDULED_SERVICE`、
+  `DEVICE_EVENT` 是独立来源；内部/后台/设备身份不能伪造浏览器 actor。
+- Security Starter 的 `TrustedRequestContextResolver` 只接受
+  `TrustedRequestFilter` 已标记的 Gateway/Internal 请求。现有租户写校验
+  与 Feign 出站按需装配并复用该 Context；未新增覆盖所有 Servlet 读路径的
+  全局认证 Filter。
+- Feign 始终删除 Authorization、Cookie、Gateway Token、调用方 Internal
+  Token、手工身份/租户 Header 和手工 requestId，再注入当前服务自己的
+  Internal Token。只有成功装配的用户 Context 才传播用户工作区字段；纯
+  Internal Service 只传播关联 ID，不获得用户、平台或默认租户权限。
+
+`P15-GW` 必须将 Gateway 内现有 Header 字面量切换为
+`TrustedRequestHeaders` 并保持“先删外部同名 Header、再写验证结果”；
+`P15-AUTH` 负责补 session/jti 失效的服务内永久测试；`P15-TENANT` 负责保证
+TENANT 不签发平台权限、PLATFORM_TENANT 不签发 tenantRole/memberVersion；
+其余 `P15-*` 业务包只消费 Resolver/Context，不复制 Header 解析器。以上是
+批次 B 的冻结输入，不表示对应业务目录已经完成接入或真实环境联调。
+
 `mqtt-protocol-v1` 的最终规范化 SHA-256 为
 `26ABC67B1DCA9A99173D079359B87C57366F74D9D243728EDFB4AE52A5E8AE87`。
 后端与固件本地副本按 UTF-8、LF 换行规范化后必须得到该值；原始文件换行符

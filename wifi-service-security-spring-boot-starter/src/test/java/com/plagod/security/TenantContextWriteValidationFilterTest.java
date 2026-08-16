@@ -9,7 +9,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
 import javax.servlet.FilterChain;
-import java.util.Arrays;
+import java.util.Collections;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -19,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+@SuppressWarnings("deprecation")
 class TenantContextWriteValidationFilterTest {
 
     @Test
@@ -44,7 +45,7 @@ class TenantContextWriteValidationFilterTest {
         assertEquals("3", captured.get().getTenantId());
         assertEquals(Long.valueOf(4), captured.get().getContextVersion());
         assertEquals(Long.valueOf(5), captured.get().getMemberContextVersion());
-        assertEquals(Arrays.asList("TENANT_MANAGE", "DEVICE_WRITE"),
+        assertEquals(Collections.emptyList(),
                 captured.get().getAuthorities());
         assertTrue(captured.get().getWriteRequest());
         assertFalse(captured.get().getLegacyToken());
@@ -62,8 +63,13 @@ class TenantContextWriteValidationFilterTest {
         MockHttpServletRequest request = tenantRequest("DELETE", "/admin/users/8");
         request.removeHeader(TrustedHeaderNames.MEMBER_CONTEXT_VERSION);
         request.removeHeader(TrustedHeaderNames.TENANT_ROLE);
+        request.removeHeader(TrustedHeaderNames.USER_ROLE);
         request.removeHeader(TrustedHeaderNames.CONTEXT_TYPE);
+        request.addHeader(TrustedHeaderNames.USER_ROLE, "0");
         request.addHeader(TrustedHeaderNames.CONTEXT_TYPE, "PLATFORM_TENANT");
+        request.addHeader(
+                TrustedHeaderNames.PLATFORM_AUTHORITIES,
+                "TENANT_MANAGE");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         filter.doFilter(request, response, chain(new AtomicBoolean()));
@@ -202,7 +208,7 @@ class TenantContextWriteValidationFilterTest {
         assertFalse(invoked.get());
         assertEquals(401, response.getStatus());
         assertTrue(response.getContentAsString().contains(
-                "\"errorKey\":\"SESSION_EXPIRED\""));
+                "\"errorKey\":\"AUTHENTICATION_REQUIRED\""));
         assertEquals(
                 response.getHeader(RequestId.HEADER_NAME),
                 request.getAttribute(RequestId.REQUEST_ATTRIBUTE));
@@ -215,15 +221,18 @@ class TenantContextWriteValidationFilterTest {
                 TrustedHeaderNames.SOURCE_GATEWAY);
         request.addHeader(TrustedHeaderNames.USER_ID, "17");
         request.addHeader(TrustedHeaderNames.USER_ROLE, "1");
+        request.addHeader(
+                TrustedHeaderNames.SESSION_ID,
+                "session-00000001");
+        request.addHeader(
+                TrustedHeaderNames.TOKEN_ID,
+                "token-id-00000001");
         request.addHeader(TrustedHeaderNames.CONTEXT_TYPE, "TENANT");
         request.addHeader(TrustedHeaderNames.TENANT_ID, "3");
         request.addHeader(TrustedHeaderNames.TENANT_CODE, "default-tenant");
         request.addHeader(TrustedHeaderNames.TENANT_ROLE, "TENANT_ADMIN");
         request.addHeader(TrustedHeaderNames.TENANT_CONTEXT_VERSION, "4");
         request.addHeader(TrustedHeaderNames.MEMBER_CONTEXT_VERSION, "5");
-        request.addHeader(
-                TrustedHeaderNames.PLATFORM_AUTHORITIES,
-                "TENANT_MANAGE, DEVICE_WRITE, TENANT_MANAGE");
         return request;
     }
 
