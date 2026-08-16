@@ -7,6 +7,7 @@ import com.plagod.dto.device.KickDeviceDTO;
 import com.plagod.dto.device.ManualBlockTrafficDTO;
 import com.plagod.dto.device.ManualDisconnectMacDTO;
 import com.plagod.dto.device.WifiConfigStageDTO;
+import com.plagod.security.DeviceTenantAccessPolicy;
 import com.plagod.service.DeviceCommandService;
 import com.plagod.service.DeviceWifiConfigQueryService;
 import com.plagod.service.DeviceWifiConfigService;
@@ -28,6 +29,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import javax.servlet.http.HttpServletRequest;
 import javax.validation.Valid;
 
 @RestController
@@ -42,6 +44,8 @@ public class DeviceController {
     private DeviceWifiConfigService deviceWifiConfigService;
     @Autowired
     private DeviceWifiConfigQueryService deviceWifiConfigQueryService;
+    @Autowired
+    private DeviceTenantAccessPolicy tenantAccessPolicy;
 
     @PostMapping
     public ApiResponse<DeviceNodeVO> addDevice(
@@ -91,8 +95,9 @@ public class DeviceController {
 
     @GetMapping("/{nodeId}")
     public ApiResponse<DeviceNodeVO> getDevice(
-            @RequestHeader("X-Tenant-Id") Long tenantId,
-            @PathVariable Long nodeId) {
+            @PathVariable Long nodeId,
+            HttpServletRequest servletRequest) {
+        Long tenantId = tenantAccessPolicy.requireAdminTenantId(servletRequest);
         return ApiResponse.success(deviceCommandService.getDevice(tenantId, nodeId));
     }
 

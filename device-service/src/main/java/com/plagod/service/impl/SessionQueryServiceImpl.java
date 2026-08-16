@@ -104,7 +104,9 @@ public class SessionQueryServiceImpl implements SessionQueryService {
                         .eq("session_id", sessionId)
                         .last("limit 1"));
 
-        if (session == null || !Objects.equals(ownerUserId, session.getUserId())) {
+        if (session == null
+                || !Objects.equals(tenantId, session.getTenantId())
+                || !Objects.equals(ownerUserId, session.getUserId())) {
 
             // 不区分不存在和越权，避免枚举他人的 Session。
             throw ApiStatusException.notFound("Session 不存在或无权访问");
@@ -125,10 +127,14 @@ public class SessionQueryServiceImpl implements SessionQueryService {
         }
 
         Esp32Node node = esp32NodeMapper.selectByNodeIdAndTenantIncludeDeleted(
-                tenantId, session.getNodeId());
+                session.getTenantId(), session.getNodeId());
         LocalDateTime nodeCutoff = now.minusSeconds(heartbeatTimeoutSeconds);
 
-        if (node == null || !Integer.valueOf(1).equals(node.getStatus()) || node.getLastHeartbeat() == null || !node.getLastHeartbeat().isAfter(nodeCutoff)) {
+        if (node == null
+                || !Objects.equals(session.getTenantId(), node.getTenantId())
+                || !Integer.valueOf(1).equals(node.getStatus())
+                || node.getLastHeartbeat() == null
+                || !node.getLastHeartbeat().isAfter(nodeCutoff)) {
 
             throw ApiStatusException.conflict("Session 所属节点当前不可用");
         }
@@ -136,6 +142,7 @@ public class SessionQueryServiceImpl implements SessionQueryService {
         LocationSessionContextVO result = new LocationSessionContextVO();
 
         result.setSessionId(session.getSessionId());
+        result.setTenantId(session.getTenantId());
         result.setUserId(session.getUserId());
         result.setNodeId(session.getNodeId());
         result.setDeviceCode(node.getDeviceCode());

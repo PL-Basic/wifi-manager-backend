@@ -86,7 +86,6 @@ class DeviceIdempotencyRegressionTest {
         ReflectionTestUtils.setField(portalSessionService, "sessionUserGuardMapper", sessionUserGuardMapper);
         ReflectionTestUtils.setField(portalSessionService, "sessionLeaseService", sessionLeaseService);
         ReflectionTestUtils.setField(portalSessionService, "clientAccessGuardMapper", clientAccessGuardMapper);
-        ReflectionTestUtils.setField(portalSessionService, "internalToken", "test-internal-token");
         ReflectionTestUtils.setField(portalSessionService, "clientSignalMaxAgeSeconds", 30L);
 
         trafficEventService = new TrafficEventServiceImpl();

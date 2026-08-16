@@ -18,7 +18,6 @@ import com.plagod.vo.portal.PortalSessionStatusVO;
 import com.plagod.vo.user.EntitlementSnapshotVO;
 import com.plagod.utils.TenantScopeUtils;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -36,9 +35,6 @@ public class PortalSessionStatusQueryServiceImpl implements PortalSessionStatusQ
 
     @Autowired
     private UserEntitlementClient userEntitlementClient;
-
-    @Value("${wifi.internal.token}")
-    private String internalToken;
 
     @Override
     public PortalSessionStatusVO getOwnedStatus(Long tenantId, Long sessionId, Long userId) {
@@ -111,8 +107,6 @@ public class PortalSessionStatusQueryServiceImpl implements PortalSessionStatusQ
         ApiResponse<EntitlementSnapshotVO> response;
         try {
             response = userEntitlementClient.getSnapshot(
-                    internalToken,
-                    String.valueOf(session.getTenantId()),
                     session.getUserId(),
                     session.getEntitlementId());
         } catch (RuntimeException exception) {

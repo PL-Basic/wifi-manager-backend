@@ -13,12 +13,12 @@ import com.plagod.mapper.Esp32NodeMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
+import java.util.Objects;
 
 /**
  * 异步评估 traffic + 派发自动 action。从 TrafficEventServiceImpl 抽出来有两个目的：
@@ -45,24 +45,31 @@ public class TrafficRuleEvaluator {
     @Autowired
     private RuleActionExecutor ruleActionExecutor;
 
-    @Value("${wifi.internal.token}")
-    private String internalToken;
-
     @Async("monitorEvalExecutor")
     public void evaluateAndAct(DeviceTrafficEvent event, TrafficLog trafficLog, SessionRecord sessionRecord) {
+        Long tenantId = resolvePersistedTenantId(trafficLog, sessionRecord);
+        if (tenantId == null) {
+            log.warn("monitor evaluate skipped for inconsistent persisted traffic relation, eventId={}",
+                    trafficLog == null ? null : trafficLog.getEventId());
+            return;
+        }
 
-        TrafficEvaluationResult result = callEvaluate(event, trafficLog, sessionRecord);
+        TrafficEvaluationResult result = callEvaluate(event, trafficLog, sessionRecord, tenantId);
 
         if (result != null && result.isHit()) {
             executeActions(event, trafficLog, sessionRecord, result);
         }
     }
 
-    private TrafficEvaluationResult callEvaluate(DeviceTrafficEvent event, TrafficLog trafficLog, SessionRecord sessionRecord) {
+    private TrafficEvaluationResult callEvaluate(DeviceTrafficEvent event,
+                                                 TrafficLog trafficLog,
+                                                 SessionRecord sessionRecord,
+                                                 Long tenantId) {
 
         TrafficEvaluationRequest request = new TrafficEvaluationRequest();
 
         request.setEventId(trafficLog.getEventId());
+        request.setTenantId(tenantId);
         request.setDeviceCode(trafficLog.getDeviceCode());
         request.setNodeId(trafficLog.getNodeId());
         request.setSessionId(trafficLog.getSessionId());
@@ -75,8 +82,8 @@ public class TrafficRuleEvaluator {
         request.setEventTime(trafficLog.getLogTime());
 
         try {
-            ApiResponse<TrafficEvaluationResult> response = monitorServiceClient.evaluate(
-                    internalToken, String.valueOf(trafficLog.getTenantId()), request);
+            ApiResponse<TrafficEvaluationResult> response =
+                    monitorServiceClient.evaluate(request);
 
             if (response == null || response.getData() == null) {
                 return null;
@@ -94,6 +101,22 @@ public class TrafficRuleEvaluator {
                     event.getEventId(), exception.getClass().getName());
             return null;
         }
+    }
+
+    private Long resolvePersistedTenantId(TrafficLog trafficLog,
+                                          SessionRecord sessionRecord) {
+        if (trafficLog == null || sessionRecord == null
+                || trafficLog.getTenantId() == null
+                || trafficLog.getTenantId() <= 0
+                || !Objects.equals(
+                        trafficLog.getTenantId(),
+                        sessionRecord.getTenantId())
+                || !Objects.equals(
+                        trafficLog.getSessionId(),
+                        sessionRecord.getSessionId())) {
+            return null;
+        }
+        return trafficLog.getTenantId();
     }
 
     private void executeActions(DeviceTrafficEvent event,

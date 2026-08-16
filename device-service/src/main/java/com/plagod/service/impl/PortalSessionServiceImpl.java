@@ -66,9 +66,6 @@ public class PortalSessionServiceImpl implements PortalSessionService {
     @Autowired
     private ClientAccessGuardMapper clientAccessGuardMapper;
 
-    @Value("${wifi.internal.token}")
-    private String internalToken;
-
     // RSSI 记录允许的最大年龄。默认30秒，避免使用历史记录冒充当前在线客户端。
     @Value("${wifi.portal.client-signal-max-age-seconds:30}")
     private long clientSignalMaxAgeSeconds;
@@ -267,8 +264,8 @@ public class PortalSessionServiceImpl implements PortalSessionService {
         request.setUsageSeconds(0L);
         request.setRequestedTtlSeconds(INITIAL_LEASE_TTL_SECONDS);
 
-        ApiResponse<EntitlementLeaseResult> response = userEntitlementClient.acquireLease(
-                internalToken, String.valueOf(tenantId), request);
+        ApiResponse<EntitlementLeaseResult> response =
+                userEntitlementClient.acquireLease(request);
 
         if (response == null) {
             throw new IllegalStateException("权益服务没有返回结果");
@@ -407,7 +404,8 @@ public class PortalSessionServiceImpl implements PortalSessionService {
 
     // 从 user-service 获取已经处理默认值的连接策略。
     private UserConnectionPolicyVO loadConnectionPolicy(Long userId) {
-        ApiResponse<UserConnectionPolicyVO> response = userPolicyClient.getConnectionPolicy(internalToken, userId);
+        ApiResponse<UserConnectionPolicyVO> response =
+                userPolicyClient.getConnectionPolicy(userId);
 
         if (response == null) {
             throw new IllegalStateException("用户连接策略服务没有返回结果");

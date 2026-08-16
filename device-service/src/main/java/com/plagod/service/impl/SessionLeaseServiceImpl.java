@@ -37,9 +37,6 @@ public class SessionLeaseServiceImpl implements SessionLeaseService {
     @Autowired
     private DeviceCommandService deviceCommandService;
 
-    @Value("${wifi.internal.token}")
-    private String internalToken;
-
     @Value("${wifi.portal.lease-ttl-seconds:20}")
     private int leaseTtlSeconds;
 
@@ -198,8 +195,8 @@ public class SessionLeaseServiceImpl implements SessionLeaseService {
         request.setUsageSeconds(usageSeconds);
         request.setRequestedTtlSeconds(leaseTtlSeconds);
 
-        ApiResponse<EntitlementLeaseResult> response = userEntitlementClient.acquireLease(
-                internalToken, String.valueOf(session.getTenantId()), request);
+        ApiResponse<EntitlementLeaseResult> response =
+                userEntitlementClient.acquireLease(request);
 
         if (response == null || response.getCode() != 200 || response.getData() == null) {
             throw new IllegalStateException("权益续租服务调用失败");
