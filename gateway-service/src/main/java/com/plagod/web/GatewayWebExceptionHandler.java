@@ -2,6 +2,7 @@ package com.plagod.web;
 
 import com.plagod.exception.ApiErrorKey;
 import com.plagod.service.GatewayValidationException;
+import com.plagod.support.SafeExceptionLogFormatter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.annotation.Order;
@@ -57,9 +58,11 @@ public class GatewayWebExceptionHandler implements WebExceptionHandler {
         HttpStatus status = resolveStatus(exception);
         if (status == HttpStatus.INTERNAL_SERVER_ERROR) {
             LOGGER.error(
-                    "unhandled gateway exception: requestId={}, type={}",
+                    "unhandled gateway exception: requestId={}, type={}, "
+                            + "safeStack={}",
                     errorResponseWriter.requestId(exchange),
-                    exception.getClass().getName());
+                    exception.getClass().getName(),
+                    SafeExceptionLogFormatter.format(exception));
         }
 
         return errorResponseWriter.write(

@@ -17,8 +17,8 @@ http://{gateway-host}:8080
 Demo 1.4 S1 已在共享入口实现 `http-envelope-v1`：`ApiResponse` 保留
 `code/message/data`，并以仅在非空时序列化的方式增加 `errorKey/requestId`。
 `http-support-v1` 固定 Servlet 的九类状态、`X-Request-Id`、MDC 清理和安全
-500；业务服务 handler 与 Gateway 的实际接入仍分别属于后续 `P14-*`。冻结
-结论、基础错误键、MQTT/AI 样本和 P14 文件所有权见
+500；业务服务 handler 与 Gateway 已通过对应 `P14-*` 完成接入，S2 共享
+收敛见下文。冻结结论、基础错误键、MQTT/AI 样本和 P14 文件所有权见
 [Demo 1.4 S0 公共能力与兼容契约冻结](demo-1.4-s0-contract-freeze.md)。
 
 Demo 1.4 C0 在不改变业务接口的前提下补充两组共享入口：
@@ -27,6 +27,18 @@ Demo 1.4 C0 在不改变业务接口的前提下补充两组共享入口：
 提供无异常 message 的可定位安全堆栈、默认仅暴露 `health/info` 的 Actuator
 基线，以及只约束 `wifi.*` 自定义指标的低基数 `MeterFilter`。服务可显式扩展
 readiness 必要依赖，但不得把外部依赖加入 liveness。
+
+Demo 1.4 S2 将安全堆栈的唯一实现固定为
+`com.plagod.support.SafeExceptionLogFormatter`，位于框架无关的
+`wifi-common-api`。Servlet Starter 中原
+`com.plagod.web.SafeExceptionLogFormatter` 仅作为兼容委托保留；
+Gateway 未分类 500 使用同一实现记录有界的异常类型和定位帧，不记录异常
+message、suppressed 内容或 Throwable 参数。
+
+`mqtt-protocol-v1` 的最终规范化 SHA-256 为
+`26ABC67B1DCA9A99173D079359B87C57366F74D9D243728EDFB4AE52A5E8AE87`。
+后端与固件本地副本按 UTF-8、LF 换行规范化后必须得到该值；原始文件换行符
+不同不构成协议内容差异。
 
 受保护接口使用：
 
