@@ -71,6 +71,9 @@ class TenantContextServiceImplTest {
     @Test
     void ordinaryUserDefaultsToActiveTenantWithDualVersions() {
         mockCurrentUser(7L, 2);
+        when(platformStaffMapper.selectList(any()))
+                .thenReturn(Collections.singletonList(
+                        staff("TENANT_READ", "ACTIVE")));
         when(tenantMemberMapper.selectOne(any())).thenReturn(member(7L, 11L, "MEMBER", 5L));
         when(tenantMapper.selectById(11L)).thenReturn(tenant(11L, "tenant-a", "ACTIVE", 9L));
 
@@ -81,12 +84,17 @@ class TenantContextServiceImplTest {
         assertEquals("MEMBER", context.getTenantRole());
         assertEquals(9L, context.getContextVersion());
         assertEquals(5L, context.getMemberContextVersion());
+        assertEquals(Collections.emptyList(), context.getAuthorities());
         assertTrue(context.getWritable());
+        verify(platformStaffMapper, never()).selectList(any());
     }
 
     @Test
     void roleZeroPlatformTenantDoesNotForgeMembership() {
         mockCurrentUser(1L, 0);
+        when(platformStaffMapper.selectList(any()))
+                .thenReturn(Collections.singletonList(
+                        staff("TENANT_READ", "ACTIVE")));
         when(tenantMapper.selectById(22L)).thenReturn(tenant(22L, "tenant-b", "DISABLED", 3L));
 
         TenantContextVO context = service.resolve(
@@ -98,6 +106,23 @@ class TenantContextServiceImplTest {
         assertNull(context.getMemberContextVersion());
         assertFalse(context.getWritable());
         verify(tenantMemberMapper, never()).selectOne(any());
+    }
+
+    @Test
+    void platformTenantRequiresActivePlatformAuthority() {
+        mockCurrentUser(1L, 0);
+
+        ApiStatusException exception = assertThrows(
+                ApiStatusException.class,
+                () -> service.resolve(
+                        resolveRequest(
+                                1L,
+                                0,
+                                "PLATFORM_TENANT",
+                                "22")));
+
+        assertEquals(403, exception.getHttpStatus());
+        verify(tenantMapper, never()).selectById(any());
     }
 
     @Test
@@ -183,6 +208,9 @@ class TenantContextServiceImplTest {
     @Test
     void missingPlatformTenantReturnsNotFound() {
         mockCurrentUser(1L, 0);
+        when(platformStaffMapper.selectList(any()))
+                .thenReturn(Collections.singletonList(
+                        staff("TENANT_READ", "ACTIVE")));
         when(tenantMapper.selectById(22L)).thenReturn(null);
 
         ApiStatusException exception = assertThrows(ApiStatusException.class,

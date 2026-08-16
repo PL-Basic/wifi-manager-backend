@@ -4,6 +4,8 @@ import com.plagod.dto.ApiResponse;
 import com.plagod.dto.tenant.TenantCreateRequest;
 import com.plagod.dto.tenant.TenantStatusRequest;
 import com.plagod.dto.tenant.TenantUpdateRequest;
+import com.plagod.security.TenantRequestContextProvider;
+import com.plagod.security.TrustedRequestContext;
 import com.plagod.service.TenantService;
 import com.plagod.vo.tenant.SaasPlanVO;
 import com.plagod.vo.tenant.TenantMemberPageResult;
@@ -14,12 +16,12 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import javax.validation.Valid;
+import javax.servlet.http.HttpServletRequest;
 import java.util.List;
 
 @RestController
@@ -27,72 +29,93 @@ import java.util.List;
 public class InternalPlatformTenantController {
 
     private final TenantService tenantService;
+    private final TenantRequestContextProvider contextProvider;
 
-    public InternalPlatformTenantController(TenantService tenantService) {
+    public InternalPlatformTenantController(
+            TenantService tenantService,
+            TenantRequestContextProvider contextProvider) {
         this.tenantService = tenantService;
+        this.contextProvider = contextProvider;
     }
 
     @GetMapping("/tenants")
     public ApiResponse<TenantPageResult> pageTenants(
-            @RequestHeader("X-User-Role") Integer operatorRole,
+            HttpServletRequest servletRequest,
             @RequestParam(defaultValue = "1") Integer current,
             @RequestParam(defaultValue = "10") Integer size,
             @RequestParam(required = false) String keyword) {
-        requireSuperAdmin(operatorRole);
-        return ApiResponse.success(tenantService.pageTenants(current, size, keyword));
+        TrustedRequestContext context =
+                contextProvider.requireUserContext(servletRequest);
+        return ApiResponse.success(
+                tenantService.pageTenants(context, current, size, keyword));
     }
 
     @PostMapping("/tenants")
     public ApiResponse<TenantVO> createTenant(
-            @RequestHeader("X-User-Id") Long operatorId,
-            @RequestHeader("X-User-Role") Integer operatorRole,
+            HttpServletRequest servletRequest,
             @Valid @RequestBody TenantCreateRequest request) {
-        return ApiResponse.success("租户创建成功", tenantService.createTenant(request, operatorId, operatorRole));
+        TrustedRequestContext context =
+                contextProvider.requireUserContext(servletRequest);
+        return ApiResponse.success(
+                "租户创建成功",
+                tenantService.createTenant(request, context));
     }
 
     @GetMapping("/tenants/{tenantId}")
     public ApiResponse<TenantVO> getTenant(
-            @RequestHeader("X-User-Role") Integer operatorRole,
+            HttpServletRequest servletRequest,
             @PathVariable String tenantId) {
-        requireSuperAdmin(operatorRole);
-        return ApiResponse.success(tenantService.getTenant(tenantId));
+        TrustedRequestContext context =
+                contextProvider.requireUserContext(servletRequest);
+        return ApiResponse.success(
+                tenantService.getTenant(context, tenantId));
     }
 
     @PutMapping("/tenants/{tenantId}")
     public ApiResponse<TenantVO> updateTenant(
-            @RequestHeader("X-User-Role") Integer operatorRole,
+            HttpServletRequest servletRequest,
             @PathVariable String tenantId,
             @Valid @RequestBody TenantUpdateRequest request) {
-        return ApiResponse.success("租户信息修改成功", tenantService.updateTenant(tenantId, request, operatorRole));
+        TrustedRequestContext context =
+                contextProvider.requireUserContext(servletRequest);
+        return ApiResponse.success(
+                "租户信息修改成功",
+                tenantService.updateTenant(context, tenantId, request));
     }
 
     @PutMapping("/tenants/{tenantId}/status")
     public ApiResponse<TenantVO> updateTenantStatus(
-            @RequestHeader("X-User-Role") Integer operatorRole,
+            HttpServletRequest servletRequest,
             @PathVariable String tenantId,
             @Valid @RequestBody TenantStatusRequest request) {
-        return ApiResponse.success("租户状态修改成功", tenantService.updateStatus(tenantId, request, operatorRole));
+        TrustedRequestContext context =
+                contextProvider.requireUserContext(servletRequest);
+        return ApiResponse.success(
+                "租户状态修改成功",
+                tenantService.updateStatus(context, tenantId, request));
     }
 
     @GetMapping("/tenants/{tenantId}/members")
     public ApiResponse<TenantMemberPageResult> pageMembers(
-            @RequestHeader("X-User-Role") Integer operatorRole,
+            HttpServletRequest servletRequest,
             @PathVariable String tenantId,
             @RequestParam(defaultValue = "1") Integer current,
             @RequestParam(defaultValue = "10") Integer size) {
-        requireSuperAdmin(operatorRole);
-        return ApiResponse.success(tenantService.pageMembers(tenantId, current, size));
+        TrustedRequestContext context =
+                contextProvider.requireUserContext(servletRequest);
+        return ApiResponse.success(
+                tenantService.pageMembers(
+                        context,
+                        tenantId,
+                        current,
+                        size));
     }
 
     @GetMapping("/saas-plans")
-    public ApiResponse<List<SaasPlanVO>> listPlans(@RequestHeader("X-User-Role") Integer operatorRole) {
-        requireSuperAdmin(operatorRole);
-        return ApiResponse.success(tenantService.listPlans());
-    }
-
-    private void requireSuperAdmin(Integer role) {
-        if (!Integer.valueOf(0).equals(role)) {
-            throw com.plagod.exception.ApiStatusException.forbidden("仅超级管理员可以访问平台租户管理");
-        }
+    public ApiResponse<List<SaasPlanVO>> listPlans(
+            HttpServletRequest servletRequest) {
+        TrustedRequestContext context =
+                contextProvider.requireUserContext(servletRequest);
+        return ApiResponse.success(tenantService.listPlans(context));
     }
 }

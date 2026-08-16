@@ -79,7 +79,7 @@ public class TenantContextServiceImpl implements TenantContextService {
     private TenantContextVO doResolve(TenantContextResolveRequest request) {
         UserRoleSnapshotVO user = requiredCurrentUser(request.getUserId(), request.getGlobalRole());
         Long userId = parseId(user.getUserId(), "用户ID");
-        List<String> authorities = activeAuthorities(userId);
+        List<String> authorities = authoritiesFor(userId, user.getRole());
         String requestedType = normalize(request.getContextType());
 
         if (Integer.valueOf(0).equals(user.getRole())) {
@@ -107,7 +107,7 @@ public class TenantContextServiceImpl implements TenantContextService {
     private TenantContextVO doValidate(TenantContextValidationRequest request) {
         UserRoleSnapshotVO user = requiredCurrentUser(request.getUserId(), request.getGlobalRole());
         Long userId = parseId(user.getUserId(), "用户ID");
-        List<String> authorities = activeAuthorities(userId);
+        List<String> authorities = authoritiesFor(userId, user.getRole());
         TenantContextVO current;
 
         if (CONTEXT_PLATFORM.equals(request.getContextType())) {
@@ -140,6 +140,10 @@ public class TenantContextServiceImpl implements TenantContextService {
     }
 
     private TenantContextVO platformTenantContext(Long tenantId, List<String> authorities) {
+        if (authorities.isEmpty()) {
+            throw ApiStatusException.forbidden(
+                    "当前平台用户没有租户代管能力");
+        }
         Tenant tenant = tenantMapper.selectById(tenantId);
         if (tenant == null) {
             throw ApiStatusException.notFound("租户不存在");
@@ -260,6 +264,13 @@ public class TenantContextServiceImpl implements TenantContextService {
                 .distinct()
                 .sorted()
                 .collect(Collectors.toList());
+    }
+
+    private List<String> authoritiesFor(Long userId, Integer globalRole) {
+        if (!Integer.valueOf(0).equals(globalRole)) {
+            return Collections.emptyList();
+        }
+        return activeAuthorities(userId);
     }
 
     private void ensureTenantVersion(Tenant tenant) {
