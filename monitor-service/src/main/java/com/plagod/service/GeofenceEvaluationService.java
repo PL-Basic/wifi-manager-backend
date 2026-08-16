@@ -26,7 +26,8 @@ public class GeofenceEvaluationService {
     public void evaluate(ClientLocation previous, ClientLocation current) {
         requireTrustedLocation(current);
 
-        List<Geofence> fences = geofenceMapper.selectEnabled();
+        List<Geofence> fences = geofenceMapper.selectEnabledByTenant(
+                current.getTenantId());
 
         for (Geofence fence : fences) {
             evaluateFence(fence, previous, current);
@@ -34,14 +35,19 @@ public class GeofenceEvaluationService {
     }
 
     @Transactional(rollbackFor = Exception.class)
-    public void clearUserData(Long userId) {
-        eventMapper.deleteByUserId(userId);
-        stateMapper.deleteByUserId(userId);
+    public void clearUserData(Long tenantId, Long userId) {
+        requirePositiveId(tenantId, "租户ID");
+        requirePositiveId(userId, "用户ID");
+        eventMapper.deleteByUserIdAndTenant(tenantId, userId);
+        stateMapper.deleteByUserIdAndTenant(tenantId, userId);
     }
 
     private void evaluateFence(Geofence fence, ClientLocation previous, ClientLocation current) {
 
-        GeofenceState state = stateMapper.selectForUpdate(fence.getFenceId(), current.getSessionId());
+        GeofenceState state = stateMapper.selectForUpdateByTenant(
+                current.getTenantId(),
+                fence.getFenceId(),
+                current.getSessionId());
 
         Integer currentPosition = classify(fence, current);
 
@@ -66,7 +72,7 @@ public class GeofenceEvaluationService {
 
         copyCurrentState(state, current, nextState);
 
-        if (stateMapper.updateState(state) != 1) {
+        if (stateMapper.updateStateByTenant(state) != 1) {
             throw new IllegalStateException("围栏状态更新失败");
         }
     }
@@ -90,11 +96,15 @@ public class GeofenceEvaluationService {
         }
 
         GeofenceState state = new GeofenceState();
+        state.setTenantId(current.getTenantId());
         state.setFenceId(fence.getFenceId());
         copyCurrentState(state, current, initialState);
 
-        if (stateMapper.insertIgnore(state) == 0) {
-            GeofenceState concurrent = stateMapper.selectForUpdate(fence.getFenceId(), current.getSessionId());
+        if (stateMapper.insertIgnoreByTenant(state) == 0) {
+            GeofenceState concurrent = stateMapper.selectForUpdateByTenant(
+                    current.getTenantId(),
+                    fence.getFenceId(),
+                    current.getSessionId());
 
             if (concurrent == null) {
                 throw new IllegalStateException("围栏状态初始化失败");
@@ -137,6 +147,9 @@ public class GeofenceEvaluationService {
     private boolean isPreviousPointUsable(Geofence fence, ClientLocation previous, ClientLocation current) {
 
         if (previous == null
+                || !Objects.equals(
+                        previous.getTenantId(),
+                        current.getTenantId())
                 || previous.getReportTime() == null
                 || previous.getLatitude() == null
                 || previous.getLongitude() == null
@@ -152,6 +165,7 @@ public class GeofenceEvaluationService {
 
     private void writeEvent(Geofence fence, ClientLocation location, String eventType) {
         GeofenceEvent event = new GeofenceEvent();
+        event.setTenantId(location.getTenantId());
         event.setFenceId(fence.getFenceId());
         event.setLocationId(location.getId());
         event.setUserId(location.getUserId());
@@ -163,10 +177,11 @@ public class GeofenceEvaluationService {
         event.setEventTime(location.getReportTime());
 
         // 0表示相同位置事件已存在，属于幂等成功。
-        eventMapper.insertIgnore(event);
+        eventMapper.insertIgnoreByTenant(event);
     }
 
     private void copyCurrentState(GeofenceState state, ClientLocation current, int insideState) {
+        state.setTenantId(current.getTenantId());
         state.setSessionId(current.getSessionId());
         state.setUserId(current.getUserId());
         state.setNodeId(current.getNodeId());
@@ -180,6 +195,8 @@ public class GeofenceEvaluationService {
     private void requireTrustedLocation(ClientLocation location) {
         if (location == null
                 || location.getId() == null
+                || location.getTenantId() == null
+                || location.getTenantId() <= 0
                 || location.getUserId() == null
                 || location.getSessionId() == null
                 || location.getNodeId() == null
@@ -192,6 +209,12 @@ public class GeofenceEvaluationService {
                 || !Integer.valueOf(1)
                 .equals(location.getTrustedBinding())) {
             throw new IllegalStateException("围栏评估收到不完整的可信位置");
+        }
+    }
+
+    private void requirePositiveId(Long value, String label) {
+        if (value == null || value <= 0) {
+            throw new IllegalArgumentException(label + "必须大于0");
         }
     }
 }

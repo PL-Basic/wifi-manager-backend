@@ -2,6 +2,7 @@ package com.plagod.controller;
 
 import com.plagod.dto.ApiResponse;
 import com.plagod.dto.ClientLocationReportDTO;
+import com.plagod.security.MonitorTrustedRequestContextProvider;
 import com.plagod.service.ClientLocationService;
 import com.plagod.vo.monitor.ClientLocationPageResult;
 import com.plagod.vo.monitor.LocationAuthorizationVO;
@@ -10,6 +11,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 
 import javax.validation.Valid;
+import javax.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
 
 @RestController
@@ -19,35 +21,56 @@ public class ClientLocationController {
     @Autowired
     private ClientLocationService clientLocationService;
 
+    @Autowired
+    private MonitorTrustedRequestContextProvider contextProvider;
+
     @PostMapping("/sessions/{sessionId}/report")
     public ApiResponse<Long> report(@PathVariable Long sessionId,
                                     @Valid @RequestBody ClientLocationReportDTO dto,
-                                    @RequestHeader("X-User-Id") Long userId) {
+                                    HttpServletRequest request) {
 
-        return ApiResponse.success("位置上报成功", clientLocationService.report(sessionId, dto, userId));
+        return ApiResponse.success(
+                "位置上报成功",
+                clientLocationService.report(
+                        contextProvider.resolve(request),
+                        sessionId,
+                        dto));
     }
 
     @GetMapping("/consent")
-    public ApiResponse<LocationAuthorizationVO> getConsent(@RequestHeader("X-User-Id") Long userId) {
+    public ApiResponse<LocationAuthorizationVO> getConsent(
+            HttpServletRequest request) {
 
-        return ApiResponse.success(clientLocationService.getAuthorization(userId));
+        return ApiResponse.success(clientLocationService.getAuthorization(
+                contextProvider.resolve(request)));
     }
 
     @PostMapping("/consent")
-    public ApiResponse<LocationAuthorizationVO> grantConsent(@RequestHeader("X-User-Id") Long userId) {
+    public ApiResponse<LocationAuthorizationVO> grantConsent(
+            HttpServletRequest request) {
 
-        return ApiResponse.success("位置共享已开启", clientLocationService.grantAuthorization(userId));
+        return ApiResponse.success(
+                "位置共享已开启",
+                clientLocationService.grantAuthorization(
+                        contextProvider.resolve(request)));
     }
 
     @DeleteMapping("/consent")
-    public ApiResponse<LocationAuthorizationVO> revokeConsent(@RequestHeader("X-User-Id") Long userId) {
+    public ApiResponse<LocationAuthorizationVO> revokeConsent(
+            HttpServletRequest request) {
 
-        return ApiResponse.success("位置共享已撤销", clientLocationService.revokeAuthorization(userId));
+        return ApiResponse.success(
+                "位置共享已撤销",
+                clientLocationService.revokeAuthorization(
+                        contextProvider.resolve(request)));
     }
 
     @DeleteMapping("/history")
-    public ApiResponse<Long> clearHistory(@RequestHeader("X-User-Id") Long userId) {
-        return ApiResponse.success("本人位置历史已清除", clientLocationService.clearOwnedHistory(userId));
+    public ApiResponse<Long> clearHistory(HttpServletRequest request) {
+        return ApiResponse.success(
+                "本人位置历史已清除",
+                clientLocationService.clearOwnedHistory(
+                        contextProvider.resolve(request)));
     }
 
     @GetMapping
@@ -56,8 +79,14 @@ public class ClientLocationController {
                                                                     @RequestParam(required = false) String mac,
                                                                     @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTime,
                                                                     @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime,
-                                                                    @RequestHeader("X-User-Id") Long userId) {
+                                                                    HttpServletRequest request) {
 
-        return ApiResponse.success(clientLocationService.pageOwnedLocations(userId, current, size, mac, startTime, endTime));
+        return ApiResponse.success(clientLocationService.pageOwnedLocations(
+                contextProvider.resolve(request),
+                current,
+                size,
+                mac,
+                startTime,
+                endTime));
     }
 }

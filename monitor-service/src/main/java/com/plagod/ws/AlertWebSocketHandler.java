@@ -3,6 +3,7 @@ package com.plagod.ws;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.plagod.security.TrustedContextType;
 import com.plagod.web.SafeExceptionLogFormatter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,6 +26,13 @@ public class AlertWebSocketHandler extends TextWebSocketHandler implements SubPr
 
     private static final Logger log = LoggerFactory.getLogger(AlertWebSocketHandler.class);
 
+    static final String ATTRIBUTE_TENANT_ID =
+            AlertWebSocketHandler.class.getName() + ".tenantId";
+    static final String ATTRIBUTE_USER_ID =
+            AlertWebSocketHandler.class.getName() + ".userId";
+    static final String ATTRIBUTE_CONTEXT_TYPE =
+            AlertWebSocketHandler.class.getName() + ".contextType";
+
     private static final String ACCESS_TOKEN_PROTOCOL = "access_token";
 
     private static final int SEND_TIME_LIMIT_MILLIS = 10_000;
@@ -36,10 +44,8 @@ public class AlertWebSocketHandler extends TextWebSocketHandler implements SubPr
     private static final CloseStatus HEARTBEAT_TIMEOUT_STATUS =
             new CloseStatus(4000, "Heartbeat timeout");
 
-    /**
-     * 按连接 ID 保存并发安全的 Session 包装器。
-     */
-    private final Map<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
+    private final Map<String, TenantConnection> sessions =
+            new ConcurrentHashMap<>();
 
     private final Map<String, Long> lastPongTimes = new ConcurrentHashMap<>();
 
@@ -64,28 +70,40 @@ public class AlertWebSocketHandler extends TextWebSocketHandler implements SubPr
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
-
-        Integer role = readRole(session);
-
-        // Handler 层再次防止非管理员进入广播集合。
-        if (!isAdmin(role)) {
+        TenantBinding binding = readBinding(session);
+        if (binding == null) {
+            removeConnection(session.getId());
             session.close(CloseStatus.POLICY_VIOLATION);
             return;
         }
 
-        WebSocketSession concurrentSession = new ConcurrentWebSocketSessionDecorator(session, SEND_TIME_LIMIT_MILLIS, SEND_BUFFER_LIMIT_BYTES);
+        WebSocketSession concurrentSession =
+                new ConcurrentWebSocketSessionDecorator(
+                        session,
+                        SEND_TIME_LIMIT_MILLIS,
+                        SEND_BUFFER_LIMIT_BYTES);
+        TenantConnection connection = new TenantConnection(
+                binding.tenantId,
+                binding.userId,
+                binding.contextType,
+                concurrentSession);
 
-        sessions.put(session.getId(), concurrentSession);
+        sessions.put(session.getId(), connection);
         lastPongTimes.put(session.getId(), System.currentTimeMillis());
 
-        log.info("alert websocket connected: sessionId={}, userId={}, total={}", session.getId(), session.getAttributes().get("userId"), sessions.size());
+        log.info(
+                "alert websocket connected: sessionId={}, userId={}, tenantId={}, contextType={}, total={}",
+                session.getId(),
+                connection.userId,
+                connection.tenantId,
+                connection.contextType,
+                sessions.size());
     }
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
 
-        sessions.remove(session.getId());
-        lastPongTimes.remove(session.getId());
+        removeConnection(session.getId());
 
         log.info("alert websocket closed: sessionId={}, status={}, total={}", session.getId(), status, sessions.size());
     }
@@ -93,8 +111,7 @@ public class AlertWebSocketHandler extends TextWebSocketHandler implements SubPr
     @Override
     public void handleTransportError(WebSocketSession session, Throwable exception) throws Exception {
 
-        sessions.remove(session.getId());
-        lastPongTimes.remove(session.getId());
+        removeConnection(session.getId());
 
         log.warn(
                 "alert websocket transport error: sessionId={}, safeStack={}",
@@ -106,8 +123,15 @@ public class AlertWebSocketHandler extends TextWebSocketHandler implements SubPr
         }
     }
 
-    public void broadcast(Object payload) {
-        if (sessions.isEmpty()) {
+    public void broadcastToTenant(Long tenantId, Object payload) {
+        if (tenantId == null || tenantId <= 0) {
+            throw new IllegalArgumentException("告警广播缺少有效租户身份");
+        }
+
+        boolean targetPresent = sessions.values().stream()
+                .anyMatch(connection ->
+                        tenantId.equals(connection.tenantId));
+        if (!targetPresent) {
             return;
         }
 
@@ -124,9 +148,13 @@ public class AlertWebSocketHandler extends TextWebSocketHandler implements SubPr
 
         TextMessage message = new TextMessage(json);
 
-        for (WebSocketSession session : sessions.values()) {
+        for (TenantConnection connection : sessions.values()) {
+            if (!tenantId.equals(connection.tenantId)) {
+                continue;
+            }
+            WebSocketSession session = connection.session;
             if (!session.isOpen()) {
-                sessions.remove(session.getId());
+                removeConnection(session.getId());
                 continue;
             }
 
@@ -135,7 +163,7 @@ public class AlertWebSocketHandler extends TextWebSocketHandler implements SubPr
                 // 会串行化同一连接上的并发发送。
                 session.sendMessage(message);
             } catch (Exception exception) {
-                sessions.remove(session.getId());
+                removeConnection(session.getId());
 
                 log.warn(
                         "alert websocket send failed: sessionId={}, safeStack={}",
@@ -151,7 +179,8 @@ public class AlertWebSocketHandler extends TextWebSocketHandler implements SubPr
     protected void handleTextMessage(WebSocketSession session, TextMessage message) {
         try {
             JsonNode payload = objectMapper.readTree(message.getPayload());
-            if ("PONG".equals(payload.path("type").asText())) {
+            if ("PONG".equals(payload.path("type").asText())
+                    && sessions.containsKey(session.getId())) {
                 lastPongTimes.put(session.getId(), System.currentTimeMillis());
             }
         } catch (Exception exception) {
@@ -163,7 +192,8 @@ public class AlertWebSocketHandler extends TextWebSocketHandler implements SubPr
         long now = System.currentTimeMillis();
         TextMessage ping = new TextMessage("{\"type\":\"PING\",\"time\":" + now + "}");
 
-        for (WebSocketSession session : sessions.values()) {
+        for (TenantConnection connection : sessions.values()) {
+            WebSocketSession session = connection.session;
             Long lastPong = lastPongTimes.get(session.getId());
             if (!session.isOpen() || lastPong == null || now - lastPong > HEARTBEAT_TIMEOUT_MILLIS) {
                 removeAndClose(session, HEARTBEAT_TIMEOUT_STATUS);
@@ -183,8 +213,7 @@ public class AlertWebSocketHandler extends TextWebSocketHandler implements SubPr
     }
 
     private void removeAndClose(WebSocketSession session, CloseStatus status) {
-        sessions.remove(session.getId());
-        lastPongTimes.remove(session.getId());
+        removeConnection(session.getId());
         if (session.isOpen()) {
             try {
                 session.close(status);
@@ -193,22 +222,35 @@ public class AlertWebSocketHandler extends TextWebSocketHandler implements SubPr
         }
     }
 
-    private Integer readRole(WebSocketSession session) {
-        Object value = session.getAttributes().get("role");
-
-        if (value == null) {
+    private TenantBinding readBinding(WebSocketSession session) {
+        Map<String, Object> attributes = session.getAttributes();
+        if (attributes == null) {
             return null;
         }
-
-        try {
-            return Integer.valueOf(String.valueOf(value));
-        } catch (NumberFormatException exception) {
+        Object tenantId = attributes.get(ATTRIBUTE_TENANT_ID);
+        Object userId = attributes.get(ATTRIBUTE_USER_ID);
+        Object contextType = attributes.get(ATTRIBUTE_CONTEXT_TYPE);
+        if (!(tenantId instanceof Long)
+                || (Long) tenantId <= 0
+                || !(userId instanceof Long)
+                || (Long) userId <= 0
+                || !(contextType instanceof TrustedContextType)) {
             return null;
         }
+        TrustedContextType type = (TrustedContextType) contextType;
+        if (type != TrustedContextType.TENANT
+                && type != TrustedContextType.PLATFORM_TENANT) {
+            return null;
+        }
+        return new TenantBinding(
+                (Long) tenantId,
+                (Long) userId,
+                type);
     }
 
-    private boolean isAdmin(Integer role) {
-        return Integer.valueOf(0).equals(role) || Integer.valueOf(1).equals(role);
+    private void removeConnection(String sessionId) {
+        sessions.remove(sessionId);
+        lastPongTimes.remove(sessionId);
     }
 
     private void closeQuietly(WebSocketSession session) {
@@ -221,6 +263,39 @@ public class AlertWebSocketHandler extends TextWebSocketHandler implements SubPr
             session.close(CloseStatus.SERVER_ERROR);
         } catch (IOException ignored) {
 
+        }
+    }
+
+    private static final class TenantBinding {
+        private final Long tenantId;
+        private final Long userId;
+        private final TrustedContextType contextType;
+
+        private TenantBinding(
+                Long tenantId,
+                Long userId,
+                TrustedContextType contextType) {
+            this.tenantId = tenantId;
+            this.userId = userId;
+            this.contextType = contextType;
+        }
+    }
+
+    private static final class TenantConnection {
+        private final Long tenantId;
+        private final Long userId;
+        private final TrustedContextType contextType;
+        private final WebSocketSession session;
+
+        private TenantConnection(
+                Long tenantId,
+                Long userId,
+                TrustedContextType contextType,
+                WebSocketSession session) {
+            this.tenantId = tenantId;
+            this.userId = userId;
+            this.contextType = contextType;
+            this.session = session;
         }
     }
 }

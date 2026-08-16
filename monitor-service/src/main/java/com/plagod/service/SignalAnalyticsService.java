@@ -6,7 +6,6 @@ import com.plagod.vo.device.SignalAnalyticsSourceVO;
 import com.plagod.vo.monitor.SignalAnalysisVO;
 import feign.FeignException;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -38,9 +37,6 @@ public class SignalAnalyticsService {
     @Autowired
     private DeviceSignalAnalyticsClient deviceSignalAnalyticsClient;
 
-    @Value("${wifi.internal.token:}")
-    private String internalToken;
-
     public SignalAnalysisVO query(Long nodeId, String mac, LocalDateTime startTime, LocalDateTime endTime, Integer sampleLimit, Integer bucketMinutes) {
 
         validateRequest(nodeId, mac, startTime, endTime, sampleLimit, bucketMinutes);
@@ -51,14 +47,16 @@ public class SignalAnalyticsService {
     }
 
     private SignalAnalyticsSourceVO loadSource(Long nodeId, String mac, LocalDateTime startTime, LocalDateTime endTime, Integer sampleLimit, Integer bucketMinutes) {
-        if (!StringUtils.hasText(internalToken)) {
-            throw new IllegalStateException("设备信号数据源当前不可用");
-        }
-
         ApiResponse<SignalAnalyticsSourceVO> response;
 
         try {
-            response = deviceSignalAnalyticsClient.querySignals(nodeId, mac, startTime.toString(), endTime.toString(), sampleLimit, bucketMinutes, internalToken);
+            response = deviceSignalAnalyticsClient.querySignals(
+                    nodeId,
+                    mac,
+                    startTime.toString(),
+                    endTime.toString(),
+                    sampleLimit,
+                    bucketMinutes);
         } catch (FeignException exception) {
             if (exception.status() == 400) {
                 throw new IllegalArgumentException("节点不存在或信号查询参数无效");

@@ -9,7 +9,6 @@ import com.plagod.vo.monitor.GisNodeCoverageVO;
 import com.plagod.vo.monitor.GisTrajectoryVO;
 import feign.FeignException;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -30,9 +29,6 @@ public class GisNodeCoverageService {
 
     @Autowired
     private DeviceSignalAnalyticsClient deviceSignalAnalyticsClient;
-
-    @Value("${wifi.internal.token:}")
-    private String internalToken;
 
     public GisNodeCoverageVO query(Long sessionId, LocalDateTime startTime, LocalDateTime endTime, Double maximumAccuracyMeters, Integer matchToleranceSeconds) {
 
@@ -60,14 +56,16 @@ public class GisNodeCoverageService {
 
     private SignalAnalyticsSourceVO loadSignalSource(GisTrajectoryVO trajectory, Long sessionId, LocalDateTime startTime, LocalDateTime endTime) {
 
-        if (!StringUtils.hasText(internalToken)) {
-            throw new IllegalStateException("设备信号数据源当前不可用");
-        }
-
         ApiResponse<SignalAnalyticsSourceVO> response;
 
         try {
-            response = deviceSignalAnalyticsClient.queryCoverageSignals(trajectory.getNodeId(), trajectory.getMac(), sessionId, startTime.toString(), endTime.toString(), MAXIMUM_SIGNAL_SAMPLES, internalToken);
+            response = deviceSignalAnalyticsClient.queryCoverageSignals(
+                    trajectory.getNodeId(),
+                    trajectory.getMac(),
+                    sessionId,
+                    startTime.toString(),
+                    endTime.toString(),
+                    MAXIMUM_SIGNAL_SAMPLES);
         } catch (FeignException exception) {
             if (exception.status() == 400) {
                 throw new IllegalArgumentException("节点不存在、未配置安装坐标或RSSI查询范围无效");

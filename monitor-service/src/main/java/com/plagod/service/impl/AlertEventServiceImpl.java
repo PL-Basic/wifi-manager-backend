@@ -5,7 +5,10 @@ import com.plagod.audit.Audited;
 import com.plagod.vo.monitor.AlertEventPageResult;
 import com.plagod.vo.monitor.AlertEventVO;
 import com.plagod.entity.monitor.AlertEvent;
+import com.plagod.exception.ApiStatusException;
 import com.plagod.mapper.AlertEventMapper;
+import com.plagod.security.MonitorTenantScope;
+import com.plagod.security.TrustedRequestContext;
 import com.plagod.service.AlertEventService;
 import com.plagod.support.PageBounds;
 import org.springframework.beans.BeanUtils;
@@ -23,9 +26,14 @@ public class AlertEventServiceImpl implements AlertEventService {
     @Autowired
     private AlertEventMapper alertEventMapper;
 
+    @Autowired
+    private MonitorTenantScope tenantScope;
+
     @Override
-    public AlertEventPageResult pageAlerts(long current, long size, Integer level, Integer status, String mac,
+    public AlertEventPageResult pageAlerts(TrustedRequestContext context,
+                                           long current, long size, Integer level, Integer status, String mac,
                                            LocalDateTime startTime, LocalDateTime endTime) {
+        Long tenantId = tenantScope.requireTenantId(context);
         PageBounds pageBounds = PageBounds.of(
                 current <= 0L
                         ? null
@@ -35,6 +43,7 @@ public class AlertEventServiceImpl implements AlertEventService {
                         : (int) Math.min(size, Integer.MAX_VALUE));
 
         QueryWrapper<AlertEvent> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("tenant_id", tenantId);
         if (level != null) {
             queryWrapper.eq("level", level);
         }
@@ -73,10 +82,13 @@ public class AlertEventServiceImpl implements AlertEventService {
     }
 
     @Override
-    public AlertEventVO getAlert(Long id) {
-        AlertEvent entity = alertEventMapper.selectById(id);
+    public AlertEventVO getAlert(TrustedRequestContext context, Long id) {
+        Long tenantId = tenantScope.requireTenantId(context);
+        AlertEvent entity = alertEventMapper.selectByIdAndTenant(
+                tenantId,
+                id);
         if (entity == null) {
-            throw new IllegalArgumentException("告警事件不存在");
+            throw ApiStatusException.notFound("告警事件不存在");
         }
         return toVO(entity);
     }
@@ -86,16 +98,19 @@ public class AlertEventServiceImpl implements AlertEventService {
             action = "alert.handle",
             scope = Audited.Scope.TENANT,
             tenantIdSource = Audited.TenantIdSource.REQUEST)
-    public void handle(Long id, Long handleUserId) {
-        AlertEvent entity = alertEventMapper.selectById(id);
+    public void handle(TrustedRequestContext context, Long id) {
+        Long tenantId = tenantScope.requireTenantId(context);
+        AlertEvent entity = alertEventMapper.selectByIdAndTenant(
+                tenantId,
+                id);
         if (entity == null) {
-            throw new IllegalArgumentException("告警事件不存在");
+            throw ApiStatusException.notFound("告警事件不存在");
         }
         if (entity.getStatus() != null && entity.getStatus() == 1) {
             throw new IllegalArgumentException("告警事件已处理");
         }
         entity.setStatus(1);
-        entity.setHandleUserId(handleUserId);
+        entity.setHandleUserId(context.getUserId());
         entity.setHandleTime(LocalDateTime.now());
         alertEventMapper.updateById(entity);
     }
