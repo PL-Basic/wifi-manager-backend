@@ -17,7 +17,8 @@ public class InternalAdminTrafficController {
     private TrafficQueryService trafficQueryService;
 
     @GetMapping
-    public ApiResponse<TrafficPageResult> pageTraffic(@RequestParam(defaultValue = "1") Long current,
+    public ApiResponse<TrafficPageResult> pageTraffic(@RequestHeader("X-Tenant-Id") Long tenantId,
+                                                      @RequestParam(defaultValue = "1") Long current,
                                                       @RequestParam(defaultValue = "10") Long size,
                                                       @RequestParam(required = false) String mac,
                                                       @RequestParam(required = false) Long sessionId,
@@ -25,6 +26,6 @@ public class InternalAdminTrafficController {
                                                       @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTime,
                                                       @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime) {
 
-        return ApiResponse.success(trafficQueryService.pageTraffic(current, size, mac, sessionId, dstIp, startTime, endTime));
+        return ApiResponse.success(trafficQueryService.pageTraffic(tenantId, current, size, mac, sessionId, dstIp, startTime, endTime));
     }
 }

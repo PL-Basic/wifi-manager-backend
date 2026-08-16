@@ -5,11 +5,21 @@ import com.plagod.vo.entitlement.RefundVO;
 
 public interface RefundQueryService {
 
-    RefundPageResult pageOwnRefunds(Long userId, long current, long size, String status);
+    RefundPageResult pageOwnRefunds(
+            Long tenantId,
+            Long userId,
+            Integer current,
+            Integer size,
+            String status);
 
-    RefundVO getOwnRefund(Long userId, String refundNo);
+    RefundVO getOwnRefund(Long tenantId, Long userId, String refundNo);
 
-    RefundPageResult pageForAdmin(long current, long size, Long userId, String status);
+    RefundPageResult pageForAdmin(
+            Long tenantId,
+            Integer current,
+            Integer size,
+            Long userId,
+            String status);
 
-    RefundVO getForAdmin(String refundNo);
+    RefundVO getForAdmin(Long tenantId, String refundNo);
 }

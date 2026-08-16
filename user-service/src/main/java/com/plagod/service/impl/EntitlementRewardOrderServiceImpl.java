@@ -25,8 +25,12 @@ import org.springframework.util.StringUtils;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -35,6 +39,8 @@ public class EntitlementRewardOrderServiceImpl implements EntitlementRewardOrder
     private static final DateTimeFormatter ORDER_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
     private static final String PRODUCT_ADMIN_REWARD = "ADMIN_REWARD";
     private static final String ORDER_TYPE_REWARD = "REWARD";
+    private static final Set<Integer> ALLOWED_SUBSCRIPTION_MONTHS =
+            Collections.unmodifiableSet(new HashSet<>(Arrays.asList(1, 3, 6, 12)));
 
     @Autowired
     private UserMapper userMapper;
@@ -50,13 +56,20 @@ public class EntitlementRewardOrderServiceImpl implements EntitlementRewardOrder
     private TradeStatusLogMapper statusLogMapper;
 
     @Override
-    @Audited(action = "entitlement.reward-order.create")
+    @Audited(
+            action = "entitlement.reward-order.create",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     @Transactional(rollbackFor = Exception.class)
-    public EntitlementOrderVO create(Long userId,
+    public EntitlementOrderVO create(Long tenantId,
+                                     Long userId,
                                      Long operatorId,
                                      String operatorName,
                                      EntitlementRewardOrderRequest request) {
 
+        if (tenantId == null || tenantId <= 0) {
+            throw new IllegalArgumentException("租户身份无效");
+        }
         validateRequest(userId, operatorId, operatorName, request);
 
         String mode = request.getMode().trim().toUpperCase(Locale.ROOT);
@@ -70,6 +83,7 @@ public class EntitlementRewardOrderServiceImpl implements EntitlementRewardOrder
         }
 
         EntitlementOrder candidate = new EntitlementOrder();
+        candidate.setTenantId(tenantId);
         candidate.setOrderNo(generateOrderNo(now));
         candidate.setUserId(userId);
         candidate.setClientRequestId(clientRequestId);
@@ -77,6 +91,7 @@ public class EntitlementRewardOrderServiceImpl implements EntitlementRewardOrder
         candidate.setOrderType(ORDER_TYPE_REWARD);
         candidate.setEntitlementMode(mode);
         candidate.setGrantSeconds(request.getGrantSeconds());
+        candidate.setGrantMonths(request.getGrantMonths());
         candidate.setAmountCents(request.getAmountCents());
         candidate.setPaidAmountCents(0L);
         candidate.setRefundedAmountCents(0L);
@@ -90,7 +105,7 @@ public class EntitlementRewardOrderServiceImpl implements EntitlementRewardOrder
 
         orderMapper.insertOrResolveExisting(candidate);
 
-        EntitlementOrder stored = orderMapper.selectByUserRequestForUpdate(userId, clientRequestId);
+        EntitlementOrder stored = orderMapper.selectByUserRequestForUpdate(tenantId, userId, clientRequestId);
         if (stored == null) {
             throw new IllegalStateException("奖励订单创建结果无法确认");
         }
@@ -102,7 +117,7 @@ public class EntitlementRewardOrderServiceImpl implements EntitlementRewardOrder
             return toOrderVO(stored);
         }
 
-        NetworkEntitlement entitlement = entitlementMapper.selectByUserIdForUpdate(userId);
+        NetworkEntitlement entitlement = entitlementMapper.selectByUserIdForUpdate(tenantId, userId);
         requireCompatibleMode(entitlement, mode, now);
 
         if (EntitlementTradeConstants.MODE_DURATION.equals(mode)) {
@@ -126,6 +141,7 @@ public class EntitlementRewardOrderServiceImpl implements EntitlementRewardOrder
 
         if (isNew) {
             entitlement = new NetworkEntitlement();
+            entitlement.setTenantId(order.getTenantId());
             entitlement.setUserId(order.getUserId());
             entitlement.setVersion(0);
             entitlement.setCreateTime(now);
@@ -142,6 +158,7 @@ public class EntitlementRewardOrderServiceImpl implements EntitlementRewardOrder
         saveEntitlement(entitlement, isNew);
 
         DurationPurchase purchase = new DurationPurchase();
+        purchase.setTenantId(order.getTenantId());
         purchase.setOrderNo(order.getOrderNo());
         purchase.setUserId(order.getUserId());
         purchase.setPurchasedSeconds(order.getGrantSeconds());
@@ -156,7 +173,8 @@ public class EntitlementRewardOrderServiceImpl implements EntitlementRewardOrder
             throw new IllegalStateException("奖励购买批次创建失败");
         }
 
-        insertUsageLog(order, entitlement, purchase.getPurchaseId(), before, after, now);
+        insertUsageLog(order, entitlement, purchase.getPurchaseId(),
+                order.getGrantSeconds(), before, after, now);
     }
 
     private void grantSubscription(EntitlementOrder order,
@@ -167,10 +185,17 @@ public class EntitlementRewardOrderServiceImpl implements EntitlementRewardOrder
         boolean sameMode = !isNew && EntitlementTradeConstants.MODE_SUBSCRIPTION.equalsIgnoreCase(entitlement.getMode());
         LocalDateTime oldEnd = sameMode ? entitlement.getSubscriptionEndTime() : null;
         long before = oldEnd != null && oldEnd.isAfter(now) ? Duration.between(now, oldEnd).getSeconds() : 0L;
-        long after = Math.addExact(before, order.getGrantSeconds());
+        LocalDateTime baseTime = oldEnd != null && oldEnd.isAfter(now) ? oldEnd : now;
+        if (order.getGrantMonths() == null
+                || !ALLOWED_SUBSCRIPTION_MONTHS.contains(order.getGrantMonths())) {
+            throw new IllegalStateException("奖励订阅缺少有效自然月快照");
+        }
+        LocalDateTime endTime = baseTime.plusMonths(order.getGrantMonths());
+        long after = Duration.between(now, endTime).getSeconds();
 
         if (isNew) {
             entitlement = new NetworkEntitlement();
+            entitlement.setTenantId(order.getTenantId());
             entitlement.setUserId(order.getUserId());
             entitlement.setVersion(0);
             entitlement.setCreateTime(now);
@@ -186,20 +211,22 @@ public class EntitlementRewardOrderServiceImpl implements EntitlementRewardOrder
             entitlement.setSubscriptionStartTime(now);
         }
 
-        entitlement.setSubscriptionEndTime(now.plusSeconds(after));
+        entitlement.setSubscriptionEndTime(endTime);
         entitlement.setUpdateTime(now);
         saveEntitlement(entitlement, isNew);
-        insertUsageLog(order, entitlement, null, before, after, now);
+        insertUsageLog(order, entitlement, null, after - before, before, after, now);
     }
 
     private void insertUsageLog(EntitlementOrder order,
                                 NetworkEntitlement entitlement,
                                 Long purchaseId,
+                                long changeSeconds,
                                 long before,
                                 long after,
                                 LocalDateTime now) {
 
         EntitlementUsageLog usageLog = new EntitlementUsageLog();
+        usageLog.setTenantId(order.getTenantId());
         usageLog.setEntitlementId(entitlement.getEntitlementId());
         usageLog.setUserId(order.getUserId());
         usageLog.setRequestId(order.getClientRequestId());
@@ -207,7 +234,7 @@ public class EntitlementRewardOrderServiceImpl implements EntitlementRewardOrder
         usageLog.setPurchaseId(purchaseId);
         usageLog.setAuthorizationMode(order.getEntitlementMode());
         usageLog.setSessionId(null);
-        usageLog.setChangeSeconds(order.getGrantSeconds());
+        usageLog.setChangeSeconds(changeSeconds);
         usageLog.setBeforeSeconds(before);
         usageLog.setAfterSeconds(after);
         usageLog.setReason("ADMIN_REWARD");
@@ -227,7 +254,8 @@ public class EntitlementRewardOrderServiceImpl implements EntitlementRewardOrder
         }
 
         if (EntitlementTradeConstants.MODE_DURATION.equalsIgnoreCase(entitlement.getMode())
-                && purchaseMapper.selectRefundReservedByUserForUpdate(entitlement.getUserId()) != null) {
+                && purchaseMapper.selectRefundReservedByUserForUpdate(
+                entitlement.getTenantId(), entitlement.getUserId()) != null) {
             throw new IllegalArgumentException("存在退款冻结批次，暂时不能切换权益模式");
         }
 
@@ -241,6 +269,11 @@ public class EntitlementRewardOrderServiceImpl implements EntitlementRewardOrder
                 && entitlement.getSubscriptionEndTime() != null
                 && entitlement.getSubscriptionEndTime().isAfter(now)) {
             throw new IllegalArgumentException("原订阅尚未到期，不能改为时长奖励");
+        }
+
+        if (EntitlementTradeConstants.MODE_UNLIMITED.equalsIgnoreCase(entitlement.getMode())
+                && Integer.valueOf(1).equals(entitlement.getStatus())) {
+            throw new IllegalArgumentException("无限权益尚未撤销");
         }
     }
 
@@ -257,6 +290,7 @@ public class EntitlementRewardOrderServiceImpl implements EntitlementRewardOrder
                                  LocalDateTime now) {
 
         TradeStatusLog log = new TradeStatusLog();
+        log.setTenantId(order.getTenantId());
         log.setBusinessType(EntitlementTradeConstants.BUSINESS_ORDER);
         log.setBusinessNo(order.getOrderNo());
         log.setEventKey("REWARD:" + order.getClientRequestId());
@@ -274,6 +308,7 @@ public class EntitlementRewardOrderServiceImpl implements EntitlementRewardOrder
                 || !ORDER_TYPE_REWARD.equals(stored.getOrderType())
                 || !Objects.equals(stored.getEntitlementMode(), candidate.getEntitlementMode())
                 || !Objects.equals(stored.getGrantSeconds(), candidate.getGrantSeconds())
+                || !Objects.equals(stored.getGrantMonths(), candidate.getGrantMonths())
                 || !Objects.equals(stored.getAmountCents(), candidate.getAmountCents())
                 || !Objects.equals(stored.getRemark(), candidate.getRemark())) {
             throw new IllegalArgumentException("奖励请求号已被其他订单参数使用");
@@ -291,10 +326,7 @@ public class EntitlementRewardOrderServiceImpl implements EntitlementRewardOrder
         if (operatorId == null || operatorId <= 0 || !StringUtils.hasText(operatorName)) {
             throw new IllegalArgumentException("超级管理员身份无效");
         }
-        if (request == null
-                || request.getGrantSeconds() == null
-                || request.getGrantSeconds() <= 0
-                || request.getAmountCents() == null
+        if (request == null || request.getAmountCents() == null
                 || request.getAmountCents() < 0) {
             throw new IllegalArgumentException("奖励订单参数无效");
         }
@@ -303,6 +335,16 @@ public class EntitlementRewardOrderServiceImpl implements EntitlementRewardOrder
         if (!EntitlementTradeConstants.MODE_DURATION.equals(mode)
                 && !EntitlementTradeConstants.MODE_SUBSCRIPTION.equals(mode)) {
             throw new IllegalArgumentException("奖励权益模式无效");
+        }
+        if (EntitlementTradeConstants.MODE_DURATION.equals(mode)
+                && (request.getGrantSeconds() == null || request.getGrantSeconds() <= 0
+                || request.getGrantMonths() != null)) {
+            throw new IllegalArgumentException("时长奖励参数无效");
+        }
+        if (EntitlementTradeConstants.MODE_SUBSCRIPTION.equals(mode)
+                && (!ALLOWED_SUBSCRIPTION_MONTHS.contains(request.getGrantMonths())
+                || request.getGrantSeconds() != null && request.getGrantSeconds() != 0)) {
+            throw new IllegalArgumentException("订阅奖励自然月只能为1、3、6或12");
         }
     }
 
@@ -319,12 +361,18 @@ public class EntitlementRewardOrderServiceImpl implements EntitlementRewardOrder
     private EntitlementOrderVO toOrderVO(EntitlementOrder order) {
         EntitlementOrderVO vo = new EntitlementOrderVO();
         vo.setOrderNo(order.getOrderNo());
+        vo.setTenantId(String.valueOf(order.getTenantId()));
         vo.setUserId(order.getUserId());
         vo.setProductCode(order.getProductCode());
         vo.setOrderType(order.getOrderType());
         vo.setEntitlementMode(order.getEntitlementMode());
+        vo.setPricingVersion(order.getPricingVersion());
         vo.setGrantSeconds(order.getGrantSeconds());
+        vo.setGrantMonths(order.getGrantMonths());
         vo.setAmountCents(order.getAmountCents());
+        vo.setReferenceAmountCents(order.getReferenceAmountCents());
+        vo.setSubscriptionRatioBps(order.getSubscriptionRatioBps());
+        vo.setPeriodDiscountBps(order.getPeriodDiscountBps());
         vo.setPaidAmountCents(order.getPaidAmountCents());
         vo.setRefundedAmountCents(order.getRefundedAmountCents());
         vo.setStatus(order.getStatus());

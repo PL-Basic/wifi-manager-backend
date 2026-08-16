@@ -2,6 +2,7 @@ package com.plagod.service;
 
 import com.plagod.entity.monitor.ClientLocation;
 import com.plagod.mapper.ClientLocationMapper;
+import com.plagod.support.StableUnits;
 import com.plagod.util.GeoMath;
 import com.plagod.vo.monitor.GisHeatmapVO;
 import com.plagod.vo.monitor.GisPointFilterStatsVO;
@@ -262,7 +263,8 @@ public class GisAnalyticsService {
                     continue;
                 }
 
-                double elapsed = elapsedMillis / 1000.0D;
+                double elapsed = elapsedMillis
+                        / (double) StableUnits.MILLISECONDS_PER_SECOND;
                 distance = GeoMath.distanceMeters(previous.source.getLatitude(), previous.source.getLongitude(), point.getLatitude(), point.getLongitude());
                 double accuracyBuffer = previous.source.getAccuracy().doubleValue() + point.getAccuracy().doubleValue();
 
@@ -273,7 +275,10 @@ public class GisAnalyticsService {
                     continue;
                 }
 
-                elapsedSeconds = Math.max(0L, elapsedMillis / 1000L);
+                elapsedSeconds = Math.max(
+                        0L,
+                        elapsedMillis
+                                / StableUnits.MILLISECONDS_PER_SECOND);
             }
 
             CleanPoint acceptedPoint = new CleanPoint(point, distance, elapsedSeconds);

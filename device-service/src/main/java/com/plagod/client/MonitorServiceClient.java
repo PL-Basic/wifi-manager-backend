@@ -13,5 +13,6 @@ public interface MonitorServiceClient {
 
     @PostMapping("/internal/monitor/evaluate")
     ApiResponse<TrafficEvaluationResult> evaluate(@RequestHeader("X-Internal-Token") String internalToken,
+                                                  @RequestHeader("X-Tenant-Id") String tenantId,
                                                   @RequestBody TrafficEvaluationRequest request);
 }

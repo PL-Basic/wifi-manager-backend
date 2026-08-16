@@ -9,20 +9,28 @@ public interface PaymentRecordMapper extends BaseMapper<PaymentRecord> {
 
     int insertOrResolveExisting(PaymentRecord payment);
 
-    @Select("select * from t_payment_record where order_no = #{orderNo} limit 1 for update")
-    PaymentRecord selectByOrderNoForUpdate(@Param("orderNo") String orderNo);
+    @Select("select * from t_payment_record where tenant_id = #{tenantId} and order_no = #{orderNo} limit 1 for update")
+    PaymentRecord selectByOrderNoForUpdate(@Param("tenantId") Long tenantId,
+                                           @Param("orderNo") String orderNo);
 
-    @Select("select * from t_payment_record where user_id = #{userId} and request_id = #{requestId} limit 1 for update")
-    PaymentRecord selectByUserRequestForUpdate(@Param("userId") Long userId, @Param("requestId") String requestId);
+    @Select("select * from t_payment_record where tenant_id = #{tenantId} and user_id = #{userId} and request_id = #{requestId} limit 1 for update")
+    PaymentRecord selectByUserRequestForUpdate(@Param("tenantId") Long tenantId,
+                                               @Param("userId") Long userId,
+                                               @Param("requestId") String requestId);
 
-    @Select("select * from t_payment_record where payment_no = #{paymentNo} and user_id = #{userId} limit 1")
-    PaymentRecord selectOwnedPayment(@Param("paymentNo") String paymentNo, @Param("userId") Long userId);
+    @Select("select * from t_payment_record where tenant_id = #{tenantId} and payment_no = #{paymentNo} and user_id = #{userId} limit 1")
+    PaymentRecord selectOwnedPayment(@Param("tenantId") Long tenantId,
+                                     @Param("paymentNo") String paymentNo,
+                                     @Param("userId") Long userId);
 
     @Select("select p.* from t_payment_record p " +
             "inner join t_entitlement_order o on o.order_no = p.order_no " +
-            "where p.user_id = #{userId} and p.status = 'CREATED' " +
+            "where p.tenant_id = #{tenantId} and o.tenant_id = #{tenantId} " +
+            "and p.user_id = #{userId} and p.status = 'CREATED' " +
             "and o.entitlement_mode <> #{targetMode} limit 1")
-    PaymentRecord selectCreatedOtherModePayment(@Param("userId") Long userId, @Param("targetMode") String targetMode);
+    PaymentRecord selectCreatedOtherModePayment(@Param("tenantId") Long tenantId,
+                                                @Param("userId") Long userId,
+                                                @Param("targetMode") String targetMode);
 
     @Select("select * from t_payment_record " +
             "where business_key = #{businessKey} limit 1")

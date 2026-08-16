@@ -4,5 +4,5 @@ import com.plagod.vo.portal.PortalSessionStatusVO;
 
 public interface PortalSessionStatusQueryService {
 
-    PortalSessionStatusVO getOwnedStatus(Long sessionId, Long userId);
+    PortalSessionStatusVO getOwnedStatus(Long tenantId, Long sessionId, Long userId);
 }

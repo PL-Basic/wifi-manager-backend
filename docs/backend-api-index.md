@@ -8,11 +8,70 @@
 http://{gateway-host}:8080
 ```
 
-除 WebSocket 和头像文件外，HTTP 接口统一返回：
+除 WebSocket 和头像文件外，当前生产 HTTP 接口统一返回三字段兼容 envelope：
 
 ```json
 {"code":200,"message":"操作成功","data":{}}
 ```
+
+Demo 1.4 S1 已在共享入口实现 `http-envelope-v1`：`ApiResponse` 保留
+`code/message/data`，并以仅在非空时序列化的方式增加 `errorKey/requestId`。
+`http-support-v1` 固定 Servlet 的九类状态、`X-Request-Id`、MDC 清理和安全
+500；业务服务 handler 与 Gateway 已通过对应 `P14-*` 完成接入，S2 共享
+收敛见下文。冻结结论、基础错误键、MQTT/AI 样本和 P14 文件所有权见
+[Demo 1.4 S0 公共能力与兼容契约冻结](demo-1.4-s0-contract-freeze.md)。
+
+Demo 1.4 C0 在不改变业务接口的前提下补充两组共享入口：
+`wifi-common-api` 提供 `PageBounds`、稳定单位/时区常量、结构化 allowlist
+脱敏和不回显配置值的纯 Java 校验；`wifi-web-support-spring-boot-starter`
+提供无异常 message 的可定位安全堆栈、默认仅暴露 `health/info` 的 Actuator
+基线，以及只约束 `wifi.*` 自定义指标的低基数 `MeterFilter`。服务可显式扩展
+readiness 必要依赖，但不得把外部依赖加入 liveness。
+
+Demo 1.4 S2 将安全堆栈的唯一实现固定为
+`com.plagod.support.SafeExceptionLogFormatter`，位于框架无关的
+`wifi-common-api`。Servlet Starter 中原
+`com.plagod.web.SafeExceptionLogFormatter` 仅作为兼容委托保留；
+Gateway 未分类 500 使用同一实现记录有界的异常类型和定位帧，不记录异常
+message、suppressed 内容或 Throwable 参数。
+
+Demo 1.5 S0 将身份/Header 共享输入冻结为 `trusted-context-v1`：
+
+- `wifi-common-api` 的 `TrustedRequestHeaders` 是 Gateway、Servlet Starter
+  与 Feign 后续唯一可信 Header 常量来源；旧 `TrustedHeaderNames` 仅保留
+  兼容委托。`X-Request-Id` 已进入可信传播清单，但不作为可伪造的身份字段。
+- `TrustedRequestContext` 是不可变快照，分别保存 `trustedSource`、用户与
+  session/jti、`PLATFORM/TENANT/PLATFORM_TENANT`、租户双版本、平台权限和
+  requestId。`GATEWAY_USER`、`INTERNAL_SERVICE`、`SCHEDULED_SERVICE`、
+  `DEVICE_EVENT` 是独立来源；内部/后台/设备身份不能伪造浏览器 actor。
+- Security Starter 的 `TrustedRequestContextResolver` 只接受
+  `TrustedRequestFilter` 已标记的 Gateway/Internal 请求。现有租户写校验
+  与 Feign 出站按需装配并复用该 Context；未新增覆盖所有 Servlet 读路径的
+  全局认证 Filter。
+- Feign 始终删除 Authorization、Cookie、Gateway Token、调用方 Internal
+  Token、手工身份/租户 Header 和手工 requestId，再注入当前服务自己的
+  Internal Token。只有成功装配的用户 Context 才传播用户工作区字段；纯
+  Internal Service 只传播关联 ID，不获得用户、平台或默认租户权限。
+
+`P15-GW` 必须将 Gateway 内现有 Header 字面量切换为
+`TrustedRequestHeaders` 并保持“先删外部同名 Header、再写验证结果”；
+`P15-AUTH` 负责补 session/jti 失效的服务内永久测试；`P15-TENANT` 负责保证
+TENANT 不签发平台权限、PLATFORM_TENANT 不签发 tenantRole/memberVersion；
+其余 `P15-*` 业务包只消费 Resolver/Context，不复制 Header 解析器。以上是
+批次 B 的冻结输入，不表示对应业务目录已经完成接入或真实环境联调。
+
+Demo 1.5 B0 为两个内部跨服务对象增加显式租户载体：
+`TrafficEvaluationRequest.tenantId` 必须由 Device 根据已持久化的
+TrafficLog/Session 关系确定；`LocationSessionContextVO.tenantId` 必须来自
+Device 的 tenant-scoped Session 查询。Monitor 必须拒绝字段缺失、非法或与
+当前可信 Context 不一致的请求，不能从浏览器 Header、请求体用户标识或默认
+租户补全。该变更不修改 entitlement lease/snapshot 契约；现有
+`entitlementId + userId` 的租户重新解析路径继续复用。
+
+`mqtt-protocol-v1` 的最终规范化 SHA-256 为
+`26ABC67B1DCA9A99173D079359B87C57366F74D9D243728EDFB4AE52A5E8AE87`。
+后端与固件本地副本按 UTF-8、LF 换行规范化后必须得到该值；原始文件换行符
+不同不构成协议内容差异。
 
 受保护接口使用：
 
@@ -100,6 +159,14 @@ GET  /entitlements/refunds                          查询本人退款
 GET  /entitlements/refunds/{refundNo}               查询退款详情
 ```
 
+以上本人订单、支付、退款、购买记录和使用流水均以 Gateway 注入的可信
+`X-Tenant-Id` 与当前用户联合过滤；其他租户的业务编号按不存在处理。
+固定时长商品为 5/24/100/300 小时，订阅商品为 1/3/6/12 个自然月。
+订单金额、`pricingVersion`、`grantMonths`、参照直购金额、订阅比例和周期折扣
+均由服务端计算并保存快照，客户端金额不参与订单定价。未配置可用
+`PaymentChannelAdapter` 时创建支付返回 503 和 `PAYMENT_CHANNEL_UNAVAILABLE`，
+不会创建支付记录或履约；渠道下线后，已完成的历史支付记录仍可查询。
+
 ## 5. Portal Session 与流量
 
 ```text
@@ -173,8 +240,20 @@ GET /admin/users/{userId}/entitlement
 GET /admin/users/{userId}/entitlement/purchases
 GET /admin/users/{userId}/entitlement/usage-logs
 POST /admin/users/{userId}/entitlement/adjustments
+POST /admin/users/{userId}/entitlement/unlimited-adjustments
 POST /admin/users/{userId}/entitlement/reward-orders
 ```
+
+`/admin/users/**` 当前是全局账号管理接口，仅允许 `role=0`。租户工作区不能把
+全局 `sys_user` 列表当作当前组织成员列表；组织成员身份以
+`t_tenant_member` 为准，租户成员管理必须使用独立的 tenant-service 契约。
+在该契约完成前，前端不展示旧的全局用户管理和敏感操作审批入口。
+
+`unlimited-adjustments` 仅允许 role=0，请求体为
+`requestId`、`action=GRANT|REVOKE`、`reason`。相同租户内稳定 `requestId`
+重复调用不重复改变权益；role=1/2 返回 403。无限权益只跳过用户时长扣减，
+设备侧仍使用最多 20 秒的滚动租约，撤销、停用或注销不会获得永久 TTL。
+奖励订阅使用 `grantMonths=1|3|6|12`，不再使用 `grantSeconds` 表示自然月。
 
 账号删除规则：role=0 超级管理员不能通过逻辑删除、直接物理删除、删除申请或审批路径删除；role=1 普通管理员允许被 role=0 删除，也可为自己的账号提交删除申请，但不能删除 role=0/1 管理员；role=2 普通用户按现有管理员权限删除。删除申请审批仅允许 role=0，批准时会再次核验目标当前角色。
 
@@ -195,6 +274,11 @@ GET /admin/devices/blacklist; POST /admin/devices/blacklist
 DELETE /admin/devices/blacklist/{mac}
 GET /admin/device-commands
 ```
+
+六类生产 MQTT 命令都携带全局唯一 `requestId`。固件保存最近 16 条命令终态；
+QoS 1 重投、MQTT 重连或 KICK 重启后收到相同 `requestId` 时不重复执行，
+只重新发布原 `command-result`。KICK `reason` 为可选字段，最多 255 个 UTF-8
+字节，不再受 MAC 长度限制。
 
 ### Session、流量、规则、告警和审计
 
@@ -266,6 +350,7 @@ GET /health/gateway
 
 ```text
 /internal/users/**
+/internal/user-accounts/**
 /internal/entitlements/**
 /internal/social-identities/**
 /internal/location-sessions/**
@@ -277,6 +362,25 @@ GET /health/gateway
 /internal/tenants/context/resolve
 /internal/tenants/context/validate
 ```
+
+`/internal/user-accounts/**` 是 Auth 调用 User 权威账号持久化能力的受控契约：
+
+```text
+POST /internal/user-accounts
+GET  /internal/user-accounts/{userId}
+GET  /internal/user-accounts/{userId}/authentication
+GET  /internal/user-accounts/login
+POST /internal/user-accounts/password
+POST /internal/user-accounts/{userId}/default-membership/dispatch
+```
+
+User 是 `sys_user`、账号命令收据和默认成员 Outbox 的唯一直接写入方。Auth
+只通过上述契约创建账号、读取认证快照、条件替换密码和触发默认成员投递；
+请求携带幂等键及 fingerprint，跨服务调用不包含在 Auth 本地事务中。
+
+`POST /internal/entitlements/lease` 的首次租约只接受可信
+`X-Tenant-Id` 上下文；无 Servlet 请求上下文的后台续租必须携带已持久化的
+`entitlementId`，由 user-service 校验权益与用户并反查租户。请求体不能自行指定租户。
 
 这些接口依赖 `WIFI_INTERNAL_TOKEN` 或可信 Gateway 请求机制。禁止在 Gateway 增加 `/internal/**` 路由，也禁止客户端自行构造 `X-User-*`、`X-Gateway-Token` 或内部 Token。
 

@@ -13,9 +13,16 @@ public interface Esp32NodeMapper extends BaseMapper<Esp32Node> {
 
     Esp32Node selectByDeviceCodeIncludeDeleted(@Param("deviceCode") String deviceCode);
 
+    Esp32Node selectByDeviceCodeAndTenantIncludeDeleted(@Param("tenantId") Long tenantId,
+                                                        @Param("deviceCode") String deviceCode);
+
     Esp32Node selectByNodeIdIncludeDeleted(@Param("nodeId") Long nodeId);
 
-    int restoreRetiredById(@Param("nodeId") Long nodeId);
+    Esp32Node selectByNodeIdAndTenantIncludeDeleted(@Param("tenantId") Long tenantId,
+                                                    @Param("nodeId") Long nodeId);
+
+    int restoreRetiredById(@Param("tenantId") Long tenantId,
+                           @Param("nodeId") Long nodeId);
 
 
     int markTimedOutNodesOffline(@Param("cutoff") LocalDateTime cutoff,
@@ -27,4 +34,11 @@ public interface Esp32NodeMapper extends BaseMapper<Esp32Node> {
             "where device_code = #{deviceCode} " +
             "limit 1 for update")
     Esp32Node selectByDeviceCodeForUpdateIncludeDeleted(@Param("deviceCode") String deviceCode);
+
+    @Select("select * from t_esp32_node " +
+            "where tenant_id = #{tenantId} and device_code = #{deviceCode} " +
+            "limit 1 for update")
+    Esp32Node selectByDeviceCodeForUpdateAndTenantIncludeDeleted(@Param("tenantId") Long tenantId,
+                                                                 @Param("deviceCode") String deviceCode);
+
 }

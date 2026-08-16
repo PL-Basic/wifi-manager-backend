@@ -19,22 +19,29 @@ public interface RefundRecordMapper extends BaseMapper<RefundRecord> {
             "where refund_no = #{refundNo} limit 1 for update")
     RefundRecord selectByRefundNoForUpdate(@Param("refundNo") String refundNo);
 
-    @Select("select * from t_refund_record " +
-            "where user_id = #{userId} and request_id = #{requestId} limit 1")
-    RefundRecord selectByUserRequest(@Param("userId") Long userId, @Param("requestId") String requestId);
+    @Select("select * from t_refund_record where tenant_id = #{tenantId} " +
+            "and user_id = #{userId} and request_id = #{requestId} limit 1")
+    RefundRecord selectByUserRequest(@Param("tenantId") Long tenantId,
+                                     @Param("userId") Long userId,
+                                     @Param("requestId") String requestId);
 
     @Select("select * from t_refund_record " +
-            "where user_id = #{userId} and request_id = #{requestId} " +
+            "where tenant_id = #{tenantId} and user_id = #{userId} and request_id = #{requestId} " +
             "limit 1 for update")
-    RefundRecord selectByUserRequestForUpdate(@Param("userId") Long userId, @Param("requestId") String requestId);
+    RefundRecord selectByUserRequestForUpdate(@Param("tenantId") Long tenantId,
+                                              @Param("userId") Long userId,
+                                              @Param("requestId") String requestId);
 
     @Select("select * from t_refund_record " +
-            "where refund_no = #{refundNo} and user_id = #{userId} limit 1")
-    RefundRecord selectOwnedRefund(@Param("refundNo") String refundNo, @Param("userId") Long userId);
+            "where tenant_id = #{tenantId} and refund_no = #{refundNo} and user_id = #{userId} limit 1")
+    RefundRecord selectOwnedRefund(@Param("tenantId") Long tenantId,
+                                   @Param("refundNo") String refundNo,
+                                   @Param("userId") Long userId);
 
     @Select("select * from t_refund_record " +
-            "where order_no = #{orderNo} " +
+            "where tenant_id = #{tenantId} and order_no = #{orderNo} " +
             "and status in ('REQUESTED', 'PROCESSING') " +
             "order by refund_id desc limit 1 for update")
-    RefundRecord selectActiveByOrderForUpdate(@Param("orderNo") String orderNo);
+    RefundRecord selectActiveByOrderForUpdate(@Param("tenantId") Long tenantId,
+                                              @Param("orderNo") String orderNo);
 }

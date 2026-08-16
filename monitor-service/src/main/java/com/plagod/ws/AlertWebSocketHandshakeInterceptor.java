@@ -1,6 +1,8 @@
 package com.plagod.ws;
 
 import com.plagod.configuration.AlertWebSocketProperties;
+import com.plagod.support.SafeConfigurationValue;
+import com.plagod.support.StructuredRedactor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,7 +18,9 @@ import org.springframework.web.socket.server.HandshakeInterceptor;
 import javax.annotation.PostConstruct;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 
@@ -38,6 +42,31 @@ public class AlertWebSocketHandshakeInterceptor
 
     private static final String PROTOCOL_HEADER = "Sec-WebSocket-Protocol";
 
+    private static final Set<String> SAFE_REJECTION_LOG_KEYS;
+
+    private static final Set<String> REDACTED_REJECTION_LOG_KEYS;
+
+    static {
+        Set<String> keys = new HashSet<>();
+        Collections.addAll(
+                keys,
+                "reason",
+                "status",
+                "path",
+                "origin",
+                "gatewayTokenPresent",
+                "accessTokenProtocolPresent",
+                "identityHeadersPresent",
+                "trustedUserId",
+                "trustedRole");
+        SAFE_REJECTION_LOG_KEYS = Collections.unmodifiableSet(keys);
+
+        Set<String> redactedKeys = new HashSet<>();
+        Collections.addAll(redactedKeys, "path", "origin");
+        REDACTED_REJECTION_LOG_KEYS =
+                Collections.unmodifiableSet(redactedKeys);
+    }
+
     @Value("${wifi.security.gateway-token}")
     private String expectedGatewayToken;
 
@@ -48,15 +77,28 @@ public class AlertWebSocketHandshakeInterceptor
 
     @PostConstruct
     public void init() {
-        if (!StringUtils.hasText(expectedGatewayToken) || expectedGatewayToken.getBytes(StandardCharsets.UTF_8).length < 16) {
-
-            throw new IllegalStateException("WebSocket Gateway Token 必须配置且不能少于 16 字节");
+        expectedGatewayToken = SafeConfigurationValue.requireSecret(
+                "wifi.security.gateway-token",
+                expectedGatewayToken,
+                1,
+                Collections.<String>emptySet());
+        if (expectedGatewayToken.getBytes(StandardCharsets.UTF_8).length
+                < 16) {
+            throw new IllegalStateException(
+                    "wifi.security.gateway-token must contain at least "
+                            + "16 UTF-8 bytes");
         }
 
         allowedOrigins = new HashSet<>();
 
+        if (webSocketProperties.getAllowedOrigins() == null) {
+            throw new IllegalStateException(
+                    "wifi.websocket.allowed-origins must be configured");
+        }
         for (String origin : webSocketProperties.getAllowedOrigins()) {
-            addAllowedOrigin(origin);
+            addAllowedOrigin(SafeConfigurationValue.requireText(
+                    "wifi.websocket.allowed-origins",
+                    origin));
         }
 
         if (allowedOrigins.isEmpty()) {
@@ -172,17 +214,28 @@ public class AlertWebSocketHandshakeInterceptor
 
         response.setStatusCode(status);
 
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("reason", reason);
+        fields.put("status", status.value());
+        fields.put("path", request.getURI().getPath());
+        fields.put("origin", request.getHeaders().getFirst(ORIGIN_HEADER));
+        fields.put(
+                "gatewayTokenPresent",
+                StringUtils.hasText(request.getHeaders().getFirst(
+                        GATEWAY_TOKEN_HEADER)));
+        fields.put(
+                "accessTokenProtocolPresent",
+                hasAccessTokenProtocol(request));
+        fields.put("identityHeadersPresent", hasIdentityHeaders(request));
+        fields.put("trustedUserId", trustedUserId);
+        fields.put("trustedRole", trustedRole);
+
         log.warn(
-                "alert websocket handshake rejected: reason={}, status={}, path={}, origin={}, gatewayTokenPresent={}, accessTokenProtocolPresent={}, identityHeadersPresent={}, trustedUserId={}, trustedRole={}",
-                reason,
-                status.value(),
-                request.getURI().getPath(),
-                safeLogValue(request.getHeaders().getFirst(ORIGIN_HEADER)),
-                StringUtils.hasText(request.getHeaders().getFirst(GATEWAY_TOKEN_HEADER)),
-                hasAccessTokenProtocol(request),
-                hasIdentityHeaders(request),
-                trustedUserId,
-                trustedRole);
+                "alert websocket handshake rejected: context={}",
+                StructuredRedactor.redact(
+                        fields,
+                        SAFE_REJECTION_LOG_KEYS,
+                        REDACTED_REJECTION_LOG_KEYS));
 
         return false;
     }
@@ -191,15 +244,6 @@ public class AlertWebSocketHandshakeInterceptor
         return StringUtils.hasText(request.getHeaders().getFirst(USER_ID_HEADER))
                 && StringUtils.hasText(request.getHeaders().getFirst(USER_NAME_HEADER))
                 && StringUtils.hasText(request.getHeaders().getFirst(USER_ROLE_HEADER));
-    }
-
-    private String safeLogValue(String value) {
-        if (!StringUtils.hasText(value)) {
-            return "<missing>";
-        }
-
-        String normalized = value.replace('\r', '_').replace('\n', '_').trim();
-        return normalized.length() <= 160 ? normalized : normalized.substring(0, 160);
     }
 
     private void addAllowedOrigin(String origin) {

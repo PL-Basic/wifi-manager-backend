@@ -8,6 +8,7 @@ import java.time.LocalDateTime;
 public class LocationSessionContextVO {
 
     private Long sessionId;
+    private Long tenantId;
     private Long userId;
     private Long nodeId;
     private String deviceCode;

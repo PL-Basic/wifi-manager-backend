@@ -15,8 +15,9 @@ public interface TrafficLogMapper extends BaseMapper<TrafficLog> {
 
     int insertIgnore(TrafficLog trafficLog);
 
-    @Select("select * from t_traffic_log where device_code = #{deviceCode} and event_id = #{eventId} limit 1 for update")
-    TrafficLog selectByEventIdentityForUpdate(@Param("deviceCode") String deviceCode,
+    @Select("select * from t_traffic_log where tenant_id = #{tenantId} and device_code = #{deviceCode} and event_id = #{eventId} limit 1 for update")
+    TrafficLog selectByEventIdentityForUpdate(@Param("tenantId") Long tenantId,
+                                              @Param("deviceCode") String deviceCode,
                                               @Param("eventId") String eventId);
 
     TrafficAnalyticsSourceVO.Summary selectAnalyticsSummary(@Param("criteria") TrafficAnalyticsQueryCriteria criteria);

@@ -63,7 +63,8 @@ public class DeviceEventServiceImpl implements DeviceEventService {
 
         UpdateWrapper<Esp32Node> update = new UpdateWrapper<>();
 
-        update.eq("node_id", node.getNodeId())
+        update.eq("tenant_id", node.getTenantId())
+                .eq("node_id", node.getNodeId())
                 .eq("del_flag", 0)
                 .set(StringUtils.hasText(ip), "ip", ip)
                 .set(StringUtils.hasText(firmwareVersion), "firmware_version", firmwareVersion)

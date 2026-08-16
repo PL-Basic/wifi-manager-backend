@@ -12,10 +12,12 @@ public interface UserEntitlementClient {
 
     @PostMapping("/internal/entitlements/lease")
     ApiResponse<EntitlementLeaseResult> acquireLease(@RequestHeader("X-Internal-Token") String internalToken,
+                                                     @RequestHeader("X-Tenant-Id") String tenantId,
                                                      @RequestBody EntitlementLeaseRequest request);
 
     @GetMapping("/internal/entitlements/users/{userId}/snapshot")
     ApiResponse<EntitlementSnapshotVO> getSnapshot(@RequestHeader("X-Internal-Token") String internalToken,
+                                                   @RequestHeader("X-Tenant-Id") String tenantId,
                                                    @PathVariable("userId") Long userId,
                                                    @RequestParam("entitlementId") Long entitlementId);
 }

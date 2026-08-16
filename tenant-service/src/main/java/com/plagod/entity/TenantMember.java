@@ -1,6 +1,7 @@
 package com.plagod.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
@@ -18,7 +19,9 @@ public class TenantMember {
     private String tenantRole;
     private String status;
     private Integer isDefault;
-    @TableField(exist = false)
+    @TableField(
+            insertStrategy = FieldStrategy.NEVER,
+            updateStrategy = FieldStrategy.NEVER)
     private Long activeDefaultUserGuard;
     private Long contextVersion;
     private LocalDateTime joinTime;

@@ -6,9 +6,9 @@ import com.plagod.vo.entitlement.PaymentVO;
 
 public interface PaymentService {
 
-    PaymentVO createPayment(Long userId, String orderNo, PaymentCreateRequest request);
+    PaymentVO createPayment(Long tenantId, Long userId, String orderNo, PaymentCreateRequest request);
 
-    PaymentVO getOwnPayment(Long userId, String paymentNo);
+    PaymentVO getOwnPayment(Long tenantId, Long userId, String paymentNo);
 
-    PaymentCallbackResultVO completeLocalDemo(Long userId, String paymentNo);
+    PaymentCallbackResultVO completeLocalDemo(Long tenantId, Long userId, String paymentNo);
 }

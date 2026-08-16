@@ -6,6 +6,7 @@ import com.plagod.mapper.VerifyCodeMapper;
 import com.plagod.sender.phone.PhoneVerificationCheckResult;
 import com.plagod.sender.phone.PhoneVerificationProvider;
 import com.plagod.sender.phone.PhoneVerificationProviderRegistry;
+import com.plagod.verification.VerificationCodeTime;
 import com.plagod.utils.PasswordUtils;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -48,7 +49,8 @@ public class VerificationCodeStateService {
             return Decision.rejected("验证码不存在或已失效");
         }
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now =
+                VerificationCodeTime.currentLocalDateTime();
 
         if (record.getExpireTime() == null || !record.getExpireTime().isAfter(now)) {
 
@@ -129,7 +131,8 @@ public class VerificationCodeStateService {
         record.setProviderVerifyCode(emptyIfNull(providerCode));
         record.setProviderVerifyResult(emptyIfNull(providerResult));
         record.setVerifyError("");
-        record.setVerifyTime(LocalDateTime.now());
+        record.setVerifyTime(
+                VerificationCodeTime.currentLocalDateTime());
 
         updateRecord(record);
         return Decision.verified(record.getId());

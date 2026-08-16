@@ -2,6 +2,7 @@ package com.plagod.service;
 
 import com.plagod.client.DeviceSignalAnalyticsClient;
 import com.plagod.dto.ApiResponse;
+import com.plagod.support.StableUnits;
 import com.plagod.util.GeoMath;
 import com.plagod.vo.device.SignalAnalyticsSourceVO;
 import com.plagod.vo.monitor.GisNodeCoverageVO;
@@ -181,7 +182,8 @@ public class GisNodeCoverageService {
         double errorRatioSum = 0.0D;
         int errorRatioCount = 0;
 
-        long toleranceMillis = matchToleranceSeconds * 1000L;
+        long toleranceMillis = matchToleranceSeconds
+                * StableUnits.MILLISECONDS_PER_SECOND;
 
         for (GisTrajectoryVO.TrajectoryPoint point : trajectory.getPoints()) {
 

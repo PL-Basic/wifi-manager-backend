@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.plagod.audit.Audited;
 import com.plagod.constant.*;
+import com.plagod.dto.StageWifiConfigCommand;
 import com.plagod.dto.device.WifiConfigStageDTO;
 import com.plagod.entity.device.DeviceCommandRecord;
 import com.plagod.entity.device.DeviceWifiConfigRecord;
@@ -13,6 +14,7 @@ import com.plagod.mapper.*;
 import com.plagod.security.WifiCommandPayloadCrypto;
 import com.plagod.service.*;
 import com.plagod.vo.device.WifiConfigTaskVO;
+import com.plagod.utils.TenantScopeUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.*;
 import org.springframework.stereotype.Service;
@@ -45,9 +47,14 @@ public class DeviceWifiConfigServiceImpl implements DeviceWifiConfigService {
     private long heartbeatTimeoutSeconds;
 
     @Override
-    @Audited(action = "device.wifi.stage", includeArgs = false)
+    @Audited(
+            action = "device.wifi.stage",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST,
+            includeArgs = false)
     @Transactional(rollbackFor = Exception.class)
-    public WifiConfigTaskVO stageCandidate(String deviceCode, WifiConfigStageDTO stageDTO) {
+    public WifiConfigTaskVO stageCandidate(Long tenantId, String deviceCode, WifiConfigStageDTO stageDTO) {
+        TenantScopeUtils.requireTenantId(tenantId);
 
         String cleanDeviceCode = cleanRequired(deviceCode, 64, "deviceCode 不能为空");
 
@@ -63,18 +70,21 @@ public class DeviceWifiConfigServiceImpl implements DeviceWifiConfigService {
         String password = stageDTO.getPassword();
         validateCredentials(ssid, password);
 
-        Esp32Node node = esp32NodeMapper.selectByDeviceCodeForUpdateIncludeDeleted(cleanDeviceCode);
+        Esp32Node node = esp32NodeMapper.selectByDeviceCodeForUpdateAndTenantIncludeDeleted(
+                tenantId, cleanDeviceCode);
 
         LocalDateTime now = LocalDateTime.now();
         validateOnlineNode(node, cleanDeviceCode, now);
 
-        DeviceWifiConfigRecord latest = wifiConfigRecordMapper.selectLatestByNodeId(node.getNodeId());
+        DeviceWifiConfigRecord latest = wifiConfigRecordMapper.selectLatestByNodeId(
+                tenantId, node.getNodeId());
 
         long configVersion = nextVersion(latest);
 
         if (latest != null && DeviceWifiConfigStatus.isReplaceable(latest.getStatus())) {
 
             int changed = wifiConfigRecordMapper.supersedeReplaceable(
+                    tenantId,
                     latest.getWifiConfigId(),
                     DeviceWifiConfigStatus.STAGED,
                     DeviceWifiConfigStatus.UNKNOWN,
@@ -90,12 +100,12 @@ public class DeviceWifiConfigServiceImpl implements DeviceWifiConfigService {
         boolean passwordConfigured = !password.isEmpty();
 
         try {
-            Map<String, Object> realBody = new LinkedHashMap<>();
-            realBody.put("requestId", requestId);
-            realBody.put("deviceCode", node.getDeviceCode());
-            realBody.put("configVersion", configVersion);
-            realBody.put("ssid", ssid);
-            realBody.put("password", password);
+            StageWifiConfigCommand realBody = new StageWifiConfigCommand(
+                    requestId,
+                    node.getDeviceCode(),
+                    ssid,
+                    password,
+                    configVersion);
 
             String realPayload = objectMapper.writeValueAsString(realBody);
             String encryptedPayload = payloadCrypto.encrypt(realPayload, requestId);
@@ -110,6 +120,7 @@ public class DeviceWifiConfigServiceImpl implements DeviceWifiConfigService {
             String safePayload = objectMapper.writeValueAsString(safeBody);
 
             DeviceWifiConfigRecord task = new DeviceWifiConfigRecord();
+            task.setTenantId(tenantId);
             task.setNodeId(node.getNodeId());
             task.setDeviceCode(node.getDeviceCode());
             task.setRequestId(requestId);
@@ -125,6 +136,7 @@ public class DeviceWifiConfigServiceImpl implements DeviceWifiConfigService {
             }
 
             DeviceCommandRecord command = new DeviceCommandRecord();
+            command.setTenantId(tenantId);
             command.setRequestId(requestId);
             command.setNodeId(node.getNodeId());
             command.setDeviceCode(node.getDeviceCode());

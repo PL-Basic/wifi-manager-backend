@@ -10,24 +10,38 @@
     </parent>
 
     <artifactId>wifi-common-mybatis</artifactId>
-    <description>跨服务公用的 MyBatis-Plus 实体与 Mapper；仅含持久层契约，不强制启动 datasource</description>
+    <description>Wifi Manager 共享 MyBatis-Plus 基础自动配置；不承载业务 Entity 或 Mapper</description>
 
     <dependencies>
         <dependency>
-            <groupId>org.example</groupId>
-            <artifactId>wifi-common-api</artifactId>
-        </dependency>
-
-        <!-- MyBatis-Plus 注解 + BaseMapper -->
-        <dependency>
             <groupId>com.baomidou</groupId>
-            <artifactId>mybatis-plus-core</artifactId>
+            <artifactId>mybatis-plus-boot-starter</artifactId>
         </dependency>
-
         <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok</artifactId>
-            <optional>true</optional>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.junit.vintage</groupId>
+                    <artifactId>junit-vintage-engine</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>com/plagod/entity/**</exclude>
+                        <exclude>com/plagod/mapper/**</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 </project>

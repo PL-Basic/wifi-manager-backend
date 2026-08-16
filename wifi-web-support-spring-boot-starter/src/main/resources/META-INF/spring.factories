@@ -1,0 +1,5 @@
+org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+com.plagod.web.ServletWebSupportAutoConfiguration
+
+org.springframework.boot.env.EnvironmentPostProcessor=\
+com.plagod.web.SafeActuatorEnvironmentPostProcessor

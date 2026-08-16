@@ -1,6 +1,8 @@
 package com.plagod.mqtt;
 
 import com.plagod.configuration.MqttProperties;
+import com.plagod.metrics.DeviceMqttMetrics;
+import com.plagod.web.SafeExceptionLogFormatter;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
@@ -18,13 +20,17 @@ public class MqttCommandPublisher {
     @Autowired
     private MqttProperties mqttProperties;
 
+    @Autowired
+    private DeviceMqttMetrics mqttMetrics;
+
     public void publish(String topic, String payload) {
         MqttClient client = null;
+        long startedNanos = System.nanoTime();
 
         try {
             String clientId = mqttProperties.getClientId() + "-publisher-" + UUID.randomUUID();
 
-            client = new MqttClient(mqttProperties.getBrokerUrl(), clientId, new MemoryPersistence());
+            client = createClient(mqttProperties.getBrokerUrl(), clientId);
 
             MqttConnectOptions options = new MqttConnectOptions();
             options.setCleanSession(true);
@@ -38,11 +44,10 @@ public class MqttCommandPublisher {
 
             client.connect(options);
 
-            MqttMessage message = new MqttMessage(payload.getBytes(StandardCharsets.UTF_8));
-            message.setQos(mqttProperties.getQos());
-
-            client.publish(topic, message);
+            client.publish(topic, createMessage(payload));
+            mqttMetrics.recordPublishSuccess(System.nanoTime() - startedNanos);
         } catch (Exception exception) {
+            mqttMetrics.recordPublishFailure(System.nanoTime() - startedNanos);
             throw new IllegalStateException("MQTT 命令发布失败", exception);
         } finally {
             closeQuietly(client);
@@ -59,13 +64,33 @@ public class MqttCommandPublisher {
                 client.disconnect();
             }
         } catch (Exception exception) {
-            log.warn("MQTT 发布客户端断开失败", exception);
+            log.warn(
+                    "MQTT 发布客户端断开失败，type={}, safeStack={}",
+                    exception.getClass().getName(),
+                    SafeExceptionLogFormatter.format(exception));
         }
 
         try {
             client.close();
         } catch (Exception exception) {
-            log.warn("MQTT 发布客户端关闭失败", exception);
+            log.warn(
+                    "MQTT 发布客户端关闭失败，type={}, safeStack={}",
+                    exception.getClass().getName(),
+                    SafeExceptionLogFormatter.format(exception));
         }
+    }
+
+    MqttMessage createMessage(String payload) {
+        MqttMessage message = new MqttMessage(
+                payload.getBytes(StandardCharsets.UTF_8));
+        message.setQos(mqttProperties.getQos());
+        message.setRetained(mqttProperties.isRetained());
+        return message;
+    }
+
+    MqttClient createClient(String brokerUrl, String clientId)
+            throws MqttException {
+        return new MqttClient(
+                brokerUrl, clientId, new MemoryPersistence());
     }
 }

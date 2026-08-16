@@ -3,6 +3,7 @@ package com.plagod.controller;
 import com.plagod.client.UserServiceClient;
 import com.plagod.dto.ApiResponse;
 import com.plagod.dto.entitlement.EntitlementAdjustmentRequest;
+import com.plagod.dto.entitlement.UnlimitedEntitlementRequest;
 import com.plagod.dto.entitlement.EntitlementRewardOrderRequest;
 import com.plagod.dto.user.UserOperationReviewDTO;
 import com.plagod.dto.user.UserPurgeRequestDTO;
@@ -16,6 +17,7 @@ import com.plagod.vo.user.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -34,6 +36,14 @@ public class AdminUserController {
 
     @Autowired
     private UserServiceClient userServiceClient;
+
+    @ModelAttribute
+    public void requirePlatformSuperAdmin(
+            @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole) {
+        if (!Integer.valueOf(0).equals(operatorRole)) {
+            throw ApiStatusException.forbidden("全局用户管理仅对平台超级管理员开放");
+        }
+    }
 
     @GetMapping
     public ApiResponse<UserPageResult> pageUsers(@RequestParam(defaultValue = "1") Long current,
@@ -138,6 +148,22 @@ public class AdminUserController {
                                                                 @Valid @RequestBody EntitlementAdjustmentRequest request) {
 
         return userServiceClient.adjustEntitlement(userId, operatorId, operatorName, request);
+    }
+
+    @PostMapping("/{userId}/entitlement/unlimited-adjustments")
+    public ApiResponse<EntitlementSnapshotVO> adjustUnlimitedEntitlement(
+            @PathVariable Long userId,
+            @RequestHeader("X-User-Id") Long operatorId,
+            @RequestHeader("X-User-Name") String operatorName,
+            @RequestHeader("X-User-Role") Integer operatorRole,
+            @Valid @RequestBody UnlimitedEntitlementRequest request) {
+
+        if (!Integer.valueOf(0).equals(operatorRole)) {
+            throw ApiStatusException.forbidden("仅超级管理员可以授予或撤销无限权益");
+        }
+
+        return userServiceClient.adjustUnlimitedEntitlement(
+                userId, operatorId, operatorName, operatorRole, request);
     }
 
     @PostMapping("/{userId}/entitlement/reward-orders")

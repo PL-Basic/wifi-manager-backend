@@ -3,6 +3,9 @@ package com.plagod.ws;
 import com.plagod.configuration.AlertWebSocketProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.server.ServletServerHttpRequest;
 import org.springframework.http.server.ServletServerHttpResponse;
@@ -20,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
+@ExtendWith(OutputCaptureExtension.class)
 class AlertWebSocketHandshakeInterceptorTest {
 
     private static final String GATEWAY_TOKEN = "test-gateway-token";
@@ -84,6 +88,33 @@ class AlertWebSocketHandshakeInterceptorTest {
 
         assertFalse(accepted);
         assertEquals(HttpStatus.UNAUTHORIZED.value(), servletResponse.getStatus());
+    }
+
+    @Test
+    void redactsUntrustedOriginFromRejectionLog(
+            CapturedOutput output) {
+        String canaryOrigin = "http://origin-canary-secret.invalid";
+        String canaryPath = "/ws/alerts/path-canary-secret";
+        MockHttpServletRequest servletRequest = trustedRequest(0);
+        servletRequest.setRequestURI(canaryPath);
+        servletRequest.removeHeader("Origin");
+        servletRequest.addHeader("Origin", canaryOrigin);
+        MockHttpServletResponse servletResponse =
+                new MockHttpServletResponse();
+
+        boolean accepted = interceptor.beforeHandshake(
+                new ServletServerHttpRequest(servletRequest),
+                new ServletServerHttpResponse(servletResponse),
+                mock(WebSocketHandler.class),
+                new HashMap<>());
+
+        assertFalse(accepted);
+        assertEquals(
+                HttpStatus.FORBIDDEN.value(),
+                servletResponse.getStatus());
+        assertTrue(output.getAll().contains("[REDACTED]"));
+        assertFalse(output.getAll().contains(canaryOrigin));
+        assertFalse(output.getAll().contains(canaryPath));
     }
 
     private MockHttpServletRequest trustedRequest(int role) {

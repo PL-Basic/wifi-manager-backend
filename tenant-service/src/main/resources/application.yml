@@ -1,6 +1,27 @@
 server:
   port: 8386
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include:
+          - health
+          - info
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+      group:
+        liveness:
+          include:
+            - livenessState
+        readiness:
+          include:
+            - readinessState
+            - db
+
 spring:
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver

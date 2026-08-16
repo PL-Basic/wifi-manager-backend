@@ -7,6 +7,7 @@ import java.time.LocalDateTime;
 @Data
 public class TrafficAnalyticsQueryCriteria {
 
+    private Long tenantId;
     private Long userId;
     private String mac;
     private Long sessionId;

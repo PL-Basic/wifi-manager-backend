@@ -1,33 +1,35 @@
 package com.plagod.service.impl;
 
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.plagod.audit.Audited;
 import com.plagod.dto.*;
 import com.plagod.dto.auth.AuthResultDTO;
 import com.plagod.dto.auth.LoginDTO;
-import com.plagod.entity.user.User;
+import com.plagod.dto.user.UserAccountCreateRequest;
+import com.plagod.dto.user.UserPasswordReplaceRequest;
 import com.plagod.enums.ConflictFieldEnum;
 import com.plagod.enums.LoginStatusEnum;
-import com.plagod.mapper.UserMapper;
+import com.plagod.exception.ApiStatusException;
 import com.plagod.service.LoginFailProtectionService;
 import com.plagod.service.AuthSessionService;
-import com.plagod.service.DefaultTenantMembershipOutboxService;
+import com.plagod.service.UserAccountGateway;
 import com.plagod.service.UserService;
 import com.plagod.service.VerificationCodeService;
 import com.plagod.utils.PasswordUtils;
 import com.plagod.vo.LoginResult;
 import com.plagod.vo.RegisterResult;
+import com.plagod.vo.user.UserAccountCreateResultVO;
+import com.plagod.vo.user.UserAccountSnapshotVO;
+import com.plagod.vo.user.UserAuthenticationSnapshotVO;
+import com.plagod.vo.user.UserPasswordReplaceResultVO;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.EnumSet;
-import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -39,7 +41,7 @@ public class UserServiceImpl implements UserService {
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
     @Autowired
-    private UserMapper userMapper;
+    private UserAccountGateway userAccountGateway;
 
     @Autowired
     private VerificationCodeService verificationCodeService;
@@ -48,81 +50,65 @@ public class UserServiceImpl implements UserService {
     private LoginFailProtectionService loginFailProtectionService;
 
     @Autowired
-    private DefaultTenantMembershipOutboxService defaultTenantMembershipOutboxService;
-
-    @Autowired
     private AuthSessionService authSessionService;
 
     @Override
-    @Transactional
     @Audited(
             action = "auth.register",
+            scope = Audited.Scope.PLATFORM,
+            tenantIdSource = Audited.TenantIdSource.REQUEST,
             includeArgs = false,
             includeResult = false)
-    public RegisterResult register(RegisterDTO registerDTO, String verifyIp){
-        RegisterResult checkResult = checkRegisterContact(registerDTO);
+    public RegisterResult register(RegisterDTO registerDTO, String requestId, String verifyIp) {
+        String fingerprint = registerFingerprint(registerDTO);
+        String idempotencyKey = StringUtils.hasText(requestId) ? sha256("REGISTER_REQUEST|" + requestId.trim()) : sha256("REGISTER|" + fingerprint);
+        RegisterResult checkResult = checkRegisterContact(
+                registerDTO,
+                idempotencyKey,
+                fingerprint);
         if (checkResult != null){
             return checkResult;
         }
+        // 验证码先绑定稳定命令键；User 不可用时同一请求可以重放，不会重复消费。
+        consumeRegisterContact(
+                registerDTO,
+                verifyIp,
+                idempotencyKey,
+                fingerprint);
 
-        QueryWrapper<User> queryWrapper = new QueryWrapper<>();
-        queryWrapper.eq("del_flag", 0);
-
-        queryWrapper.and(wrapper->{
-            //用户名一定会被输入因此直接作为判断规则
-            wrapper.eq("username", registerDTO.getUsername());
-            //邮箱和手机号都是可选且唯一，因此先进行判断是否存在
-            //如果存在则作为判断规则
-            if (StringUtils.hasText(registerDTO.getEmail())){
-                wrapper.or().eq("email", registerDTO.getEmail());
-            }
-            if (StringUtils.hasText(registerDTO.getPhone())){
-                wrapper.or().eq("phone", registerDTO.getPhone());
-            }
-        });
-
-        //查询数据库中与之冲突的账户
-        List<User> users = userMapper.selectList(queryWrapper);
-        Set<ConflictFieldEnum> conflictField = EnumSet.noneOf(ConflictFieldEnum.class);
-        //收集冲突的字段
-        if (!users.isEmpty()) {
-            for (User user : users) {
-                if (Objects.equals(user.getUsername(), registerDTO.getUsername())){
-                    conflictField.add(ConflictFieldEnum.USERNAME);
-                }
-                if (StringUtils.hasText(user.getEmail())
-                        && user.getEmail().equals(registerDTO.getEmail())) {
-                    conflictField.add(ConflictFieldEnum.EMAIL);
-                }
-                if (StringUtils.hasText(user.getPhone())
-                        && user.getPhone().equals(registerDTO.getPhone())) {
-                    conflictField.add(ConflictFieldEnum.PHONE);
-                }
-            }
-            return RegisterResult.conflict(conflictField);
-        }
-
-        //进行注册
-        User user = new User();
-        //直接将dto中的数据拷贝到user,并且忽略重要属性项
-        BeanUtils.copyProperties(registerDTO, user,"role","status","delFlag", "emailCode", "phoneCode");
-        user.setRole(2);
-        user.setStatus(1);
-        user.setDelFlag(0);
-        user.setPassword(PasswordUtils.encode(registerDTO.getPassword()));
+        UserAccountCreateRequest request = new UserAccountCreateRequest();
+        request.setIdempotencyKey(idempotencyKey);
+        request.setRequestFingerprint(fingerprint);
+        request.setUsername(registerDTO.getUsername());
+        request.setPasswordHash(PasswordUtils.encode(registerDTO.getPassword()));
+        request.setNickname(registerDTO.getNickname());
+        request.setEmail(registerDTO.getEmail());
+        request.setPhone(registerDTO.getPhone());
+        UserAccountCreateResultVO result;
         try {
-            userMapper.insert(user);
-        } catch (DuplicateKeyException e) {
-            // 记录日志供运维排查
-            log.warn("注册并发冲突，用户信息：{}", registerDTO.getUsername(), e);
-            return RegisterResult.conflict(EnumSet.noneOf(ConflictFieldEnum.class), "注册信息冲突，请稍后重试");
+            result = userAccountGateway.create(request);
+        } catch (RuntimeException exception) {
+            throw userAccountGateway.mapFailure("账号创建", exception);
+        }
+        if ("FINGERPRINT_CONFLICT".equals(result.getStatus())) {
+            return RegisterResult.conflict(
+                    EnumSet.noneOf(ConflictFieldEnum.class),
+                    result.getMessage());
+        }
+        if ("CONFLICT".equals(result.getStatus())) {
+            return RegisterResult.conflict(toConflictFields(result.getConflictFields()));
+        }
+        if (!"SUCCESS".equals(result.getStatus()) || result.getAccount() == null) {
+            throw new IllegalStateException("账号创建返回未知状态");
         }
 
-        // 用户和默认成员 Outbox 必须同事务提交，Outbox 失败时不能留下孤立用户。
-        defaultTenantMembershipOutboxService.enqueue(user.getUserId(), user.getRole());
-
-        consumeRegisterContact(registerDTO,verifyIp);
-
+        try {
+            userAccountGateway.dispatchDefaultMembership(
+                    result.getAccount().getUserId());
+        } catch (RuntimeException exception) {
+            log.warn("默认租户成员事件等待后续投递：userId={}",
+                    result.getAccount().getUserId());
+        }
         return RegisterResult.success();
     }
 
@@ -132,11 +118,11 @@ public class UserServiceImpl implements UserService {
         //判断使用的是什么登录
         String account = loginDTO.getAccount();
         String loginType = loginDTO.getLoginType();
-        User user = new User();
+        UserAuthenticationSnapshotVO user;
         if("username".equals(loginType)){
-            user = findByField("username", account);
+            user = findLoginUser("username", account);
         }else if("contact".equals(loginType)){
-            user = findContactLoginUser(account);
+            user = findLoginUser("contact", account);
         }else {
             throw new RuntimeException("登录类型错误");
         }
@@ -156,7 +142,7 @@ public class UserServiceImpl implements UserService {
             return LoginResult.fail(LoginStatusEnum.ACCOUNT_LOCKED,e.getMessage());
         }
 
-        if(!PasswordUtils.matches(loginDTO.getPassword(),user.getPassword())){
+        if(!PasswordUtils.matches(loginDTO.getPassword(), user.getPasswordHash())){
             //记录密码错误的失败次数
             loginFailProtectionService.recordFailure(account,loginType,requestIp);
             return LoginResult.fail(LoginStatusEnum.PASSWORD_ERROR,"密码错误");
@@ -180,7 +166,8 @@ public class UserServiceImpl implements UserService {
         }
 
         //再判断账号是否存在，避免泄露账号信息
-        User user = findContactLoginUser(target);
+        UserAuthenticationSnapshotVO user =
+                findLoginUser("contact", target);
         if (user == null) {
             return LoginResult.fail(LoginStatusEnum.ACCOUNT_NOT_FOUND,"账号不存在");
         }
@@ -194,16 +181,32 @@ public class UserServiceImpl implements UserService {
 
 
     @Override
-    @Transactional
     @Audited(
             action = "auth.reset_password",
+            scope = Audited.Scope.PLATFORM,
+            tenantIdSource = Audited.TenantIdSource.REQUEST,
             includeArgs = false,
             includeResult = false)
     public void resetPassword(ResetPasswordDTO resetPasswordDTO, String verifyIp) {
+        String idempotencyKey = sha256(
+                "PASSWORD_RESET|"
+                        + normalize(resetPasswordDTO.getTarget()) + "|"
+                        + normalize(resetPasswordDTO.getCode()) + "|"
+                        + resetPasswordDTO.getNewPassword());
+        String consumptionKey = verificationConsumptionKey(
+                "reset_password",
+                idempotencyKey,
+                idempotencyKey,
+                resetPasswordDTO.getTarget());
 
-        verificationCodeService.checkCode(resetPasswordDTO.getTarget(),"reset_password",resetPasswordDTO.getCode());
+        boolean replaying = verificationCodeService.checkCodeForRequest(
+                resetPasswordDTO.getTarget(),
+                "reset_password",
+                resetPasswordDTO.getCode(),
+                consumptionKey);
 
-        User user = findContactLoginUser(resetPasswordDTO.getTarget());
+        UserAuthenticationSnapshotVO user =
+                findLoginUser("contact", resetPasswordDTO.getTarget());
 
         if (user == null) {
             throw new IllegalArgumentException("账号不存在");
@@ -211,22 +214,51 @@ public class UserServiceImpl implements UserService {
         if (!Integer.valueOf(1).equals(user.getStatus())){
             throw new IllegalArgumentException("账号已被禁用");
         }
-
-        if (PasswordUtils.matches(resetPasswordDTO.getNewPassword(), user.getPassword())) {
+        if (!replaying && PasswordUtils.matches(
+                resetPasswordDTO.getNewPassword(),
+                user.getPasswordHash())) {
             throw new IllegalArgumentException("新密码不能与当前密码相同");
         }
 
-        user.setPassword(PasswordUtils.encode(resetPasswordDTO.getNewPassword()));
-        userMapper.updateById(user);
-        authSessionService.revokeAllForUser(user.getUserId(), "PASSWORD_CHANGED");
-
-        verificationCodeService.consumeCode(
+        String newHash = PasswordUtils.encode(resetPasswordDTO.getNewPassword());
+        UserPasswordReplaceRequest request = new UserPasswordReplaceRequest();
+        request.setIdempotencyKey(idempotencyKey);
+        request.setRequestFingerprint(sha256(
+                user.getUserId() + "|"
+                        + resetPasswordDTO.getTarget().trim() + "|"
+                        + resetPasswordDTO.getNewPassword() + "|"
+                        + resetPasswordDTO.getCode()));
+        request.setUserId(user.getUserId());
+        request.setExpectedPasswordHash(user.getPasswordHash());
+        request.setNewPasswordHash(newHash);
+        verificationCodeService.consumeCodeForRequest(
                 resetPasswordDTO.getTarget(),
                 "reset_password",
                 resetPasswordDTO.getCode(),
-                verifyIp
+                verifyIp,
+                consumptionKey
         );
-
+        UserPasswordReplaceResultVO result;
+        try {
+            result = userAccountGateway.replacePassword(request);
+        } catch (RuntimeException exception) {
+            throw userAccountGateway.mapFailure("密码修改", exception);
+        }
+        if ("CONFLICT".equals(result.getStatus())
+                || "FINGERPRINT_CONFLICT".equals(result.getStatus())) {
+            throw new IllegalStateException("账号密码已发生变化，请重新发起重置");
+        }
+        if (!"REPLACED".equals(result.getStatus())) {
+            throw new IllegalStateException("密码修改返回未知状态");
+        }
+        try {
+            authSessionService.revokeAllForUser(
+                    user.getUserId(),
+                    "PASSWORD_CHANGED");
+        } catch (RuntimeException exception) {
+            throw ApiStatusException.serviceUnavailable(
+                    "密码已修改，但旧登录会话撤销未完成，请使用相同请求重试");
+        }
 
     }
 
@@ -250,26 +282,19 @@ public class UserServiceImpl implements UserService {
 //        return findByField("username", account);
 //    }
 
-    private User findByField(String field, String value) {
-        QueryWrapper<User> queryWrapper = new QueryWrapper<>();
-        queryWrapper.eq("del_flag", 0);
-        queryWrapper.eq(field, value);
-        return userMapper.selectOne(queryWrapper);
+    private UserAuthenticationSnapshotVO findLoginUser(
+            String loginType,
+            String account) {
+        try {
+            return userAccountGateway.findByLogin(loginType, account);
+        } catch (RuntimeException exception) {
+            throw userAccountGateway.mapFailure("账号读取", exception);
+        }
     }
 
-    private User findContactLoginUser(String account) {
-        if (isPhone(account)) {
-            return findByField("phone",account);
-        }
-        if (isEmail(account)) {
-            return findByField("email",account);
-        }
-        return null;
-    }
-
-    private LoginResult buildLoginResult(User user) {
+    private LoginResult buildLoginResult(UserAccountSnapshotVO user) {
         if (!Integer.valueOf(0).equals(user.getRole())
-                && !defaultTenantMembershipOutboxService.isMembershipReady(user.getUserId())) {
+                && !Boolean.TRUE.equals(user.getMembershipReady())) {
             AuthResultDTO pending = basicAuthResult(user);
             pending.setAccountState("TENANT_MEMBERSHIP_PENDING");
             return LoginResult.tenantMembershipPending(pending);
@@ -281,7 +306,7 @@ public class UserServiceImpl implements UserService {
         return LoginResult.success(authResultDTO);
     }
 
-    private AuthResultDTO basicAuthResult(User user) {
+    private AuthResultDTO basicAuthResult(UserAccountSnapshotVO user) {
         AuthResultDTO result = new AuthResultDTO();
         result.setUserId(String.valueOf(user.getUserId()));
         result.setUsername(user.getUsername());
@@ -291,8 +316,55 @@ public class UserServiceImpl implements UserService {
         return result;
     }
 
+    private Set<ConflictFieldEnum> toConflictFields(Set<String> fields) {
+        Set<ConflictFieldEnum> result = EnumSet.noneOf(ConflictFieldEnum.class);
+        if (fields == null) {
+            return result;
+        }
+        for (String field : fields) {
+            try {
+                result.add(ConflictFieldEnum.valueOf(field));
+            } catch (IllegalArgumentException ignored) {
+                log.warn("User账号创建返回未知冲突字段：{}", field);
+            }
+        }
+        return result;
+    }
+
+    private String registerFingerprint(RegisterDTO dto) {
+        return sha256(
+                normalize(dto.getUsername()) + "\n"
+                        + normalize(dto.getNickname()) + "\n"
+                        + normalize(dto.getEmail()) + "\n"
+                        + normalize(dto.getPhone()) + "\n"
+                        + dto.getPassword() + "\n"
+                        + normalize(dto.getEmailCode()) + "\n"
+                        + normalize(dto.getPhoneCode()));
+    }
+
+    private String normalize(String value) {
+        return value == null ? "" : value.trim();
+    }
+
+    private String sha256(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder result = new StringBuilder(digest.length * 2);
+            for (byte current : digest) {
+                result.append(String.format("%02x", current & 0xff));
+            }
+            return result.toString();
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256不可用", exception);
+        }
+    }
+
     //判断是否填入邮箱和手机号，并进行验证
-    private RegisterResult checkRegisterContact(RegisterDTO registerDTO) {
+    private RegisterResult checkRegisterContact(
+            RegisterDTO registerDTO,
+            String idempotencyKey,
+            String fingerprint) {
         boolean hasPhone = StringUtils.hasText(registerDTO.getPhone());
         boolean hasEmail = StringUtils.hasText(registerDTO.getEmail());
 
@@ -305,10 +377,15 @@ public class UserServiceImpl implements UserService {
                 return RegisterResult.fail("请输入邮箱验证码");
             }
             try {
-                verificationCodeService.checkCode(
+                verificationCodeService.checkCodeForRequest(
                         registerDTO.getEmail(),
                         "register",
-                        registerDTO.getEmailCode()
+                        registerDTO.getEmailCode(),
+                        verificationConsumptionKey(
+                                "register",
+                                idempotencyKey,
+                                fingerprint,
+                                registerDTO.getEmail())
                 );
             } catch (IllegalArgumentException e) {
                 return RegisterResult.fail(e.getMessage());
@@ -320,10 +397,15 @@ public class UserServiceImpl implements UserService {
                 return RegisterResult.fail("请输入手机号验证码");
             }
             try {
-                verificationCodeService.checkCode(
+                verificationCodeService.checkCodeForRequest(
                   registerDTO.getPhone(),
                   "register",
-                  registerDTO.getPhoneCode()
+                  registerDTO.getPhoneCode(),
+                  verificationConsumptionKey(
+                          "register",
+                          idempotencyKey,
+                          fingerprint,
+                          registerDTO.getPhone())
                 );
             } catch (IllegalArgumentException e) {
                 return RegisterResult.fail(e.getMessage());
@@ -332,23 +414,47 @@ public class UserServiceImpl implements UserService {
         return null;
     }
 
-    private void consumeRegisterContact(RegisterDTO registerDTO, String verifyIp) {
+    private void consumeRegisterContact(
+            RegisterDTO registerDTO,
+            String verifyIp,
+            String idempotencyKey,
+            String fingerprint) {
         if(StringUtils.hasText(registerDTO.getEmail())){
-            verificationCodeService.consumeCode(
+            verificationCodeService.consumeCodeForRequest(
                     registerDTO.getEmail(),
                     "register",
                     registerDTO.getEmailCode(),
-                    verifyIp
+                    verifyIp,
+                    verificationConsumptionKey(
+                            "register",
+                            idempotencyKey,
+                            fingerprint,
+                            registerDTO.getEmail())
             );
         }
         if (StringUtils.hasText(registerDTO.getPhone())){
-            verificationCodeService.consumeCode(
+            verificationCodeService.consumeCodeForRequest(
                         registerDTO.getPhone(),
                         "register",
                         registerDTO.getPhoneCode(),
-                        verifyIp
+                        verifyIp,
+                        verificationConsumptionKey(
+                                "register",
+                                idempotencyKey,
+                                fingerprint,
+                                registerDTO.getPhone())
             );
         }
+    }
+
+    private String verificationConsumptionKey(
+            String scene,
+            String idempotencyKey,
+            String requestFingerprint,
+            String target) {
+        return sha256(scene + "|" + idempotencyKey + "|"
+                + requestFingerprint + "|"
+                + normalize(target).toLowerCase(java.util.Locale.ROOT));
     }
 
 }

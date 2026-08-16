@@ -6,6 +6,7 @@ import com.plagod.service.RefundQueryService;
 import com.plagod.service.RefundService;
 import com.plagod.vo.entitlement.RefundPageResult;
 import com.plagod.vo.entitlement.RefundVO;
+import com.plagod.utils.TenantScopeUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,25 +23,31 @@ public class EntitlementRefundController {
     private RefundQueryService refundQueryService;
 
     @PostMapping
-    public ApiResponse<RefundVO> apply(@RequestHeader("X-User-Id") Long userId,
+    public ApiResponse<RefundVO> apply(@RequestHeader("X-Tenant-Id") String tenantId,
+                                       @RequestHeader("X-User-Id") Long userId,
                                        @Valid @RequestBody RefundApplyRequest request) {
 
-        return ApiResponse.success("退款申请已提交，剩余时长已冻结", refundService.apply(userId, request));
+        return ApiResponse.success("退款申请已提交，剩余时长已冻结", refundService.apply(
+                TenantScopeUtils.requireTenantId(tenantId), userId, request));
     }
 
     @GetMapping
     public ApiResponse<RefundPageResult> pageOwnRefunds(@RequestHeader("X-User-Id") Long userId,
-                                                        @RequestParam(defaultValue = "1") Long current,
-                                                        @RequestParam(defaultValue = "10") Long size,
+                                                        @RequestHeader("X-Tenant-Id") String tenantId,
+                                                        @RequestParam(defaultValue = "1") Integer current,
+                                                        @RequestParam(defaultValue = "10") Integer size,
                                                         @RequestParam(required = false) String status) {
 
-        return ApiResponse.success(refundQueryService.pageOwnRefunds(userId, current, size, status));
+        return ApiResponse.success(refundQueryService.pageOwnRefunds(
+                TenantScopeUtils.requireTenantId(tenantId), userId, current, size, status));
     }
 
     @GetMapping("/{refundNo}")
     public ApiResponse<RefundVO> getOwnRefund(@RequestHeader("X-User-Id") Long userId,
+                                              @RequestHeader("X-Tenant-Id") String tenantId,
                                               @PathVariable String refundNo) {
 
-        return ApiResponse.success(refundQueryService.getOwnRefund(userId, refundNo));
+        return ApiResponse.success(refundQueryService.getOwnRefund(
+                TenantScopeUtils.requireTenantId(tenantId), userId, refundNo));
     }
 }

@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.plagod.mapper.RuleHitRecordMapper">
+
+    <resultMap id="ruleHitResultMap" type="com.plagod.entity.monitor.RuleHitRecord">
+        <id column="id" property="id"/>
+        <result column="tenant_id" property="tenantId"/>
+        <result column="event_id" property="eventId"/>
+        <result column="device_code" property="deviceCode"/>
+        <result column="node_id" property="nodeId"/>
+        <result column="session_id" property="sessionId"/>
+        <result column="user_id" property="userId"/>
+        <result column="mac" property="mac"/>
+        <result column="rule_id" property="ruleId"/>
+        <result column="rule_code" property="ruleCode"/>
+        <result column="rule_type" property="ruleType"/>
+        <result column="action_type" property="actionType"/>
+        <result column="level" property="level"/>
+        <result column="suppressed" property="suppressed"/>
+        <result column="alert_id" property="alertId"/>
+        <result column="hit_time" property="hitTime"/>
+        <result column="create_time" property="createTime"/>
+    </resultMap>
+
+    <sql id="analyticsFilter">
+        <if test="criteria.startTime != null">
+            and h.hit_time &gt;= #{criteria.startTime}
+        </if>
+        <if test="criteria.endTime != null">
+            and h.hit_time &lt;= #{criteria.endTime}
+        </if>
+        <if test="criteria.userId != null">
+            and h.user_id = #{criteria.userId}
+        </if>
+        <if test="criteria.mac != null">
+            and h.mac = #{criteria.mac}
+        </if>
+        <if test="criteria.sessionId != null">
+            and h.session_id = #{criteria.sessionId}
+        </if>
+        <if test="criteria.nodeId != null">
+            and h.node_id = #{criteria.nodeId}
+        </if>
+        <if test="criteria.deviceCode != null">
+            and h.device_code = #{criteria.deviceCode}
+        </if>
+    </sql>
+
+    <insert id="insertIgnore"
+            useGeneratedKeys="true"
+            keyProperty="id">
+        insert ignore into t_rule_hit (
+            event_id, device_code, node_id, session_id, user_id,
+            mac, rule_id, rule_code, rule_type, action_type, level,
+            suppressed, alert_id, hit_time, create_time
+        ) values (
+                     #{eventId}, #{deviceCode}, #{nodeId}, #{sessionId},
+                     #{userId}, #{mac}, #{ruleId}, #{ruleCode}, #{ruleType},
+                     #{actionType}, #{level}, #{suppressed}, #{alertId},
+                     #{hitTime}, #{createTime}
+                 )
+    </insert>
+
+    <insert id="insertIgnoreByTenant"
+            useGeneratedKeys="true"
+            keyProperty="id">
+        insert ignore into t_rule_hit (
+            tenant_id, event_id, device_code, node_id, session_id, user_id,
+            mac, rule_id, rule_code, rule_type, action_type, level,
+            suppressed, alert_id, hit_time, create_time
+        ) values (
+            #{tenantId}, #{eventId}, #{deviceCode}, #{nodeId}, #{sessionId},
+            #{userId}, #{mac}, #{ruleId}, #{ruleCode}, #{ruleType},
+            #{actionType}, #{level}, #{suppressed}, #{alertId},
+            #{hitTime}, #{createTime}
+        )
+    </insert>
+
+    <select id="selectByIdAndTenant" resultMap="ruleHitResultMap">
+        select *
+        from t_rule_hit
+        where tenant_id = #{tenantId}
+          and id = #{id}
+        limit 1
+    </select>
+    <select id="selectAnalyticsSummary" resultType="com.plagod.vo.monitor.AlertRuleAnalyticsVO$RuleHitSummary">
+        select
+        count(*) as total_hits,
+        coalesce(sum(case when h.suppressed = 0 then 1 else 0 end), 0) as actionable_hits,
+        coalesce(sum(case when h.suppressed = 1 then 1 else 0 end), 0) as suppressed_hits,
+        count(distinct h.device_code, h.event_id) as distinct_events,
+        count(distinct h.rule_code) as distinct_rules
+        from t_rule_hit h
+        <where>
+            <include refid="analyticsFilter"/>
+        </where>
+    </select>
+
+    <select id="selectRuleRanking" resultType="com.plagod.vo.monitor.AlertRuleAnalyticsVO$RuleBucket">
+        select
+        h.rule_code as rule_code,
+        count(*) as hit_count,
+        coalesce(sum(case when h.suppressed = 0 then 1 else 0 end), 0) as actionable_count,
+        coalesce(sum(case when h.suppressed = 1 then 1 else 0 end), 0) as suppressed_count
+        from t_rule_hit h
+        <where>
+            <include refid="analyticsFilter"/>
+        </where>
+        group by h.rule_code
+        order by hit_count desc, h.rule_code
+        <if test="criteria.topLimit != null">
+            limit #{criteria.topLimit}
+        </if>
+    </select>
+
+    <select id="selectActionDistribution" resultType="com.plagod.vo.monitor.AlertRuleAnalyticsVO$CountBucket">
+        select
+        h.action_type as code,
+        count(*) as count
+        from t_rule_hit h
+        <where>
+            <include refid="analyticsFilter"/>
+        </where>
+        group by h.action_type
+        order by h.action_type
+    </select>
+
+    <select id="selectAnalyticsSummaryByTenant" resultType="com.plagod.vo.monitor.AlertRuleAnalyticsVO$RuleHitSummary">
+        select
+        count(*) as total_hits,
+        coalesce(sum(case when h.suppressed = 0 then 1 else 0 end), 0) as actionable_hits,
+        coalesce(sum(case when h.suppressed = 1 then 1 else 0 end), 0) as suppressed_hits,
+        count(distinct h.device_code, h.event_id) as distinct_events,
+        count(distinct h.rule_code) as distinct_rules
+        from t_rule_hit h
+        <where>
+            h.tenant_id = #{tenantId}
+            <include refid="analyticsFilter"/>
+        </where>
+    </select>
+
+    <select id="selectRuleRankingByTenant" resultType="com.plagod.vo.monitor.AlertRuleAnalyticsVO$RuleBucket">
+        select
+        h.rule_code as rule_code,
+        count(*) as hit_count,
+        coalesce(sum(case when h.suppressed = 0 then 1 else 0 end), 0) as actionable_count,
+        coalesce(sum(case when h.suppressed = 1 then 1 else 0 end), 0) as suppressed_count
+        from t_rule_hit h
+        <where>
+            h.tenant_id = #{tenantId}
+            <include refid="analyticsFilter"/>
+        </where>
+        group by h.rule_code
+        order by hit_count desc, h.rule_code
+        <if test="criteria.topLimit != null">
+            limit #{criteria.topLimit}
+        </if>
+    </select>
+
+    <select id="selectActionDistributionByTenant" resultType="com.plagod.vo.monitor.AlertRuleAnalyticsVO$CountBucket">
+        select
+        h.action_type as code,
+        count(*) as count
+        from t_rule_hit h
+        <where>
+            h.tenant_id = #{tenantId}
+            <include refid="analyticsFilter"/>
+        </where>
+        group by h.action_type
+        order by h.action_type
+    </select>
+
+</mapper>

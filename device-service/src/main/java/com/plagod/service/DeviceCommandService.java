@@ -4,27 +4,27 @@ import com.plagod.dto.device.*;
 import com.plagod.vo.device.*;
 
 public interface DeviceCommandService {
-    DeviceNodeVO getDevice(Long nodeId);
+    DeviceNodeVO getDevice(Long tenantId, Long nodeId);
 
-    DeviceNodeVO allowDevice(String deviceCode);
+    DeviceNodeVO allowDevice(Long tenantId, String deviceCode);
 
-    DeviceCommandResult kickDevice(String deviceCode, KickDeviceDTO kickDeviceDTO);
+    DeviceCommandResult kickDevice(Long tenantId, String deviceCode, KickDeviceDTO kickDeviceDTO);
 
-    void removeBlacklist(String mac);
+    void removeBlacklist(Long tenantId, String mac);
 
-    DeviceStatsVO getDeviceStats();
+    DeviceStatsVO getDeviceStats(Long tenantId);
 
-    DevicePageResult pageDevices(long current, long size, String keyword);
+    DevicePageResult pageDevices(Long tenantId, long current, long size, String keyword);
 
-    MacBlacklistPageResult pageBlacklist(long current, long size, String keyword);
+    MacBlacklistPageResult pageBlacklist(Long tenantId, long current, long size, String keyword);
 
-    DeviceNodeVO createDevice(DeviceNodeCreateDTO createDTO);
+    DeviceNodeVO createDevice(Long tenantId, DeviceNodeCreateDTO createDTO);
 
-    DeviceNodeVO updateDevice(Long nodeId, DeviceNodeUpdateDTO updateDTO);
+    DeviceNodeVO updateDevice(Long tenantId, Long nodeId, DeviceNodeUpdateDTO updateDTO);
 
-    void deleteDevice(Long nodeId);
+    void deleteDevice(Long tenantId, Long nodeId);
 
-    DeviceNodeVO restoreDevice(Long nodeId);
+    DeviceNodeVO restoreDevice(Long tenantId, Long nodeId);
 
     DeviceCommandResult allowClient(Long nodeId, String deviceCode, String mac, Long sessionId, Integer ttlSeconds);
 

@@ -14,17 +14,23 @@ import com.plagod.sender.phone.PhoneVerificationProviderRegistry;
 import com.plagod.sender.phone.PhoneVerificationSendResult;
 import com.plagod.service.VerificationCodeService;
 import com.plagod.service.VerificationCodeStateService;
+import com.plagod.support.StructuredRedactor;
 import com.plagod.utils.PasswordUtils;
+import com.plagod.verification.VerificationCodeTime;
+import com.plagod.web.SafeExceptionLogFormatter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.security.SecureRandom;
-import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.ZonedDateTime;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -36,6 +42,8 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
     private static final Pattern PHONE_PATTERN = Pattern.compile("^1[3-9]\\d{9}$");
 
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+    private static final Pattern SAFE_PROVIDER_CODE =
+            Pattern.compile("^[A-Za-z0-9_.-]{1,64}$");
 
     private static final Set<String> ALLOWED_SCENES =
             new HashSet<>(Arrays.asList(
@@ -45,6 +53,13 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
                     "bind_contact",
                     "step_up"
             ));
+    private static final Set<String> SEND_ERROR_FIELDS =
+            Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
+                    "provider",
+                    "providerCode",
+                    "message")));
+    private static final Set<String> SEND_ERROR_REDACTED_FIELDS =
+            Collections.singleton("message");
 
     private final VerificationCodeProperties properties;
     private final PhoneVerificationProperties phoneProperties;
@@ -72,14 +87,24 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
         String cleanTarget = cleanTarget(target);
         String targetType = resolveTargetType(cleanTarget);
         String cleanScene = cleanScene(scene);
-        LocalDateTime now = LocalDateTime.now();
+        ZonedDateTime businessNow = VerificationCodeTime.now();
+        LocalDateTime now =
+                VerificationCodeTime.localDateTime(businessNow);
 
         /*
          * Redis 正常时执行多实例原子检查；
          * Redis 故障时继续使用现有 MySQL 记录完成降级检查。
          */
-        if (!redisRateLimiter.acquire(cleanTarget, cleanScene, sendIp, now)) {
-            checkSendLimit(cleanTarget, cleanScene, sendIp, now);
+        if (!redisRateLimiter.acquire(
+                cleanTarget,
+                cleanScene,
+                sendIp,
+                businessNow)) {
+            checkSendLimit(
+                    cleanTarget,
+                    cleanScene,
+                    sendIp,
+                    businessNow);
         }
 
         PhoneVerificationProvider phoneProvider = null;
@@ -131,9 +156,20 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
         } catch (VerificationDeliveryException exception) {
             throw exception;
         } catch (RuntimeException exception) {
-            markSendFailure(record, "PROVIDER_EXCEPTION", limitMessage(exception));
+            markSendFailure(
+                    record,
+                    "PROVIDER_EXCEPTION",
+                    exception.getMessage());
 
-            log.error("验证码发送异常 recordId={}, targetType={}, scene={}, provider={}", record.getId(), targetType, cleanScene, providerName, exception);
+            log.error(
+                    "验证码发送异常 recordId={}, targetType={}, scene={}, "
+                            + "provider={}, exceptionType={}, safeStack={}",
+                    record.getId(),
+                    targetType,
+                    cleanScene,
+                    providerName,
+                    exception.getClass().getName(),
+                    SafeExceptionLogFormatter.format(exception));
 
             throw new VerificationDeliveryException("验证码发送服务暂时不可用", exception);
         }
@@ -168,7 +204,8 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
 
             markSendFailure(record, providerCode, message);
 
-            throw new VerificationDeliveryException(StringUtils.hasText(message) ? message : "短信发送失败");
+            throw new VerificationDeliveryException(
+                    "验证码发送服务暂时不可用");
         }
 
         markSendSuccess(record, result.getProviderCode());
@@ -183,20 +220,74 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
     }
 
     @Override
+    public boolean checkCodeForRequest(
+            String target,
+            String scene,
+            String code,
+            String consumeRequestKey) {
+        if (wasConsumedByRequest(target, scene, consumeRequestKey)) {
+            return true;
+        }
+        checkCode(target, scene, code);
+        return false;
+    }
+
+    @Override
     @Transactional
     public void consumeCode(String target, String scene, String code, String verifyIp) {
+        consumeCodeForRequest(target, scene, code, verifyIp, null);
+    }
 
+    @Override
+    @Transactional
+    public void consumeCodeForRequest(
+            String target,
+            String scene,
+            String code,
+            String verifyIp,
+            String consumeRequestKey) {
+        if (StringUtils.hasText(consumeRequestKey)
+                && wasConsumedByRequest(target, scene, consumeRequestKey)) {
+            return;
+        }
         VerificationCodeStateService.Decision decision = verifyAndRemember(target, scene, code);
 
         requireVerified(decision);
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now =
+                VerificationCodeTime.currentLocalDateTime();
 
-        int affected = verifyCodeMapper.consumeVerifiedCode(decision.getRecordId(), now, verifyIp);
+        int affected = verifyCodeMapper.consumeVerifiedCode(
+                decision.getRecordId(),
+                now,
+                verifyIp,
+                StringUtils.hasText(consumeRequestKey)
+                        ? consumeRequestKey.trim()
+                        : null);
 
-        if (affected != 1) {
+        if (affected != 1
+                && !(StringUtils.hasText(consumeRequestKey)
+                && wasConsumedByRequest(target, scene, consumeRequestKey))) {
             throw new IllegalArgumentException("验证码已被使用或已经过期");
         }
+    }
+
+    private boolean wasConsumedByRequest(
+            String target,
+            String scene,
+            String consumeRequestKey) {
+        if (!StringUtils.hasText(consumeRequestKey)) {
+            return false;
+        }
+        String cleanTarget = cleanTarget(target);
+        resolveTargetType(cleanTarget);
+        String cleanScene = cleanScene(scene);
+        return verifyCodeMapper.selectOne(
+                new QueryWrapper<VerifyCode>()
+                        .eq("target", cleanTarget)
+                        .eq("scene", cleanScene)
+                        .eq("consume_request_key", consumeRequestKey.trim())
+                        .eq("status", 1)) != null;
     }
 
     private VerificationCodeStateService.Decision verifyAndRemember(String target, String scene, String code) {
@@ -229,9 +320,12 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
 
     private void markSendSuccess(VerifyCode record, String providerCode) {
 
-        record.setProviderSendCode(emptyIfNull(providerCode));
+        record.setProviderSendCode(StringUtils.hasText(providerCode)
+                ? safeProviderCode(providerCode)
+                : "");
         record.setSendStatus(1);
-        record.setSendTime(LocalDateTime.now());
+        record.setSendTime(
+                VerificationCodeTime.currentLocalDateTime());
         record.setSendError("");
 
         updateRecord(record);
@@ -239,10 +333,15 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
 
     private void markSendFailure(VerifyCode record, String providerCode, String message) {
 
-        record.setProviderSendCode(emptyIfNull(providerCode));
+        String safeProviderCode = safeProviderCode(providerCode);
+        record.setProviderSendCode(safeProviderCode);
         record.setSendStatus(2);
-        record.setSendTime(LocalDateTime.now());
-        record.setSendError(limitMessage(message));
+        record.setSendTime(
+                VerificationCodeTime.currentLocalDateTime());
+        record.setSendError(safeSendError(
+                record.getVerificationProvider(),
+                safeProviderCode,
+                message));
 
         updateRecord(record);
     }
@@ -272,11 +371,18 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
         return now.plusMinutes(properties.getExpireMinutes());
     }
 
-    private void checkSendLimit(String target, String scene, String sendIp, LocalDateTime now) {
+    private void checkSendLimit(
+            String target,
+            String scene,
+            String sendIp,
+            ZonedDateTime businessNow) {
 
+        LocalDateTime now =
+                VerificationCodeTime.localDateTime(businessNow);
         LocalDateTime intervalStart = now.minusSeconds(properties.getTargetIntervalSeconds());
 
-        LocalDateTime todayStart = now.toLocalDate().atStartOfDay();
+        LocalDateTime todayStart =
+                VerificationCodeTime.startOfDay(businessNow);
 
         Long recentTargetCount = verifyCodeMapper.selectCount(
                 new QueryWrapper<VerifyCode>()
@@ -298,7 +404,10 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
 
         if (targetTodayCount != null && targetTodayCount >= properties.getTargetDailyLimit()) {
 
-            throw new VerificationCodeRateLimitException("今日验证码发送次数已达上限", secondsUntilTomorrow(now));
+            throw new VerificationCodeRateLimitException(
+                    "今日验证码发送次数已达上限",
+                    VerificationCodeTime.secondsUntilNextDay(
+                            businessNow));
         }
 
         if (!StringUtils.hasText(sendIp)) {
@@ -324,7 +433,10 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
         );
 
         if (ipTodayCount != null && ipTodayCount >= properties.getIpDailyLimit()) {
-            throw new VerificationCodeRateLimitException("当前网络验证码请求次数已达上限", secondsUntilTomorrow(now));
+            throw new VerificationCodeRateLimitException(
+                    "当前网络验证码请求次数已达上限",
+                    VerificationCodeTime.secondsUntilNextDay(
+                            businessNow));
         }
     }
 
@@ -378,23 +490,26 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
         return value == null ? "" : value;
     }
 
-    private String limitMessage(Throwable throwable) {
-        if (throwable == null) {
-            return "验证码发送失败";
+    private String safeProviderCode(String providerCode) {
+        if (StringUtils.hasText(providerCode)
+                && SAFE_PROVIDER_CODE.matcher(providerCode).matches()) {
+            return providerCode;
         }
-
-        return limitMessage(throwable.getMessage());
+        return "PROVIDER_FAILURE";
     }
 
-    private String limitMessage(String message) {
-        String result = StringUtils.hasText(message) ? message : "验证码发送失败";
-
-        return result.length() > 512 ? result.substring(0, 512) : result;
+    private String safeSendError(
+            String provider,
+            String providerCode,
+            String message) {
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("provider", safeProviderCode(provider));
+        fields.put("providerCode", providerCode);
+        fields.put("message", message);
+        return StructuredRedactor.redact(
+                fields,
+                SEND_ERROR_FIELDS,
+                SEND_ERROR_REDACTED_FIELDS).toString();
     }
 
-    private long secondsUntilTomorrow(LocalDateTime now) {
-        LocalDateTime tomorrow = now.toLocalDate().plusDays(1).atStartOfDay();
-
-        return Math.max(1L, Duration.between(now, tomorrow).getSeconds());
-    }
 }

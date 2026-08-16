@@ -6,20 +6,32 @@ import com.aliyun.tea.TeaException;
 import com.aliyun.teaopenapi.models.Config;
 import com.aliyun.teautil.models.RuntimeOptions;
 import com.plagod.configuration.PhoneVerificationProperties;
+import com.plagod.web.SafeExceptionLogFormatter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Component
 public class AliyunNumberAuthVerificationProvider
         implements PhoneVerificationProvider {
 
-    private final PhoneVerificationProperties properties;
+    static final String PROVIDER_LATENCY_METRIC =
+            "wifi.auth.verification.provider.latency";
 
-    public AliyunNumberAuthVerificationProvider(PhoneVerificationProperties properties) {
+    private final PhoneVerificationProperties properties;
+    private final MeterRegistry meterRegistry;
+
+    public AliyunNumberAuthVerificationProvider(
+            PhoneVerificationProperties properties,
+            MeterRegistry meterRegistry) {
 
         this.properties = properties;
+        this.meterRegistry = meterRegistry;
     }
 
     @Override
@@ -30,11 +42,17 @@ public class AliyunNumberAuthVerificationProvider
     @Override
     public PhoneVerificationSendResult send(String phone, String scene, String outId) {
 
+        long startedAtNanos = System.nanoTime();
         PhoneVerificationProperties.Aliyun config;
 
         try {
             config = requireConfiguration();
         } catch (IllegalStateException exception) {
+            recordProviderMetric(
+                    "send",
+                    "FAILURE",
+                    "CONFIGURATION",
+                    startedAtNanos);
             return sendFailure(outId, "CONFIGURATION_ERROR", exception.getMessage());
         }
 
@@ -68,7 +86,8 @@ public class AliyunNumberAuthVerificationProvider
                     && model != null
                     && outId.equals(model.getOutId());
 
-            return PhoneVerificationSendResult.builder()
+            PhoneVerificationSendResult result =
+                    PhoneVerificationSendResult.builder()
                     .successful(successful)
                     .provider(providerName())
                     .outId(outId)
@@ -77,8 +96,19 @@ public class AliyunNumberAuthVerificationProvider
                     .providerCode(body == null ? null : body.getCode())
                     .message(body == null ? "阿里云没有返回发送结果" : body.getMessage())
                     .build();
+            recordProviderMetric(
+                    "send",
+                    successful ? "SUCCESS" : "FAILURE",
+                    successful ? "ACCEPTED" : "PROVIDER_RESPONSE",
+                    startedAtNanos);
+            return result;
         } catch (Exception exception) {
-            log.error("阿里云短信发送调用异常，exceptionType={}, message={}", exception.getClass().getName(), exception.getMessage(), exception);
+            recordProviderMetric(
+                    "send",
+                    "FAILURE",
+                    "EXCEPTION",
+                    startedAtNanos);
+            logProviderFailure("send", exception);
 
             return sendFailure(outId, "PROVIDER_EXCEPTION", "阿里云短信认证服务暂时不可用");
         }
@@ -86,11 +116,17 @@ public class AliyunNumberAuthVerificationProvider
     @Override
     public PhoneVerificationCheckResult verify(String phone, String outId, String submittedCode, String storedCodeHash) {
 
+        long startedAtNanos = System.nanoTime();
         PhoneVerificationProperties.Aliyun config;
 
         try {
             config = requireConfiguration();
         } catch (IllegalStateException exception) {
+            recordProviderMetric(
+                    "verify",
+                    "FAILURE",
+                    "CONFIGURATION",
+                    startedAtNanos);
             return checkFailure(outId, "CONFIGURATION_ERROR", exception.getMessage());
         }
 
@@ -117,7 +153,8 @@ public class AliyunNumberAuthVerificationProvider
 
             String verifyResult = model == null ? null : model.getVerifyResult();
 
-            return PhoneVerificationCheckResult.builder()
+            PhoneVerificationCheckResult result =
+                    PhoneVerificationCheckResult.builder()
                     .requestSuccessful(requestSuccessful)
                     .verified(requestSuccessful && "PASS".equalsIgnoreCase(verifyResult))
                     .provider(providerName())
@@ -126,12 +163,27 @@ public class AliyunNumberAuthVerificationProvider
                     .providerResult(verifyResult)
                     .message(body == null ? "阿里云没有返回核验结果" : body.getMessage())
                     .build();
+            recordProviderMetric(
+                    "verify",
+                    requestSuccessful ? "SUCCESS" : "FAILURE",
+                    requestSuccessful
+                            ? ("PASS".equalsIgnoreCase(verifyResult)
+                            ? "ACCEPTED"
+                            : "REJECTED")
+                            : "PROVIDER_RESPONSE",
+                    startedAtNanos);
+            return result;
         } catch (TeaException exception) {
             /*
              * 阿里云将验证码不匹配表示为 HTTP 400 + “验证失败”。
              * 这是正常业务拒绝，不是供应商不可用。
              */
             if (isVerificationRejected(exception)) {
+                recordProviderMetric(
+                        "verify",
+                        "SUCCESS",
+                        "REJECTED",
+                        startedAtNanos);
                 return PhoneVerificationCheckResult.builder()
                         .requestSuccessful(true)
                         .verified(false)
@@ -143,17 +195,29 @@ public class AliyunNumberAuthVerificationProvider
                         .build();
             }
 
-            log.error("阿里云短信核验调用异常，providerCode={}, statusCode={}, message={}", exception.getCode(), exception.getStatusCode(), exception.getMessage(), exception);
+            recordProviderMetric(
+                    "verify",
+                    "FAILURE",
+                    "EXCEPTION",
+                    startedAtNanos);
+            logProviderFailure("verify", exception);
 
             return checkFailure(outId, resolveTeaCode(exception), "阿里云短信核验服务暂时不可用");
         } catch (Exception exception) {
-            log.error("阿里云短信核验调用异常，exceptionType={}, message={}", exception.getClass().getName(), exception.getMessage(), exception);
+            recordProviderMetric(
+                    "verify",
+                    "FAILURE",
+                    "EXCEPTION",
+                    startedAtNanos);
+            logProviderFailure("verify", exception);
 
             return checkFailure(outId, "PROVIDER_EXCEPTION", "阿里云短信核验服务暂时不可用");
         }
     }
 
-    private Client createClient(PhoneVerificationProperties.Aliyun config) throws Exception {
+    Client createClient(
+            PhoneVerificationProperties.Aliyun config)
+            throws Exception {
 
         Config clientConfig = new Config()
                 .setAccessKeyId(config.getAccessKeyId())
@@ -237,6 +301,31 @@ public class AliyunNumberAuthVerificationProvider
         return "PROVIDER_EXCEPTION";
     }
 
+    void logProviderFailure(String operation, Throwable exception) {
+        log.error(
+                "阿里云短信调用异常 operation={}, exceptionType={}, safeStack={}",
+                operation,
+                exception == null
+                        ? "unknown"
+                        : exception.getClass().getName(),
+                SafeExceptionLogFormatter.format(exception));
+    }
+
+    private void recordProviderMetric(
+            String operation,
+            String result,
+            String type,
+            long startedAtNanos) {
+        Timer.builder(PROVIDER_LATENCY_METRIC)
+                .tags(
+                        "event", operation,
+                        "result", result,
+                        "type", type)
+                .register(meterRegistry)
+                .record(
+                        Math.max(0L, System.nanoTime() - startedAtNanos),
+                        TimeUnit.NANOSECONDS);
+    }
 
     private PhoneVerificationSendResult sendFailure(String outId, String providerCode, String message) {
 

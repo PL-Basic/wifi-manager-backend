@@ -48,10 +48,19 @@ public class TrustedRequestAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean
+    public TrustedRequestContextResolver trustedRequestContextResolver() {
+        return new TrustedRequestContextResolver();
+    }
+
+    @Bean
     @ConditionalOnClass({RequestInterceptor.class, FeignClientBuilder.class})
     public RequestInterceptor trustedFeignRequestInterceptor(
-            @Value("${wifi.internal.token}") String outboundInternalToken) {
-        return new TrustedFeignRequestInterceptor(outboundInternalToken);
+            @Value("${wifi.internal.token}") String outboundInternalToken,
+            TrustedRequestContextResolver contextResolver) {
+        return new TrustedFeignRequestInterceptor(
+                outboundInternalToken,
+                contextResolver);
     }
 
     @Bean
@@ -72,12 +81,16 @@ public class TrustedRequestAutoConfiguration {
     public FilterRegistrationBean<TenantContextWriteValidationFilter>
     tenantContextWriteValidationFilterRegistration(
             TenantContextValidationClient validationClient,
+            TrustedRequestContextResolver contextResolver,
             @Value("${spring.application.name:}") String applicationName) {
 
         FilterRegistrationBean<TenantContextWriteValidationFilter> registration =
                 new FilterRegistrationBean<>();
         registration.setFilter(
-                new TenantContextWriteValidationFilter(validationClient, applicationName));
+                new TenantContextWriteValidationFilter(
+                        validationClient,
+                        contextResolver,
+                        applicationName));
         registration.addUrlPatterns("/*");
         registration.setName("tenantContextWriteValidationFilter");
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 30);

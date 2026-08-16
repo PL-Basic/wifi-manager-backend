@@ -7,9 +7,10 @@ import com.plagod.vo.entitlement.RefundVO;
 
 public interface RefundService {
 
-    RefundVO apply(Long userId, RefundApplyRequest request);
+    RefundVO apply(Long tenantId, Long userId, RefundApplyRequest request);
 
-    RefundVO review(String refundNo, Long reviewerId, String reviewerName, RefundReviewRequest request);
+    RefundVO review(Long tenantId, String refundNo, Long reviewerId,
+                    String reviewerName, RefundReviewRequest request);
 
     RefundVO handleChannelResult(VerifiedRefundResult result);
 }

@@ -5,8 +5,11 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.plagod.entity.device.ClientSignalRecord;
 import com.plagod.mapper.ClientSignalMapper;
 import com.plagod.service.ClientSignalQueryService;
+import com.plagod.support.PageBounds;
+import com.plagod.utils.DevicePageBounds;
 import com.plagod.vo.device.ClientSignalPageResult;
 import com.plagod.vo.device.ClientSignalVO;
+import com.plagod.utils.TenantScopeUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -24,31 +27,32 @@ public class ClientSignalQueryServiceImpl implements ClientSignalQueryService {
     private ClientSignalMapper clientSignalMapper;
 
     @Override
-    public ClientSignalPageResult pageClientSignals(long current, long size, String deviceCode, Long nodeId, String mac, Long sessionId, String state, LocalDateTime startTime, LocalDateTime endTime) {
+    public ClientSignalPageResult pageClientSignals(Long tenantId, long current, long size, String deviceCode, Long nodeId, String mac, Long sessionId, String state, LocalDateTime startTime, LocalDateTime endTime) {
 
-        return page(null, current, size, deviceCode, nodeId, mac, sessionId, state, startTime, endTime);
+        return page(tenantId, null, current, size, deviceCode, nodeId, mac, sessionId, state, startTime, endTime);
     }
 
     @Override
-    public ClientSignalPageResult pageOwnedClientSignals(Long ownerUserId, long current, long size, String deviceCode, Long nodeId, String mac, Long sessionId, String state, LocalDateTime startTime, LocalDateTime endTime) {
+    public ClientSignalPageResult pageOwnedClientSignals(Long tenantId, Long ownerUserId, long current, long size, String deviceCode, Long nodeId, String mac, Long sessionId, String state, LocalDateTime startTime, LocalDateTime endTime) {
 
         if (ownerUserId == null || ownerUserId <= 0) {
             throw new IllegalArgumentException("缺少有效用户身份");
         }
 
-        return page(ownerUserId, current, size, deviceCode, nodeId, mac, sessionId, state, startTime, endTime);
+        return page(tenantId, ownerUserId, current, size, deviceCode, nodeId, mac, sessionId, state, startTime, endTime);
     }
 
-    private ClientSignalPageResult page(Long ownerUserId, long current, long size, String deviceCode, Long nodeId, String mac, Long sessionId, String state, LocalDateTime startTime, LocalDateTime endTime) {
+    private ClientSignalPageResult page(Long tenantId, Long ownerUserId, long current, long size, String deviceCode, Long nodeId, String mac, Long sessionId, String state, LocalDateTime startTime, LocalDateTime endTime) {
+        TenantScopeUtils.requireTenantId(tenantId);
         if (startTime != null && endTime != null && endTime.isBefore(startTime)) {
 
             throw new IllegalArgumentException("结束时间不能早于开始时间");
         }
 
-        long pageCurrent = current <= 0 ? 1 : current;
-        long pageSize = size <= 0 ? 10 : Math.min(size, 100);
+        PageBounds pageBounds = DevicePageBounds.normalize(current, size);
 
         QueryWrapper<ClientSignalRecord> query = new QueryWrapper<>();
+        query.eq("tenant_id", tenantId);
 
         if (ownerUserId != null) {
             // 认证前 session_id=0 的遥测没有用户归属，不能向普通用户开放。
@@ -58,7 +62,8 @@ public class ClientSignalQueryServiceImpl implements ClientSignalQueryService {
                     "exists (select 1 from t_session owned_session "
                             + "where owned_session.session_id = "
                             + "t_client_signal.session_id "
-                            + "and owned_session.user_id = {0})", ownerUserId)
+                            + "and owned_session.tenant_id = {0} "
+                            + "and owned_session.user_id = {1})", tenantId, ownerUserId)
             ;
         }
 
@@ -87,7 +92,8 @@ public class ClientSignalQueryServiceImpl implements ClientSignalQueryService {
         query.orderByDesc("report_time")
                 .orderByDesc("id");
 
-        Page<ClientSignalRecord> resultPage = clientSignalMapper.selectPage(new Page<>(pageCurrent, pageSize), query);
+        Page<ClientSignalRecord> resultPage = clientSignalMapper.selectPage(
+                new Page<>(pageBounds.getCurrent(), pageBounds.getSize()), query);
 
         List<ClientSignalVO> records = new ArrayList<>();
 
@@ -107,7 +113,7 @@ public class ClientSignalQueryServiceImpl implements ClientSignalQueryService {
     }
 
     @Override
-    public boolean wasRecentlyObserved(Long nodeId, String deviceCode, String mac, LocalDateTime sinceTime) {
+    public boolean wasRecentlyObserved(Long tenantId, Long nodeId, String deviceCode, String mac, LocalDateTime sinceTime) {
 
         if (nodeId == null || nodeId <= 0 || !StringUtils.hasText(deviceCode) || !StringUtils.hasText(mac) || sinceTime == null) {
 
@@ -116,6 +122,7 @@ public class ClientSignalQueryServiceImpl implements ClientSignalQueryService {
 
         Number count = clientSignalMapper.selectCount(
                 new QueryWrapper<ClientSignalRecord>()
+                        .eq("tenant_id", tenantId)
                         .eq("node_id", nodeId)
                         .eq("device_code", deviceCode.trim())
                         .eq("mac", mac.trim().toUpperCase(Locale.ROOT))

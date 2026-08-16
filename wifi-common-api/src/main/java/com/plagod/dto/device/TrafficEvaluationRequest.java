@@ -8,6 +8,7 @@ import java.time.LocalDateTime;
 public class TrafficEvaluationRequest {
 
     private String eventId;
+    private Long tenantId;
     private String deviceCode;
     private Long nodeId;
     private Long sessionId;

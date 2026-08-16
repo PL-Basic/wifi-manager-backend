@@ -1,6 +1,7 @@
 package com.plagod.job;
 
 import com.plagod.service.EntitlementOrderService;
+import com.plagod.web.SafeExceptionLogFormatter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -23,7 +24,9 @@ public class EntitlementOrderTimeoutJob {
                 log.info("closed {} expired entitlement orders", closed);
             }
         } catch (Exception exception) {
-            log.error("close expired entitlement orders failed", exception);
+            log.error(
+                    "close expired entitlement orders failed: failure={}",
+                    SafeExceptionLogFormatter.format(exception));
         }
     }
 }

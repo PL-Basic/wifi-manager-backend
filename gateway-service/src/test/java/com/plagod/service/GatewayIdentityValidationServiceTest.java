@@ -17,6 +17,7 @@ import reactor.core.publisher.Mono;
 import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -64,6 +65,7 @@ class GatewayIdentityValidationServiceTest {
                         HttpMethod.GET).block());
 
         assertEquals(401, exception.getHttpStatus());
+        assertEquals("SESSION_EXPIRED", exception.getErrorKey());
         verify(tenantContextClient, never()).validate(any());
     }
 
@@ -85,6 +87,30 @@ class GatewayIdentityValidationServiceTest {
                         HttpMethod.GET).block());
 
         assertEquals(401, exception.getHttpStatus());
+        verify(tenantContextClient, never()).validate(any());
+    }
+
+    @Test
+    void inactiveSessionDoesNotExposeDownstreamReason() {
+        Claims claims = tenantClaims(3L, 5L);
+        SessionValidationVO inactive = activeSession(3L, 5L);
+        inactive.setActive(false);
+        inactive.setReason("canary-internal-session-detail");
+        when(authSessionClient.validate("session-id", 7L, "access-jti"))
+                .thenReturn(Mono.just(inactive));
+
+        GatewayValidationException exception = assertThrows(
+                GatewayValidationException.class,
+                () -> service.validate(
+                        claims,
+                        7L,
+                        "alice",
+                        2,
+                        HttpMethod.GET).block());
+
+        assertEquals(401, exception.getHttpStatus());
+        assertEquals("SESSION_EXPIRED", exception.getErrorKey());
+        assertFalse(exception.getMessage().contains("canary"));
         verify(tenantContextClient, never()).validate(any());
     }
 

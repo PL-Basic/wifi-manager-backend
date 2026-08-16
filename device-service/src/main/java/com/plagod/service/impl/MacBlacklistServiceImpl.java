@@ -15,6 +15,7 @@ import com.plagod.mapper.SessionRecordMapper;
 import com.plagod.service.DeviceCommandService;
 import com.plagod.service.MacBlacklistService;
 import com.plagod.service.SessionLeaseService;
+import com.plagod.utils.TenantScopeUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -45,9 +46,13 @@ public class MacBlacklistServiceImpl implements MacBlacklistService {
     private DeviceCommandService deviceCommandService;
 
     @Override
-    @Audited(action = "blacklist.add")
+    @Audited(
+            action = "blacklist.add",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     @Transactional(rollbackFor = Exception.class)
-    public void addBlacklist(MacBlacklistCreateDTO createDTO) {
+    public void addBlacklist(Long tenantId, MacBlacklistCreateDTO createDTO) {
+        TenantScopeUtils.requireTenantId(tenantId);
         if (createDTO == null) {
             throw new IllegalArgumentException("黑名单参数不能为空");
         }
@@ -63,15 +68,16 @@ public class MacBlacklistServiceImpl implements MacBlacklistService {
         }
 
         String reason = cleanReason(createDTO.getReason());
-        lockClientAccess(mac);
+        lockClientAccess(tenantId, mac);
 
         QueryWrapper<MacBlacklist> existingQuery = new QueryWrapper<>();
-        existingQuery.eq("mac", mac);
+        existingQuery.eq("tenant_id", tenantId).eq("mac", mac);
         if (macBlacklistMapper.selectCount(existingQuery) > 0) {
             throw new IllegalArgumentException("该 MAC 已存在黑名单记录");
         }
 
         MacBlacklist blacklist = new MacBlacklist();
+        blacklist.setTenantId(tenantId);
         blacklist.setMac(mac);
         blacklist.setReason(reason);
         blacklist.setOperatorId(createDTO.getOperatorId());
@@ -81,11 +87,11 @@ public class MacBlacklistServiceImpl implements MacBlacklistService {
             throw new IllegalStateException("黑名单新增失败");
         }
 
-        closeAllocatedSessions(mac, now);
+        closeAllocatedSessions(tenantId, mac, now);
     }
 
-    private void closeAllocatedSessions(String mac, LocalDateTime now) {
-        List<SessionRecord> sessions = sessionRecordMapper.selectAllocatedByMacForUpdate(mac);
+    private void closeAllocatedSessions(Long tenantId, String mac, LocalDateTime now) {
+        List<SessionRecord> sessions = sessionRecordMapper.selectAllocatedByMacForUpdate(tenantId, mac);
 
         for (SessionRecord session : sessions) {
             boolean waitingReplacement = SessionStatus.isWaitingReplacement(session.getStatus());
@@ -109,7 +115,7 @@ public class MacBlacklistServiceImpl implements MacBlacklistService {
                 continue;
             }
 
-            Esp32Node node = esp32NodeMapper.selectByNodeIdIncludeDeleted(session.getNodeId());
+            Esp32Node node = esp32NodeMapper.selectByNodeIdAndTenantIncludeDeleted(tenantId, session.getNodeId());
 
             if (node == null || !StringUtils.hasText(node.getDeviceCode())) {
                 throw new IllegalStateException("Session 关联的 ESP32 节点不存在，sessionId=" + session.getSessionId());
@@ -119,10 +125,10 @@ public class MacBlacklistServiceImpl implements MacBlacklistService {
         }
     }
 
-    private void lockClientAccess(String mac) {
+    private void lockClientAccess(Long tenantId, String mac) {
 
-        clientAccessGuardMapper.ensureGuardRow(mac);
-        String lockedMac = clientAccessGuardMapper.selectMacForUpdate(mac);
+        clientAccessGuardMapper.ensureGuardRow(tenantId, mac);
+        String lockedMac = clientAccessGuardMapper.selectMacForUpdate(tenantId, mac);
 
         if (!mac.equals(lockedMac)) {
             throw new IllegalStateException("客户端访问状态锁定失败");

@@ -1,5 +1,7 @@
 package com.plagod.security;
 
+import com.plagod.exception.ApiErrorKey;
+import com.plagod.request.RequestId;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -30,8 +32,10 @@ public class TrustedRequestFilter extends OncePerRequestFilter {
         }
 
         String path = request.getRequestURI();
-        String gatewayToken = request.getHeader(TrustedHeaderNames.GATEWAY_TOKEN);
-        String internalToken = request.getHeader(TrustedHeaderNames.INTERNAL_TOKEN);
+        String gatewayToken = request.getHeader(
+                TrustedRequestHeaders.GATEWAY_TOKEN);
+        String internalToken = request.getHeader(
+                TrustedRequestHeaders.INTERNAL_TOKEN);
 
         boolean trusted;
         String trustedSource;
@@ -39,24 +43,26 @@ public class TrustedRequestFilter extends OncePerRequestFilter {
         if (properties.isInternalPath(path)) {
             // 内部路径只能使用内部凭据，Gateway 凭据不能越权调用。
             trusted = tokenMatches(internalToken, properties.getInternalToken());
-            trustedSource = TrustedHeaderNames.SOURCE_INTERNAL;
+            trustedSource = TrustedRequestHeaders.SOURCE_INTERNAL;
         } else {
             // 迁移期间允许 Gateway 或可信 Feign 调用现有业务路径。
             boolean gatewayTrusted = tokenMatches(gatewayToken, properties.getGatewayToken());
             boolean internalTrusted = tokenMatches(internalToken, properties.getInternalToken());
             trusted = gatewayTrusted || internalTrusted;
             trustedSource = gatewayTrusted
-                    ? TrustedHeaderNames.SOURCE_GATEWAY
-                    : TrustedHeaderNames.SOURCE_INTERNAL;
+                    ? TrustedRequestHeaders.SOURCE_GATEWAY
+                    : TrustedRequestHeaders.SOURCE_INTERNAL;
         }
 
         if (!trusted) {
             String reason = properties.isInternalPath(path)
                     ? "INTERNAL_TOKEN_MISMATCH"
                     : "TRUSTED_TOKEN_MISMATCH";
+            String requestId = RequestId.generate();
 
             log.warning(String.format(
-                    "trusted request rejected: reason=%s, method=%s, path=%s, internalPath=%s, gatewayTokenPresent=%s, internalTokenPresent=%s",
+                    "trusted request rejected: requestId=%s, reason=%s, method=%s, path=%s, internalPath=%s, gatewayTokenPresent=%s, internalTokenPresent=%s",
+                    requestId,
                     reason,
                     request.getMethod(),
                     path,
@@ -64,11 +70,13 @@ public class TrustedRequestFilter extends OncePerRequestFilter {
                     StringUtils.hasText(gatewayToken),
                     StringUtils.hasText(internalToken)));
 
-            reject(response);
+            reject(response, requestId);
             return;
         }
 
-        request.setAttribute(TrustedHeaderNames.TRUSTED_SOURCE_ATTRIBUTE, trustedSource);
+        request.setAttribute(
+                TrustedRequestHeaders.TRUSTED_SOURCE_ATTRIBUTE,
+                trustedSource);
         chain.doFilter(request, response);
     }
 
@@ -80,12 +88,25 @@ public class TrustedRequestFilter extends OncePerRequestFilter {
         return MessageDigest.isEqual(supplied.getBytes(StandardCharsets.UTF_8), expected.getBytes(StandardCharsets.UTF_8));
     }
 
-    private void reject(HttpServletResponse response) throws java.io.IOException {
-        byte[] body = ("{\"code\":401,\"message\":\"服务请求来源认证失败\",\"data\":null}").getBytes(StandardCharsets.UTF_8);
+    private void reject(
+            HttpServletResponse response,
+            String requestId) throws java.io.IOException {
+        byte[] body = (
+                "{\"code\":401,"
+                        + "\"message\":\"服务请求来源认证失败\","
+                        + "\"data\":null,"
+                        + "\"errorKey\":\""
+                        + ApiErrorKey.AUTHENTICATION_REQUIRED.value()
+                        + "\","
+                        + "\"requestId\":\""
+                        + requestId
+                        + "\"}")
+                .getBytes(StandardCharsets.UTF_8);
 
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         response.setContentType("application/json; charset=utf-8");
+        response.setHeader(RequestId.HEADER_NAME, requestId);
         response.setContentLength(body.length);
         response.getOutputStream().write(body);
     }

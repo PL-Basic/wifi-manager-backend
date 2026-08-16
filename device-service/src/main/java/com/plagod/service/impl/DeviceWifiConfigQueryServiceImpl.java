@@ -3,10 +3,12 @@ package com.plagod.service.impl;
 import com.plagod.constant.DeviceWifiConfigStatus;
 import com.plagod.entity.device.DeviceWifiConfigRecord;
 import com.plagod.entity.device.Esp32Node;
+import com.plagod.exception.ApiStatusException;
 import com.plagod.mapper.DeviceWifiConfigRecordMapper;
 import com.plagod.mapper.Esp32NodeMapper;
 import com.plagod.service.DeviceWifiConfigQueryService;
 import com.plagod.vo.device.WifiConfigTaskVO;
+import com.plagod.utils.TenantScopeUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -21,31 +23,36 @@ public class DeviceWifiConfigQueryServiceImpl implements DeviceWifiConfigQuerySe
     private Esp32NodeMapper esp32NodeMapper;
 
     @Override
-    public WifiConfigTaskVO getTask(String deviceCode, String requestId) {
+    public WifiConfigTaskVO getTask(Long tenantId, String deviceCode, String requestId) {
+        TenantScopeUtils.requireTenantId(tenantId);
 
         String cleanDeviceCode = cleanRequired(deviceCode, 64, "deviceCode 不能为空");
         String cleanRequestId = cleanRequired(requestId, 64, "requestId 不能为空");
 
-        DeviceWifiConfigRecord record = wifiConfigRecordMapper.selectByDeviceCodeAndRequestId(cleanDeviceCode, cleanRequestId);
+        DeviceWifiConfigRecord record = wifiConfigRecordMapper.selectByDeviceCodeAndRequestId(
+                tenantId, cleanDeviceCode, cleanRequestId);
 
         if (record == null || !cleanDeviceCode.equals(record.getDeviceCode()) || !cleanRequestId.equals(record.getRequestId())) {
-            throw new IllegalArgumentException("候选 WiFi 配置任务不存在");
+            throw ApiStatusException.notFound("候选 WiFi 配置任务不存在");
         }
 
         return toVO(record);
     }
 
     @Override
-    public WifiConfigTaskVO getLatestTask(String deviceCode) {
+    public WifiConfigTaskVO getLatestTask(Long tenantId, String deviceCode) {
+        TenantScopeUtils.requireTenantId(tenantId);
 
         String cleanDeviceCode = cleanRequired(deviceCode, 64, "deviceCode 不能为空");
-        Esp32Node node = esp32NodeMapper.selectByDeviceCodeIncludeDeleted(cleanDeviceCode);
+        Esp32Node node = esp32NodeMapper.selectByDeviceCodeAndTenantIncludeDeleted(
+                tenantId, cleanDeviceCode);
 
         if (node == null || !cleanDeviceCode.equals(node.getDeviceCode())) {
-            throw new IllegalArgumentException("目标 ESP32 不存在");
+            throw ApiStatusException.notFound("目标 ESP32 不存在");
         }
 
-        DeviceWifiConfigRecord record = wifiConfigRecordMapper.selectLatestByNodeId(node.getNodeId());
+        DeviceWifiConfigRecord record = wifiConfigRecordMapper.selectLatestByNodeId(
+                tenantId, node.getNodeId());
         return record == null ? null : toVO(record);
     }
 

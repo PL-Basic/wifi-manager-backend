@@ -4,6 +4,7 @@ import com.plagod.client.AuthSessionWebClient;
 import com.plagod.client.TenantContextWebClient;
 import com.plagod.dto.tenant.TenantContextResolveRequest;
 import com.plagod.dto.tenant.TenantContextValidationRequest;
+import com.plagod.exception.ApiErrorKey;
 import com.plagod.utils.JwtUtils;
 import com.plagod.vo.auth.SessionValidationVO;
 import com.plagod.vo.tenant.TenantContextVO;
@@ -90,7 +91,10 @@ public class GatewayIdentityValidationService {
                 ? Instant.EPOCH : claims.getIssuedAt().toInstant();
         if (!now.isBefore(legacyAcceptUntil) || !issuedAt.isBefore(legacyAcceptUntil)) {
             return Mono.error(new GatewayValidationException(
-                    401, 401, "旧 Access JWT 兼容窗口已经结束，请重新登录"));
+                    401,
+                    401,
+                    ApiErrorKey.SESSION_EXPIRED.value(),
+                    "旧 Access JWT 兼容窗口已经结束，请重新登录"));
         }
 
         TenantContextResolveRequest request = new TenantContextResolveRequest();
@@ -182,9 +186,11 @@ public class GatewayIdentityValidationService {
 
     private void requireActiveSession(SessionValidationVO session) {
         if (session == null || !Boolean.TRUE.equals(session.getActive())) {
-            String message = session != null && StringUtils.hasText(session.getReason())
-                    ? session.getReason() : "登录会话已经失效";
-            throw new GatewayValidationException(401, 401, message);
+            throw new GatewayValidationException(
+                    401,
+                    401,
+                    ApiErrorKey.SESSION_EXPIRED.value(),
+                    "登录会话已经失效");
         }
     }
 
@@ -201,7 +207,10 @@ public class GatewayIdentityValidationService {
                         JwtUtils.getLongClaim(claims, "sessionSecurityVersion"),
                         session.getSecurityVersion())) {
             throw new GatewayValidationException(
-                    401, 401, "登录会话上下文已经切换，请使用最新 Access JWT");
+                    401,
+                    401,
+                    ApiErrorKey.SESSION_EXPIRED.value(),
+                    "登录会话上下文已经切换，请使用最新 Access JWT");
         }
     }
 

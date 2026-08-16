@@ -49,7 +49,7 @@ public class SessionLeaseServiceImpl implements SessionLeaseService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void processSession(Long sessionId) {
-        SessionRecord session = sessionRecordMapper.selectByIdForUpdate(sessionId);
+        SessionRecord session = sessionRecordMapper.selectByIdForUpdateGlobal(sessionId);
         if (session == null || !Integer.valueOf(1).equals(session.getStatus())) {
             return;
         }
@@ -57,7 +57,8 @@ public class SessionLeaseServiceImpl implements SessionLeaseService {
         validateConfiguration();
 
         LocalDateTime now = LocalDateTime.now();
-        Esp32Node node = esp32NodeMapper.selectById(session.getNodeId());
+        Esp32Node node = esp32NodeMapper.selectByNodeIdAndTenantIncludeDeleted(
+                session.getTenantId(), session.getNodeId());
         boolean nodeUnavailable = node == null || Integer.valueOf(1).equals(node.getDelFlag()) || !Integer.valueOf(1).equals(node.getStatus());
 
         if (session.getLastSeenTime() == null) {
@@ -190,13 +191,15 @@ public class SessionLeaseServiceImpl implements SessionLeaseService {
     private EntitlementLeaseResult acquireLease(SessionRecord session, LocalDateTime billedTime, Long usageSeconds, String requestIdPrefix) {
         EntitlementLeaseRequest request = new EntitlementLeaseRequest();
 
+        request.setEntitlementId(session.getEntitlementId());
         request.setRequestId(requestIdPrefix + session.getSessionId() + "-" + billedTime.format(REQUEST_TIME));
         request.setUserId(session.getUserId());
         request.setSessionId(session.getSessionId());
         request.setUsageSeconds(usageSeconds);
         request.setRequestedTtlSeconds(leaseTtlSeconds);
 
-        ApiResponse<EntitlementLeaseResult> response = userEntitlementClient.acquireLease(internalToken, request);
+        ApiResponse<EntitlementLeaseResult> response = userEntitlementClient.acquireLease(
+                internalToken, String.valueOf(session.getTenantId()), request);
 
         if (response == null || response.getCode() != 200 || response.getData() == null) {
             throw new IllegalStateException("权益续租服务调用失败");

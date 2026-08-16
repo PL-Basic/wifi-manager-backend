@@ -18,6 +18,7 @@ import com.plagod.vo.user.UserRoleSnapshotVO;
 import com.plagod.entity.user.User;
 import com.plagod.mapper.UserMapper;
 import com.plagod.service.UserManageService;
+import com.plagod.support.PageBounds;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -48,9 +49,11 @@ public class UserManageServiceImpl implements UserManageService {
     private String internalToken;
 
     @Override
-    public UserPageResult pageUsers(long current, long size, String keyword) {
-        long pageCurrent = current <= 0 ? 1 : current;
-        long pageSize = size <= 0 ? 10 : Math.min(size, 100);
+    public UserPageResult pageUsers(
+            Integer current,
+            Integer size,
+            String keyword) {
+        PageBounds pageBounds = PageBounds.of(current, size);
 
         QueryWrapper<User> queryWrapper = new QueryWrapper<>();
         if (StringUtils.hasText(keyword)) {
@@ -61,8 +64,13 @@ public class UserManageServiceImpl implements UserManageService {
                     .or().like("phone", keyword));
         }
         queryWrapper.orderByDesc("create_time");
+        queryWrapper.orderByDesc("user_id");
 
-        Page<User> page = userMapper.selectPage(new Page<>(pageCurrent, pageSize), queryWrapper);
+        Page<User> page = userMapper.selectPage(
+                new Page<>(
+                        pageBounds.getCurrent(),
+                        pageBounds.getSize()),
+                queryWrapper);
         List<UserVO> records = new ArrayList<>();
         for (User user : page.getRecords()) {
             records.add(toVO(user));
@@ -106,7 +114,10 @@ public class UserManageServiceImpl implements UserManageService {
     }
 
     @Override
-    @Audited(action = "user.update")
+    @Audited(
+            action = "user.update",
+            scope = Audited.Scope.PLATFORM,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     public UserVO updateUser(Long userId, UserUpdateDTO updateDTO, Integer operatorRole) {
         User user = getExistingUser(userId);
 
@@ -159,7 +170,10 @@ public class UserManageServiceImpl implements UserManageService {
 
     @Override
     @Transactional
-    @Audited(action = "user.status")
+    @Audited(
+            action = "user.status",
+            scope = Audited.Scope.PLATFORM,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     public void updateStatus(Long userId, UserStatusDTO statusDTO) {
         User user = getExistingUser(userId);
         if (Integer.valueOf(0).equals(statusDTO.getStatus())
@@ -172,7 +186,10 @@ public class UserManageServiceImpl implements UserManageService {
 
     @Override
     @Transactional
-    @Audited(action = "user.delete")
+    @Audited(
+            action = "user.delete",
+            scope = Audited.Scope.PLATFORM,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     public void deleteUser(Long userId) {
         requireDeletableUser(getExistingUser(userId));
         revokeAuthSessions(userId, "ACCOUNT_DELETED");
@@ -181,13 +198,21 @@ public class UserManageServiceImpl implements UserManageService {
 
     @Override
     @Transactional
-    @Audited(action = "user.purge")
+    @Audited(
+            action = "user.purge",
+            scope = Audited.Scope.PLATFORM,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     public void purgeUser(Long userId) {
         if (userId == null || userId <= 0) {
             throw new IllegalArgumentException("用户 ID 无效");
         }
 
-        requireDeletableUser(getExistingUser(userId));
+        User user = userMapper.selectByIdForUpdate(userId);
+        if (user == null) {
+            throw new IllegalArgumentException("用户不存在");
+        }
+        requireDeletableUser(user);
+        requireNoEntitlementHistory(userId);
 
         revokeAuthSessions(userId, "ACCOUNT_PURGED");
         socialIdentityMapper.physicalDeleteByUserId(userId);
@@ -262,6 +287,31 @@ public class UserManageServiceImpl implements UserManageService {
     private void requireDeletableUser(User user) {
         if (user.getRole() == null || Integer.valueOf(0).equals(user.getRole())) {
             throw new IllegalArgumentException("超级管理员账号不能通过产品功能删除");
+        }
+    }
+
+    private void requireNoEntitlementHistory(Long userId) {
+        Integer historyExists = jdbcTemplate.queryForObject(
+                "SELECT CASE WHEN "
+                        + "EXISTS (SELECT 1 FROM t_duration_purchase WHERE user_id = ?) "
+                        + "OR EXISTS (SELECT 1 FROM t_network_entitlement WHERE user_id = ?) "
+                        + "OR EXISTS (SELECT 1 FROM t_entitlement_usage_log WHERE user_id = ?) "
+                        + "OR EXISTS (SELECT 1 FROM t_entitlement_order WHERE user_id = ?) "
+                        + "OR EXISTS (SELECT 1 FROM t_payment_record WHERE user_id = ?) "
+                        + "OR EXISTS (SELECT 1 FROM t_refund_record WHERE user_id = ?) "
+                        + "THEN 1 ELSE 0 END",
+                Integer.class,
+                userId,
+                userId,
+                userId,
+                userId,
+                userId,
+                userId
+        );
+        if (Integer.valueOf(1).equals(historyExists)) {
+            throw ApiStatusException.conflict(
+                    "该用户存在权益或交易记录，只能停用或逻辑删除，不能永久删除"
+            );
         }
     }
 

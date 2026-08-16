@@ -1,5 +1,7 @@
 # Wifi Manager 数据库对象清单
 
+> 第 1-6 节保留 2026-08-02 历史快照。Demo 1.3 的 2026-08-11 实时数据库、Flyway checksum、V2.9/V2.10 候选清单和只读门禁以第 7 节、[demo-1.3-a-database-audit.md](demo-1.3-a-database-audit.md)及[demo-1.3-h-migration-replay.md](demo-1.3-h-migration-replay.md)为准；P-3B contract 当前状态以 [demo-1.3-b-p3b-contract.md](demo-1.3-b-p3b-contract.md) 为准。不得再把本页的旧表数或 V2.2 待执行状态当作当前事实。
+
 ## 1. 清单基线
 
 本清单对应 2026-08-02 的 `wifi` schema 快照和当前源码。数据库共有 32 张 BASE TABLE，其中 31 张业务表、1 张 `flyway_schema_history`；VIEW、TRIGGER、EVENT、PROCEDURE、FUNCTION 和 FOREIGN KEY 均为 0。
@@ -76,3 +78,113 @@ V2.2 不创建 Access JWT “每请求已使用”表。Access `jti` 只用于�
 ## 6. 后续迁移门禁
 
 执行任何后续 V2.x 前必须依次完成：数据库备份/恢复点、已执行迁移文件与历史 checksum 核对、用户执行 Flyway validate、重新查询真实对象集合并与本清单逐项比对。禁止用 Entity 与业务表数量相等替代集合核对，也禁止对当前业务库执行 Flyway clean。
+
+## 7. Demo 1.3 当前候选清单
+
+2026-08-14 R7 最终只读复核确认真实 `wifi` 为 MySQL 主机 `xwh`、rank 9 /
+V2.4.1 / checksum `848930306`。V2.5 至 V2.10 均未执行；2026-08-12
+新增的 V2.9.1 同样未执行。本节只描述仓库候选，不代表真实库现有对象。
+
+仓库当前有 22 个迁移文件、68 个生产 `@TableName` Entity、71 个 Java
+Mapper 和 15 个 Mapper XML。V2.9.1 新增一张业务表；Run
+`20260814r7c` 已证明空库、V2.3.1 快照和 V2.3.2 快照三链在默认
+V2.9.1 及显式 V2.10 后均为 70 张业务表，columns/index/constraint
+指纹一致。
+
+### 所有权矩阵
+
+以下每项顺序为：表集合；Entity；Mapper/XML；唯一所有者；允许写入方；
+允许只读方；实际引用模块。
+
+- Auth：`t_verify_code`、`t_login_fail_record`、`t_oauth_state`、
+  `t_auth_refresh_session`、`t_auth_refresh_token`、
+  `t_auth_refresh_risk_event`；六个 Auth 私有 Entity；六个 Auth 私有
+  Mapper，相关 XML 由 auth-service 资源目录打包；auth-service；仅 Auth；
+  仅 Auth；auth-service。
+- User 与个人权益：`sys_user`、`t_social_identity`、`t_duration_purchase`、
+  `t_network_entitlement`、`t_entitlement_usage_log`、
+  `t_entitlement_order`、`t_payment_record`、`t_refund_record`、
+  `t_trade_status_log`、`t_user_operation_request`、
+  `t_default_tenant_membership_outbox`、
+  `t_user_account_command_receipt`；12 个 User 私有 Entity；12 个 User
+  私有 Mapper，权益 resultMap XML 由 user-service 打包；user-service；
+  仅 User；Auth 只能通过内部账号契约读取账号快照或发起受控命令；
+  user-service，Auth 只引用 common-api 请求/响应契约和 Feign 端口。
+- Device：`t_esp32_node`、`t_session`、`t_mac_blacklist`、
+  `t_traffic_log`、`t_client_signal`、`t_device_wifi_config`、
+  `t_device_command`、`t_session_user_guard`、`t_client_access_guard`；
+  前七张表有 Device 私有 Entity，两张 guard 表按冻结设计无 Entity；
+  九个 Device 私有 Mapper，已有 resultMap XML 由 device-service 打包；
+  device-service；仅 Device；其他服务经内部契约读取；device-service。
+- Monitor：`t_access_rule`、`t_client_location`、
+  `t_location_authorization`、`t_audit_log`、`t_alert_event`、
+  `t_rule_hit`、`t_geofence`、`t_geofence_state`、`t_geofence_event`；
+  九个 Monitor 私有 Entity；九个表绑定 Mapper 加一个无业务表的
+  `MonitorHealthMapper`，已有 resultMap XML 由 monitor-service 打包；
+  monitor-service；Monitor 业务写入，审计追加写入仅经 Audit Writer；
+  Monitor；monitor-service 和
+  wifi-audit-spring-boot-starter 的受控 JDBC 写端口。
+- Tenant 与 SaaS：`t_tenant`、`t_tenant_member`、`t_platform_staff`、
+  `t_saas_plan`、`t_saas_plan_version`、`t_tenant_subscription`、
+  `t_tenant_quota`、`t_tenant_usage_daily`、
+  `t_tenant_plan_assignment`、`t_tenant_quota_reservation`、
+  `t_tenant_creation_receipt`、`t_tenant_domain_outbox`；12 个 Tenant 私有
+  Entity 和 Mapper；tenant-service；仅 Tenant；其他服务经内部契约读取；
+  tenant-service。
+- Marketplace：`t_market_product`、`t_market_sku`、`t_market_order`、
+  `t_market_order_item`、`t_market_fulfillment`；五个 Marketplace 私有
+  Entity 和纯 BaseMapper；marketplace-service；仅 Marketplace；后续服务
+  契约；marketplace-service。
+- Support：`t_announcement`、`t_announcement_content_version`、
+  `t_announcement_comment`、`t_user_capability_restriction`、
+  `t_support_content_review_outbox`、`t_support_user_guard`、
+  `t_support_daily_guard`、`t_support_submission`、`t_support_ticket`、
+  `t_support_ticket_message`、`t_support_ticket_transition`、
+  `t_announcement_action_request`；12 个 Support 私有 Entity 和纯
+  BaseMapper；support-service；仅 Support；后续服务契约；
+  support-service。
+- AI：`t_ai_provider`、`t_ai_policy`、`t_ai_policy_version`、
+  `t_ai_review_task`、`t_ai_manual_review`；五个 AI 私有 Entity 和纯
+  BaseMapper；ai-service；仅 AI；后续服务契约；ai-service。
+
+### 三个跨模块例外
+
+- `sys_user`：UserMapper 只存在于 user-service。Auth 不持有 User Entity、
+  Mapper 或 XML，通过 `/internal/user-accounts/**` 完成账号创建、快照读取、
+  密码条件替换和默认成员事件触发。
+- `t_default_tenant_membership_outbox`：Entity、Mapper、事件创建和状态推进
+  全部在 user-service。Auth 只能触发 User 的受控投递入口。
+- `t_audit_log`：AuditLog Entity 和查询 Mapper 只在 monitor-service。
+  audit starter 只公开 `AuditWriter`，使用参数化 JDBC 追加写入，不公开
+  BaseMapper、任意查询、更新或删除能力。
+
+`wifi-common-mybatis` 当前保留 `WifiMybatisAutoConfiguration`、分页插件、
+逻辑删除配置和 `spring.factories` 自动装配入口；User、Device、Monitor、
+Tenant 四个模块直接消费该基础配置。其业务 Entity、Mapper 和 Mapper XML
+均为 0，因此没有需要保留在公共 MyBatis 的业务持久化类型。Marketplace、
+Support 和 AI 继续保持私有持久化模块，不含启动类。
+
+### 数量闭合
+
+- Auth：6 表 / 6 Entity / 6 Mapper / 2 XML。
+- User：12 表 / 12 Entity / 12 Mapper / 5 XML。
+- Device：9 表 / 7 Entity / 9 Mapper / 3 XML；两张 guard 表按设计无
+  Entity。
+- Monitor：9 表 / 9 Entity / 10 Mapper / 5 XML；额外 Mapper 为无业务表的
+  `MonitorHealthMapper`。
+- Tenant：12 表 / 12 Entity / 12 Mapper / 0 XML。
+- Marketplace：5 表 / 5 Entity / 5 Mapper / 0 XML。
+- Support：12 表 / 12 Entity / 12 Mapper / 0 XML。
+- AI：5 表 / 5 Entity / 5 Mapper / 0 XML。
+
+合计 70 张业务表、68 个生产 Entity、71 个 Java Mapper 和 15 个 Mapper
+XML。六个真实持久化服务 Context 已分别冻结允许注册的 Mapper 集合；
+Admin Context 已证明不存在 DataSource、MyBatis 类、Mapper/Entity Bean 或
+Mapper XML。
+
+1.3 不实现 claim、锁行、expectedVersion/expectedStatus 条件更新、业务状态
+转换或分页聚合；这些具名数据访问归 1.5/2.3。
+
+后续真实迁移仍必须重新执行数据库身份、Flyway 历史/checksum、专用测试
+账号和备份门禁。V2.10 还要求 P-3C tenant-aware 代码切换与只读零计数门禁；
+隔离库成功也不能授权执行真实 V2.5-V2.10。

@@ -12,6 +12,7 @@ import com.plagod.dto.user.EntitlementLeaseRequest;
 import com.plagod.entity.device.Esp32Node;
 import com.plagod.entity.device.MacBlacklist;
 import com.plagod.entity.device.SessionRecord;
+import com.plagod.exception.ApiStatusException;
 import com.plagod.mapper.*;
 import com.plagod.service.ClientSignalQueryService;
 import com.plagod.service.DeviceCommandService;
@@ -19,7 +20,9 @@ import com.plagod.service.PortalSessionService;
 import com.plagod.service.SessionLeaseService;
 import com.plagod.vo.device.SessionRecordVO;
 import com.plagod.vo.user.EntitlementLeaseResult;
+import com.plagod.web.SafeExceptionLogFormatter;
 import com.plagod.vo.user.UserConnectionPolicyVO;
+import com.plagod.utils.TenantScopeUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -72,8 +75,12 @@ public class PortalSessionServiceImpl implements PortalSessionService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    @Audited(action = "session.portal-authorize")
-    public SessionRecordVO authorize(PortalAuthorizeDTO dto, Long userId) {
+    @Audited(
+            action = "session.portal-authorize",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
+    public SessionRecordVO authorize(Long tenantId, PortalAuthorizeDTO dto, Long userId) {
+        TenantScopeUtils.requireTenantId(tenantId);
         if (dto == null || userId == null || userId <= 0) {
             throw new IllegalArgumentException("Portal 授权参数或者用户身份无效");
         }
@@ -87,12 +94,12 @@ public class PortalSessionServiceImpl implements PortalSessionService {
 
         // 从黑名单检查开始，到 Session 创建和命令入队结束，
         // 同一个 MAC 只能存在一个授权或管控事务。
-        lockClientAccess(mac);
+        lockClientAccess(tenantId, mac);
 
         // 锁住节点行，使同一 ESP32 上的 Portal 授权请求串行执行。
-        Esp32Node node = esp32NodeMapper.selectByDeviceCodeForUpdateIncludeDeleted(deviceCode);
+        Esp32Node node = esp32NodeMapper.selectByDeviceCodeForUpdateAndTenantIncludeDeleted(tenantId, deviceCode);
         if (node == null || Integer.valueOf(1).equals(node.getDelFlag())) {
-            throw new IllegalArgumentException("Portal 所连接的设备不存在或已退役");
+            throw ApiStatusException.notFound("Portal 所连接的设备不存在或已退役");
         }
         if (!Integer.valueOf(1).equals(node.getStatus())) {
             throw new IllegalArgumentException("Portal 所连接设备当前不在线");
@@ -102,16 +109,17 @@ public class PortalSessionServiceImpl implements PortalSessionService {
 
         // 永久黑名单或者尚未过期的临时黑名单都会阻止认证
         QueryWrapper<MacBlacklist> blackListQuery = new QueryWrapper<>();
-        blackListQuery.eq("mac", mac)
+        blackListQuery.eq("tenant_id", tenantId)
+                .eq("mac", mac)
                 .and(wrapper -> wrapper.isNull("expire_time")
                         .or().gt("expire_time", now));
         if (macBlacklistMapper.selectCount(blackListQuery) > 0) {
             throw new IllegalArgumentException("该客户端已被加入黑名单");
         }
 
-        validateRecentClientSignal(node, deviceCode, mac, now);
+        validateRecentClientSignal(tenantId, node, deviceCode, mac, now);
 
-        SessionRecord reusableSession = findReusableOpenSession(userId, node.getNodeId(), mac);
+        SessionRecord reusableSession = findReusableOpenSession(tenantId, userId, node.getNodeId(), mac);
 
         if (reusableSession != null) {
             // 撤销命令还没有成功，重复请求只返回当前状态。
@@ -119,10 +127,10 @@ public class PortalSessionServiceImpl implements PortalSessionService {
                 return toVO(reusableSession);
             }
 
-            EntitlementLeaseResult lease = acquireInitialLease(userId, reusableSession.getSessionId());
+            EntitlementLeaseResult lease = acquireInitialLease(tenantId, userId, reusableSession.getSessionId());
             validateLease(lease);
 
-            closeConflictingSessions(mac, reusableSession.getSessionId(), now);
+            closeConflictingSessions(tenantId, mac, reusableSession.getSessionId(), now);
 
             reusableSession.setIp(ip);
 
@@ -140,16 +148,17 @@ public class PortalSessionServiceImpl implements PortalSessionService {
         UserConnectionPolicyVO connectionPolicy = loadConnectionPolicy(userId);
 
         // 串行化同一用户的“统计名额并创建 Session”流程。
-        lockSessionAllocation(userId);
+        lockSessionAllocation(tenantId, userId);
 
         // 当前 MAC 如果正在其他节点使用，随后会替换旧 Session，
         // 因此只统计其他 MAC 占用的名额。
-        Long replacedSessionId = prepareConnectionSlot(userId, mac, connectionPolicy.getMaxConnections(), Boolean.TRUE.equals(dto.getForceReplaceOldest()), now);
+        Long replacedSessionId = prepareConnectionSlot(tenantId, userId, mac, connectionPolicy.getMaxConnections(), Boolean.TRUE.equals(dto.getForceReplaceOldest()), now);
 
         // 没有可复用 Session，才关闭旧连接并创建新记录。
-        closeConflictingSessions(mac, null, now);
+        closeConflictingSessions(tenantId, mac, null, now);
 
         SessionRecord sessionRecord = new SessionRecord();
+        sessionRecord.setTenantId(tenantId);
         sessionRecord.setUserId(userId);
         sessionRecord.setNodeId(node.getNodeId());
         sessionRecord.setReplacedSessionId(replacedSessionId);
@@ -173,7 +182,7 @@ public class PortalSessionServiceImpl implements PortalSessionService {
             return toVO(sessionRecord);
         }
 
-        EntitlementLeaseResult lease = acquireInitialLease(userId, sessionRecord.getSessionId());
+        EntitlementLeaseResult lease = acquireInitialLease(tenantId, userId, sessionRecord.getSessionId());
         validateLease(lease);
 
         applyLease(sessionRecord, lease, now);
@@ -182,12 +191,13 @@ public class PortalSessionServiceImpl implements PortalSessionService {
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY, rollbackFor = Exception.class)
-    public void activateWaitingReplacement(Long replacedSessionId) {
+    public void activateWaitingReplacement(Long tenantId, Long replacedSessionId) {
+        TenantScopeUtils.requireTenantId(tenantId);
         if (replacedSessionId == null || replacedSessionId <= 0) {
             throw new IllegalArgumentException("被替换 SessionId 无效");
         }
 
-        SessionRecord waiting = sessionRecordMapper.selectWaitingReplacementForUpdate(replacedSessionId);
+        SessionRecord waiting = sessionRecordMapper.selectWaitingReplacementForUpdate(tenantId, replacedSessionId);
 
         // 重复 command-result 或等待 Session 已取消时直接幂等返回。
         if (waiting == null) {
@@ -196,7 +206,7 @@ public class PortalSessionServiceImpl implements PortalSessionService {
 
         LocalDateTime now = LocalDateTime.now();
 
-        Esp32Node node = esp32NodeMapper.selectByNodeIdIncludeDeleted(waiting.getNodeId());
+        Esp32Node node = esp32NodeMapper.selectByNodeIdAndTenantIncludeDeleted(tenantId, waiting.getNodeId());
 
         if (node == null || Integer.valueOf(1).equals(node.getDelFlag()) || !Integer.valueOf(1).equals(node.getStatus())) {
             closeWaitingSession(waiting, now, "REPLACEMENT_NODE_UNAVAILABLE");
@@ -205,7 +215,7 @@ public class PortalSessionServiceImpl implements PortalSessionService {
 
         EntitlementLeaseResult lease;
         try {
-            lease = acquireInitialLease(waiting.getUserId(), waiting.getSessionId());
+            lease = acquireInitialLease(tenantId, waiting.getUserId(), waiting.getSessionId());
             validateLease(lease);
         } catch (IllegalArgumentException exception) {
             closeWaitingSession(waiting, now, "REPLACEMENT_ENTITLEMENT_DENIED");
@@ -213,7 +223,11 @@ public class PortalSessionServiceImpl implements PortalSessionService {
         } catch (RuntimeException exception) {
             // 旧授权已经撤销成功，不能因权益服务临时异常回滚该 command-result。
             // 关闭等待 Session 后允许用户重新发起认证。
-            log.warn("强制替换撤销成功，但新 Session 权益暂时不可用，sessionId={}", waiting.getSessionId(), exception);
+            log.warn(
+                    "强制替换撤销成功，但新 Session 权益暂时不可用，sessionId={}, type={}, safeStack={}",
+                    waiting.getSessionId(),
+                    exception.getClass().getName(),
+                    SafeExceptionLogFormatter.format(exception));
             closeWaitingSession(waiting, now, "REPLACEMENT_ENTITLEMENT_UNAVAILABLE");
             return;
         }
@@ -244,7 +258,7 @@ public class PortalSessionServiceImpl implements PortalSessionService {
     }
 
     // 申请 Portal 首次授权租约。
-    private EntitlementLeaseResult acquireInitialLease(Long userId, Long sessionId) {
+    private EntitlementLeaseResult acquireInitialLease(Long tenantId, Long userId, Long sessionId) {
         EntitlementLeaseRequest request = new EntitlementLeaseRequest();
 
         request.setRequestId("portal-init-" + sessionId);
@@ -253,7 +267,8 @@ public class PortalSessionServiceImpl implements PortalSessionService {
         request.setUsageSeconds(0L);
         request.setRequestedTtlSeconds(INITIAL_LEASE_TTL_SECONDS);
 
-        ApiResponse<EntitlementLeaseResult> response = userEntitlementClient.acquireLease(internalToken, request);
+        ApiResponse<EntitlementLeaseResult> response = userEntitlementClient.acquireLease(
+                internalToken, String.valueOf(tenantId), request);
 
         if (response == null) {
             throw new IllegalStateException("权益服务没有返回结果");
@@ -269,11 +284,12 @@ public class PortalSessionServiceImpl implements PortalSessionService {
     }
 
     // ACTIVE 或 PENDING Session 都可以被相同认证请求复用。
-    private SessionRecord findReusableOpenSession(Long userId, Long nodeId, String mac) {
+    private SessionRecord findReusableOpenSession(Long tenantId, Long userId, Long nodeId, String mac) {
 
         QueryWrapper<SessionRecord> query = new QueryWrapper<>();
 
-        query.eq("user_id", userId)
+        query.eq("tenant_id", tenantId)
+                .eq("user_id", userId)
                 .eq("node_id", nodeId)
                 .eq("mac", mac)
                 .in("status", SessionStatus.ACTIVE, SessionStatus.PENDING, SessionStatus.WAITING_REPLACEMENT)
@@ -284,8 +300,8 @@ public class PortalSessionServiceImpl implements PortalSessionService {
     }
 
     // 关闭同一 MAC 的其他已分配 Session，并收口其计费和固件授权。
-    private void closeConflictingSessions(String mac, Long keepSessionId, LocalDateTime now) {
-        List<SessionRecord> sessions = sessionRecordMapper.selectAllocatedByMacForUpdate(mac);
+    private void closeConflictingSessions(Long tenantId, String mac, Long keepSessionId, LocalDateTime now) {
+        List<SessionRecord> sessions = sessionRecordMapper.selectAllocatedByMacForUpdate(tenantId, mac);
 
         for (SessionRecord session : sessions) {
             if (keepSessionId != null && keepSessionId.equals(session.getSessionId())) {
@@ -312,7 +328,7 @@ public class PortalSessionServiceImpl implements PortalSessionService {
                 continue;
             }
 
-            Esp32Node oldNode = esp32NodeMapper.selectByNodeIdIncludeDeleted(session.getNodeId());
+            Esp32Node oldNode = esp32NodeMapper.selectByNodeIdAndTenantIncludeDeleted(tenantId, session.getNodeId());
             if (oldNode == null || !StringUtils.hasText(oldNode.getDeviceCode())) {
                 throw new IllegalStateException("Portal 冲突 Session 关联节点不存在，sessionId=" + session.getSessionId());
             }
@@ -376,14 +392,14 @@ public class PortalSessionServiceImpl implements PortalSessionService {
     }
 
     // 校验该 MAC 最近是否被当前 ESP32 节点实际观察到
-    private void validateRecentClientSignal(Esp32Node node, String deviceCode, String mac, LocalDateTime now) {
+    private void validateRecentClientSignal(Long tenantId, Esp32Node node, String deviceCode, String mac, LocalDateTime now) {
         if (clientSignalMaxAgeSeconds <= 0) {
             throw new IllegalStateException("Portal RSSI 时间窗口配置必须大于 0");
         }
         // 只接受当前时间窗口内由后端记录的 RSSI。
         LocalDateTime sinceTime = now.minusSeconds(clientSignalMaxAgeSeconds);
 
-        boolean observed = clientSignalQueryService.wasRecentlyObserved(node.getNodeId(), deviceCode, mac, sinceTime);
+        boolean observed = clientSignalQueryService.wasRecentlyObserved(tenantId, node.getNodeId(), deviceCode, mac, sinceTime);
         if (!observed) {
             throw new IllegalArgumentException("当前 ESP32 最近未观察到该客户端，请确认仍连接热点后重试");
         }
@@ -409,20 +425,20 @@ public class PortalSessionServiceImpl implements PortalSessionService {
     }
 
     // 获取该用户的 Session 名额分配行锁。
-    private void lockSessionAllocation(Long userId) {
+    private void lockSessionAllocation(Long tenantId, Long userId) {
         // 首次认证时创建锁行；已经存在时不报错。
-        sessionUserGuardMapper.ensureGuardRow(userId);
+        sessionUserGuardMapper.ensureGuardRow(tenantId, userId);
 
-        Long lockedUserId = sessionUserGuardMapper.selectUserIdForUpdate(userId);
+        Long lockedUserId = sessionUserGuardMapper.selectUserIdForUpdate(tenantId, userId);
 
         if (!userId.equals(lockedUserId)) {
             throw new IllegalStateException("用户 Session 名额锁定失败");
         }
     }
 
-    private Long prepareConnectionSlot(Long userId, String currentMac, Integer maxConnections, boolean forceReplaceOldest, LocalDateTime now) {
+    private Long prepareConnectionSlot(Long tenantId, Long userId, String currentMac, Integer maxConnections, boolean forceReplaceOldest, LocalDateTime now) {
 
-        long allocatedCount = sessionRecordMapper.countAllocatedSessionsExcludingMac(userId, currentMac);
+        long allocatedCount = sessionRecordMapper.countAllocatedSessionsExcludingMac(tenantId, userId, currentMac);
 
         if (allocatedCount < maxConnections) {
             return null;
@@ -432,14 +448,14 @@ public class PortalSessionServiceImpl implements PortalSessionService {
             throw new IllegalArgumentException("当前账号同时在线设备数已达到上限：" + maxConnections + "，确认后可强制替换最旧 Session");
         }
 
-        SessionRecord oldest = sessionRecordMapper.selectOldestOpenSessionForUpdate(userId, currentMac);
+        SessionRecord oldest = sessionRecordMapper.selectOldestOpenSessionForUpdate(tenantId, userId, currentMac);
 
         if (oldest == null) {
             throw new IllegalStateException("连接名额已满，但没有可替换的开放 Session");
         }
 
-        Esp32Node oldNode = esp32NodeMapper.selectByNodeIdIncludeDeleted(
-                        oldest.getNodeId());
+        Esp32Node oldNode = esp32NodeMapper.selectByNodeIdAndTenantIncludeDeleted(
+                        tenantId, oldest.getNodeId());
 
         if (oldNode == null || !StringUtils.hasText(oldNode.getDeviceCode())) {
             throw new IllegalStateException("最旧 Session 关联的 ESP32 节点不存在");
@@ -482,9 +498,9 @@ public class PortalSessionServiceImpl implements PortalSessionService {
         return result;
     }
 
-    private void lockClientAccess(String mac) {
-        clientAccessGuardMapper.ensureGuardRow(mac);
-        String lockedMac = clientAccessGuardMapper.selectMacForUpdate(mac);
+    private void lockClientAccess(Long tenantId, String mac) {
+        clientAccessGuardMapper.ensureGuardRow(tenantId, mac);
+        String lockedMac = clientAccessGuardMapper.selectMacForUpdate(tenantId, mac);
 
         if (!mac.equals(lockedMac)) {
             throw new IllegalStateException("客户端访问状态锁定失败");

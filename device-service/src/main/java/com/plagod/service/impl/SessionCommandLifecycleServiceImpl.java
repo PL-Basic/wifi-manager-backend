@@ -56,7 +56,8 @@ public class SessionCommandLifecycleServiceImpl implements SessionCommandLifecyc
         }
 
         // 锁顺序固定为：命令行锁 -> Session 行锁。
-        SessionRecord session = sessionRecordMapper.selectByIdForUpdate(command.getSessionId());
+        SessionRecord session = sessionRecordMapper.selectByIdForUpdate(
+                command.getTenantId(), command.getSessionId());
 
         // 不根据命令反向创建 Session。
         if (session == null) {
@@ -65,7 +66,8 @@ public class SessionCommandLifecycleServiceImpl implements SessionCommandLifecyc
         }
 
         Long latestCommandId =
-                commandRecordMapper.selectLatestSessionAllowCommandId(command.getSessionId());
+                commandRecordMapper.selectLatestSessionAllowCommandId(
+                        command.getTenantId(), command.getSessionId());
 
         if (latestCommandId == null) {
             throw new IllegalStateException("无法确定 Session 最新的 ALLOW 命令");
@@ -108,7 +110,8 @@ public class SessionCommandLifecycleServiceImpl implements SessionCommandLifecyc
 
         UpdateWrapper<SessionRecord> update = new UpdateWrapper<>();
 
-        update.eq("session_id", session.getSessionId())
+        update.eq("tenant_id", command.getTenantId())
+                .eq("session_id", session.getSessionId())
                 .in("status",
                         SessionStatus.ACTIVE,
                         SessionStatus.PENDING)
@@ -143,7 +146,8 @@ public class SessionCommandLifecycleServiceImpl implements SessionCommandLifecyc
 
         UpdateWrapper<SessionRecord> update = new UpdateWrapper<>();
 
-        update.eq("session_id", session.getSessionId())
+        update.eq("tenant_id", command.getTenantId())
+                .eq("session_id", session.getSessionId())
                 .in("status",
                         SessionStatus.ACTIVE,
                         SessionStatus.PENDING)
@@ -197,11 +201,13 @@ public class SessionCommandLifecycleServiceImpl implements SessionCommandLifecyc
 
         if (Integer.valueOf(DeviceCommandStatus.SUCCEEDED).equals(command.getStatus())) {
             // 旧授权已由固件撤销，现在才允许生成新 ALLOW。
-            portalSessionService.activateWaitingReplacement(command.getSessionId());
+            portalSessionService.activateWaitingReplacement(
+                    command.getTenantId(), command.getSessionId());
             return;
         }
 
-        SessionRecord waiting = sessionRecordMapper.selectWaitingReplacementForUpdate(command.getSessionId());
+        SessionRecord waiting = sessionRecordMapper.selectWaitingReplacementForUpdate(
+                command.getTenantId(), command.getSessionId());
 
         if (waiting == null) {
             return;

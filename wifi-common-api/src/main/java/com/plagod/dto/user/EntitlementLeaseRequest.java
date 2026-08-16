@@ -6,6 +6,9 @@ import javax.validation.constraints.*;
 
 @Data
 public class EntitlementLeaseRequest {
+    @Positive(message = "entitlementId 必须大于 0")
+    private Long entitlementId;
+
     @NotBlank(message = "requestId 不能为空")
     @Size(max = 64, message = "requestId 不能超过64")
     private String requestId;

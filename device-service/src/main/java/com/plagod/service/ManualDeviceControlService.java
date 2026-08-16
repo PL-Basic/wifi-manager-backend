@@ -6,7 +6,7 @@ import com.plagod.vo.device.DeviceCommandResult;
 
 public interface ManualDeviceControlService {
 
-    DeviceCommandResult disconnectMac(String deviceCode, ManualDisconnectMacDTO dto, Integer operatorRole);
+    DeviceCommandResult disconnectMac(Long tenantId, String deviceCode, ManualDisconnectMacDTO dto, Integer operatorRole);
 
-    DeviceCommandResult blockTraffic(String deviceCode, ManualBlockTrafficDTO dto, Integer operatorRole);
+    DeviceCommandResult blockTraffic(Long tenantId, String deviceCode, ManualBlockTrafficDTO dto, Integer operatorRole);
 }

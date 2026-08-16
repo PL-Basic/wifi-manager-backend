@@ -35,8 +35,8 @@ public class InternalPlatformTenantController {
     @GetMapping("/tenants")
     public ApiResponse<TenantPageResult> pageTenants(
             @RequestHeader("X-User-Role") Integer operatorRole,
-            @RequestParam(defaultValue = "1") long current,
-            @RequestParam(defaultValue = "20") long size,
+            @RequestParam(defaultValue = "1") Integer current,
+            @RequestParam(defaultValue = "10") Integer size,
             @RequestParam(required = false) String keyword) {
         requireSuperAdmin(operatorRole);
         return ApiResponse.success(tenantService.pageTenants(current, size, keyword));
@@ -78,8 +78,8 @@ public class InternalPlatformTenantController {
     public ApiResponse<TenantMemberPageResult> pageMembers(
             @RequestHeader("X-User-Role") Integer operatorRole,
             @PathVariable String tenantId,
-            @RequestParam(defaultValue = "1") long current,
-            @RequestParam(defaultValue = "20") long size) {
+            @RequestParam(defaultValue = "1") Integer current,
+            @RequestParam(defaultValue = "10") Integer size) {
         requireSuperAdmin(operatorRole);
         return ApiResponse.success(tenantService.pageMembers(tenantId, current, size));
     }

@@ -1,8 +1,11 @@
 package com.plagod.client;
 
 import com.plagod.dto.ApiResponse;
+import com.plagod.exception.ApiErrorKey;
 import com.plagod.service.GatewayValidationException;
 import com.plagod.vo.auth.SessionValidationVO;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.ParameterizedTypeReference;
@@ -11,13 +14,16 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.concurrent.TimeoutException;
 
 @Component
 public class AuthSessionWebClient {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(AuthSessionWebClient.class);
     private static final ParameterizedTypeReference<ApiResponse<SessionValidationVO>> RESPONSE_TYPE =
             new ParameterizedTypeReference<ApiResponse<SessionValidationVO>>() { };
 
@@ -49,26 +55,56 @@ public class AuthSessionWebClient {
                 .retrieve()
                 .onStatus(
                         status -> status.value() == 401 || status.value() == 403,
-                        response -> Mono.error(new GatewayValidationException(
-                                response.statusCode().value(),
-                                response.statusCode().value(),
-                                "登录会话已经失效")))
+                        response -> {
+                            int status = response.statusCode().value();
+                            LOGGER.warn("gateway auth session validation rejected: status={}", status);
+                            return Mono.error(new GatewayValidationException(
+                                    status,
+                                    status,
+                                    ApiErrorKey.SESSION_EXPIRED.value(),
+                                    "登录会话已经失效"));
+                        })
                 .onStatus(
                         HttpStatus::isError,
-                        response -> Mono.error(new GatewayValidationException(
-                                503, 503, "认证会话校验服务暂时不可用")))
+                        response -> {
+                            LOGGER.warn(
+                                    "gateway auth session validation failed: downstreamStatus={}",
+                                    response.statusCode().value());
+                            return Mono.error(new GatewayValidationException(
+                                    503, 503, "认证会话校验服务暂时不可用"));
+                        })
                 .bodyToMono(RESPONSE_TYPE)
                 .timeout(timeout)
+                .retryWhen(timeoutRetry())
                 .onErrorMap(
                         throwable -> !(throwable instanceof GatewayValidationException),
-                        throwable -> new GatewayValidationException(
-                                503, 503, "认证会话校验服务暂时不可用"))
+                        throwable -> {
+                            LOGGER.warn(
+                                    "gateway auth session validation failed before response: exception={}",
+                                    throwable.getClass().getSimpleName());
+                            return new GatewayValidationException(
+                                    503, 503, "认证会话校验服务暂时不可用");
+                        })
                 .flatMap(response -> {
                     if (response == null || response.getCode() != 200 || response.getData() == null) {
+                        LOGGER.warn(
+                                "gateway auth session validation returned invalid response: "
+                                        + "responsePresent={}, code={}, dataPresent={}",
+                                response != null,
+                                response == null ? null : response.getCode(),
+                                response != null && response.getData() != null);
                         return Mono.error(new GatewayValidationException(
                                 503, 503, "认证会话校验服务返回无效结果"));
                     }
                     return Mono.just(response.getData());
                 });
+    }
+
+    private Retry timeoutRetry() {
+        return Retry.max(1)
+                .filter(TimeoutException.class::isInstance)
+                .doBeforeRetry(signal -> LOGGER.warn(
+                        "gateway auth session validation retrying once after timeout"))
+                .onRetryExhaustedThrow((retrySpec, signal) -> signal.failure());
     }
 }

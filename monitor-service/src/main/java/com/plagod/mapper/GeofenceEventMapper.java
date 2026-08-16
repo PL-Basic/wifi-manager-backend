@@ -20,6 +20,17 @@ public interface GeofenceEventMapper
             "#{event.mac},#{event.eventType},#{event.eventTime})")
     int insertIgnore(@Param("event") GeofenceEvent event);
 
+    @Insert("insert ignore into t_geofence_event(" +
+            "tenant_id,fence_id,location_id,user_id,session_id,node_id," +
+            "device_code,mac,event_type,event_time) values(" +
+            "#{event.tenantId},#{event.fenceId},#{event.locationId},#{event.userId}," +
+            "#{event.sessionId},#{event.nodeId},#{event.deviceCode}," +
+            "#{event.mac},#{event.eventType},#{event.eventTime})")
+    int insertIgnoreByTenant(@Param("event") GeofenceEvent event);
+
+    GeofenceEvent selectByIdAndTenant(@Param("tenantId") Long tenantId,
+                                      @Param("eventId") Long eventId);
+
     Page<GeofenceEventVO> selectEventPage(Page<GeofenceEventVO> page,
                                           @Param("fenceId") Long fenceId,
                                           @Param("userId") Long userId,
@@ -29,6 +40,21 @@ public interface GeofenceEventMapper
                                           @Param("startTime") LocalDateTime startTime,
                                           @Param("endTime") LocalDateTime endTime);
 
+    Page<GeofenceEventVO> selectEventPageByTenant(Page<GeofenceEventVO> page,
+                                                  @Param("tenantId") Long tenantId,
+                                                  @Param("fenceId") Long fenceId,
+                                                  @Param("userId") Long userId,
+                                                  @Param("sessionId") Long sessionId,
+                                                  @Param("mac") String mac,
+                                                  @Param("eventType") String eventType,
+                                                  @Param("startTime") LocalDateTime startTime,
+                                                  @Param("endTime") LocalDateTime endTime);
+
     @Delete("delete from t_geofence_event where user_id=#{userId}")
     int deleteByUserId(@Param("userId") Long userId);
+
+    @Delete("delete from t_geofence_event "
+            + "where tenant_id = #{tenantId} and user_id = #{userId}")
+    int deleteByUserIdAndTenant(@Param("tenantId") Long tenantId,
+                                @Param("userId") Long userId);
 }

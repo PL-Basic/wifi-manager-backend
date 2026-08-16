@@ -20,8 +20,11 @@ public class ManualDeviceControlServiceImpl implements ManualDeviceControlServic
     private ManagedDeviceCommandService managedDeviceCommandService;
 
     @Override
-    @Audited(action = "device.manual-disconnect-mac")
-    public DeviceCommandResult disconnectMac(String deviceCode, ManualDisconnectMacDTO dto, Integer operatorRole) {
+    @Audited(
+            action = "device.manual-disconnect-mac",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
+    public DeviceCommandResult disconnectMac(Long tenantId, String deviceCode, ManualDisconnectMacDTO dto, Integer operatorRole) {
 
         validateAdminRole(operatorRole);
 
@@ -29,12 +32,15 @@ public class ManualDeviceControlServiceImpl implements ManualDeviceControlServic
             throw new IllegalArgumentException("断线命令参数不能为空");
         }
 
-        return managedDeviceCommandService.enqueueDisconnectMac(deviceCode, dto.getMac(), null, DeviceCommandPurpose.MANUAL_DISCONNECT);
+        return managedDeviceCommandService.enqueueDisconnectMac(tenantId, deviceCode, dto.getMac(), null, DeviceCommandPurpose.MANUAL_DISCONNECT);
     }
 
     @Override
-    @Audited(action = "device.manual-block-traffic")
-    public DeviceCommandResult blockTraffic(String deviceCode, ManualBlockTrafficDTO dto, Integer operatorRole) {
+    @Audited(
+            action = "device.manual-block-traffic",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
+    public DeviceCommandResult blockTraffic(Long tenantId, String deviceCode, ManualBlockTrafficDTO dto, Integer operatorRole) {
 
         validateAdminRole(operatorRole);
 
@@ -42,7 +48,7 @@ public class ManualDeviceControlServiceImpl implements ManualDeviceControlServic
             throw new IllegalArgumentException("流量阻断命令参数不能为空");
         }
 
-        return managedDeviceCommandService.enqueueBlockTraffic(deviceCode, dto.getDstIp(), dto.getSni(), null, DeviceCommandPurpose.MANUAL_BLOCK_TRAFFIC);
+        return managedDeviceCommandService.enqueueBlockTraffic(tenantId, deviceCode, dto.getDstIp(), dto.getSni(), null, DeviceCommandPurpose.MANUAL_BLOCK_TRAFFIC);
     }
 
     private void validateAdminRole(Integer operatorRole) {

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.plagod.mapper.EntitlementOrderMapper">
+    <insert id="insertOrResolveExisting">
+        insert into t_entitlement_order (
+             tenant_id, order_no, user_id, client_request_id, product_code, order_type, entitlement_mode,
+             pricing_version, grant_seconds, grant_months, amount_cents, reference_amount_cents,
+             subscription_ratio_bps, period_discount_bps, paid_amount_cents, refunded_amount_cents,
+             status, expire_time, paid_time, fulfilled_time, close_time, close_reason,
+             remark, version, create_time, update_time
+        )
+        values(
+             #{tenantId}, #{orderNo}, #{userId}, #{clientRequestId}, #{productCode},
+             #{orderType}, #{entitlementMode}, #{pricingVersion}, #{grantSeconds}, #{grantMonths},
+             #{amountCents}, #{referenceAmountCents}, #{subscriptionRatioBps},
+             #{periodDiscountBps}, #{paidAmountCents},
+             #{refundedAmountCents}, #{status}, #{expireTime}, #{paidTime},
+             #{fulfilledTime}, #{closeTime}, #{closeReason}, #{remark}, #{version},
+             #{createTime}, #{updateTime}
+        )
+         on duplicate key update order_id = last_insert_id(order_id)
+    </insert>
+</mapper>

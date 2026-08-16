@@ -3,10 +3,11 @@ package com.plagod.mqtt;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.plagod.configuration.MqttProperties;
 import com.plagod.dto.*;
+import com.plagod.metrics.DeviceMqttMetrics;
 import com.plagod.service.*;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken;
-import org.eclipse.paho.client.mqttv3.MqttCallback;
+import org.eclipse.paho.client.mqttv3.MqttCallbackExtended;
 import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
@@ -44,16 +45,27 @@ public class MqttEventSubscriber implements InitializingBean, DisposableBean {
     @Autowired
     private ClientDisconnectEventService clientDisconnectEventService;
 
-    private MqttClient client;
+    @Autowired
+    private DeviceMqttMetrics mqttMetrics;
+
+    private volatile MqttClient client;
 
     @Override
     public void afterPropertiesSet() throws Exception {
+        mqttMetrics.recordConnectionState(false);
         String clientId = mqttProperties.getClientId() + "-subscriber";
         client = new MqttClient(mqttProperties.getBrokerUrl(), clientId, new MemoryPersistence());
-        client.setCallback(new MqttCallback() {
+        client.setCallback(new MqttCallbackExtended() {
+            @Override
+            public void connectComplete(boolean reconnect, String serverURI) {
+                mqttMetrics.recordConnectionState(true);
+            }
+
             @Override
             public void connectionLost(Throwable cause) {
-                log.warn("MQTT 订阅连接断开", cause);
+                mqttMetrics.recordConnectionState(false);
+                log.warn("MQTT 订阅连接断开，type={}",
+                        cause == null ? "unknown" : cause.getClass().getName());
             }
 
             @Override
@@ -67,6 +79,7 @@ public class MqttEventSubscriber implements InitializingBean, DisposableBean {
         });
 
         client.connect(buildOptions());
+        mqttMetrics.recordConnectionState(true);
         client.subscribe(mqttProperties.getStatusTopic(), mqttProperties.getQos());
         log.info("MQTT 设备状态订阅已启动，topic={}", mqttProperties.getStatusTopic());
 
@@ -86,10 +99,21 @@ public class MqttEventSubscriber implements InitializingBean, DisposableBean {
 
     @Override
     public void destroy() throws Exception {
-        if (client != null && client.isConnected()) {
-            client.disconnect();
-            client.close();
+        try {
+            if (client != null) {
+                if (client.isConnected()) {
+                    client.disconnect();
+                }
+                client.close();
+            }
+        } finally {
+            mqttMetrics.recordConnectionState(false);
         }
+    }
+
+    public boolean isConnected() {
+        MqttClient currentClient = client;
+        return currentClient != null && currentClient.isConnected();
     }
 
     private void handleMessage(String topic, MqttMessage message) {
@@ -99,6 +123,7 @@ public class MqttEventSubscriber implements InitializingBean, DisposableBean {
                 DeviceStatusEvent event = objectMapper.readValue(payload, DeviceStatusEvent.class);
                 event.setDeviceCode(resolveTopicDeviceCode(topic, event.getDeviceCode(), "设备状态事件"));
                 deviceEventService.handleStatusEvent(event);
+                mqttMetrics.recordAccepted(topic);
                 log.info("设备状态事件处理成功，topic={}", topic);
                 return;
             }
@@ -107,6 +132,7 @@ public class MqttEventSubscriber implements InitializingBean, DisposableBean {
                 DeviceTrafficEvent event = objectMapper.readValue(payload, DeviceTrafficEvent.class);
                 event.setDeviceCode(resolveTopicDeviceCode(topic, event.getDeviceCode(), "设备流量事件"));
                 trafficEventService.handleTrafficEvent(event);
+                mqttMetrics.recordAccepted(topic);
                 log.info("设备流量事件处理成功，topic={}", topic);
                 return;
             }
@@ -128,6 +154,7 @@ public class MqttEventSubscriber implements InitializingBean, DisposableBean {
                 // 统一使用 topic 中解析出的设备编码。
                 event.setDeviceCode(topicDeviceCode);
                 clientSignalEventService.handleClientSignalEvent(event);
+                mqttMetrics.recordAccepted(topic);
                 log.info("客户端 RSSI 事件处理成功，topic={}, clientCount={}", topic, event.getClients() == null ? 0 : event.getClients().size());
                 return;
             }
@@ -149,6 +176,7 @@ public class MqttEventSubscriber implements InitializingBean, DisposableBean {
                 event.setDeviceCode(topicDeviceCode);
                 commandResultEventService.handleCommandResult(event);
 
+                mqttMetrics.recordAccepted(topic);
                 log.info("命令执行结果处理完成，topic={}, requestId={}, success={}", topic, event.getRequestId(), event.getSuccess());
                 return;
             }
@@ -169,11 +197,14 @@ public class MqttEventSubscriber implements InitializingBean, DisposableBean {
                 event.setDeviceCode(topicDeviceCode);
                 clientDisconnectEventService.handleClientDisconnectEvent(event);
 
-                log.info("客户端断线事件处理完成，topic={}, mac={}, sessionId={}", topic, event.getMac(), event.getSessionId());
+                mqttMetrics.recordAccepted(topic);
+                log.info("客户端断线事件处理完成，topic={}, sessionId={}", topic, event.getSessionId());
                 return;
             }
         } catch (Exception e) {
-            log.warn("MQTT 事件处理失败，topic={}", topic, e);
+            mqttMetrics.recordRejected(topic);
+            log.warn("MQTT 事件处理失败，topic={}, type={}",
+                    topic, e.getClass().getName());
         }
     }
 

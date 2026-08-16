@@ -9,6 +9,7 @@ import com.plagod.entity.user.UserOperationRequest;
 import com.plagod.mapper.UserMapper;
 import com.plagod.mapper.UserOperationRequestMapper;
 import com.plagod.service.UserOperationRequestService;
+import com.plagod.support.PageBounds;
 import com.plagod.vo.user.UserOperationRequestVO;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,16 +39,23 @@ public class UserOperationRequestServiceImpl implements UserOperationRequestServ
     private JdbcTemplate jdbcTemplate;
 
     @Override
-    public UserOperationRequestPageResult pageRequests(long current, long size, Integer status) {
-        long pageCurrent = current <= 0 ? 1 : current;
-        long pageSize = size <= 0 ? 10 : Math.min(size, 100);
+    public UserOperationRequestPageResult pageRequests(
+            Integer current,
+            Integer size,
+            Integer status) {
+        PageBounds pageBounds = PageBounds.of(current, size);
         QueryWrapper<UserOperationRequest> wrapper = new QueryWrapper<>();
         if (status != null) {
             wrapper.eq("status", status);
         }
         wrapper.orderByDesc("create_time");
+        wrapper.orderByDesc("id");
 
-        Page<UserOperationRequest> page = requestMapper.selectPage(new Page<>(pageCurrent, pageSize), wrapper);
+        Page<UserOperationRequest> page = requestMapper.selectPage(
+                new Page<>(
+                        pageBounds.getCurrent(),
+                        pageBounds.getSize()),
+                wrapper);
         List<UserOperationRequestVO> records = new ArrayList<>();
         for (UserOperationRequest item : page.getRecords()) {
             UserOperationRequestVO vo = new UserOperationRequestVO();

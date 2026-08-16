@@ -1,20 +1,18 @@
 package com.plagod.filter;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.plagod.dto.ApiResponse;
 import com.plagod.ratelimit.GatewayRateLimiter;
 import com.plagod.service.GatewayIdentityContext;
 import com.plagod.service.GatewayIdentityValidationService;
 import com.plagod.service.GatewayValidationException;
 import com.plagod.utils.JwtUtils;
 import com.plagod.vo.tenant.TenantContextVO;
+import com.plagod.web.GatewayErrorResponseWriter;
 import io.jsonwebtoken.Claims;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
-import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.http.*;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.stereotype.Component;
@@ -23,7 +21,6 @@ import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
 import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
 import java.util.regex.Matcher;
@@ -81,7 +78,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     private JwtUtils jwtUtils;
 
     @Autowired
-    private ObjectMapper objectMapper;
+    private GatewayErrorResponseWriter errorResponseWriter;
 
     @Autowired
     private GatewayRateLimiter gatewayRateLimiter;
@@ -160,6 +157,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
                                     cleanExchange,
                                     resolveStatus(exception.getHttpStatus()),
                                     exception.getCode(),
+                                    exception.getErrorKey(),
                                     exception.getMessage()))
                     .onErrorResume(
                             exception -> reject(
@@ -496,31 +494,36 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     }
 
     private Mono<Void> reject(ServerWebExchange exchange, HttpStatus status, int code, String message) {
-
-        return reject(exchange, status, code, message, null);
+        return reject(
+                exchange,
+                status,
+                code,
+                message,
+                (Long) null);
     }
 
     private Mono<Void> reject(ServerWebExchange exchange, HttpStatus status, int code, String message, Long retryAfterSeconds) {
+        return errorResponseWriter.write(
+                exchange,
+                status,
+                code,
+                message,
+                retryAfterSeconds);
+    }
 
-        byte[] body;
-
-        try {
-            body = objectMapper.writeValueAsBytes(ApiResponse.fail(code, message));
-        } catch (Exception exception) {
-            body = ("{\"code\":" + code + ",\"message\":\"请求处理失败\",\"data\":null}").getBytes(StandardCharsets.UTF_8);
-        }
-
-        exchange.getResponse().setStatusCode(status);
-        exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
-        exchange.getResponse().getHeaders().setContentLength(body.length);
-
-        if (retryAfterSeconds != null) {
-            exchange.getResponse().getHeaders().set(HttpHeaders.RETRY_AFTER, String.valueOf(Math.max(1L, retryAfterSeconds)));
-        }
-
-        DataBuffer buffer = exchange.getResponse().bufferFactory().wrap(body);
-
-        return exchange.getResponse().writeWith(Mono.just(buffer));
+    private Mono<Void> reject(
+            ServerWebExchange exchange,
+            HttpStatus status,
+            int code,
+            String errorKey,
+            String message) {
+        return errorResponseWriter.write(
+                exchange,
+                status,
+                code,
+                errorKey,
+                message,
+                null);
     }
 
     private Mono<Void> filterWhitePathRateLimit(ServerWebExchange exchange, GatewayFilterChain chain, String path) {

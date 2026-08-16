@@ -7,16 +7,16 @@ import com.plagod.dto.ApiResponse;
 import com.plagod.dto.auth.AuthResultDTO;
 import com.plagod.entity.auth.AuthRefreshSession;
 import com.plagod.entity.auth.AuthRefreshToken;
-import com.plagod.entity.user.User;
 import com.plagod.exception.RefreshSessionException;
 import com.plagod.mapper.AuthRefreshRiskEventMapper;
 import com.plagod.mapper.AuthRefreshSessionMapper;
 import com.plagod.mapper.AuthRefreshTokenMapper;
-import com.plagod.mapper.UserMapper;
+import com.plagod.service.UserAccountGateway;
 import com.plagod.service.VerificationCodeService;
 import com.plagod.utils.JwtUtils;
 import com.plagod.vo.AuthSessionIssue;
 import com.plagod.vo.tenant.TenantContextVO;
+import com.plagod.vo.user.UserAccountSnapshotVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -35,7 +35,7 @@ class AuthSessionServiceImplTest {
     private AuthRefreshSessionMapper sessionMapper;
     private AuthRefreshTokenMapper tokenMapper;
     private AuthRefreshRiskEventMapper riskEventMapper;
-    private UserMapper userMapper;
+    private UserAccountGateway userAccountGateway;
     private TenantContextClient tenantContextClient;
     private JwtUtils jwtUtils;
     private StringRedisTemplate redisTemplate;
@@ -47,7 +47,7 @@ class AuthSessionServiceImplTest {
         sessionMapper = mock(AuthRefreshSessionMapper.class);
         tokenMapper = mock(AuthRefreshTokenMapper.class);
         riskEventMapper = mock(AuthRefreshRiskEventMapper.class);
-        userMapper = mock(UserMapper.class);
+        userAccountGateway = mock(UserAccountGateway.class);
         tenantContextClient = mock(TenantContextClient.class);
         jwtUtils = mock(JwtUtils.class);
         redisTemplate = mock(StringRedisTemplate.class);
@@ -61,7 +61,7 @@ class AuthSessionServiceImplTest {
                 sessionMapper,
                 tokenMapper,
                 riskEventMapper,
-                userMapper,
+                userAccountGateway,
                 tenantContextClient,
                 jwtUtils,
                 new ObjectMapper(),
@@ -73,9 +73,9 @@ class AuthSessionServiceImplTest {
 
     @Test
     void openPersistsOnlyRefreshTokenHash() {
-        User user = user(7L, 2);
+        UserAccountSnapshotVO user = user(7L, 2);
         TenantContextVO context = tenantContext();
-        when(userMapper.selectById(7L)).thenReturn(user);
+        when(userAccountGateway.findById(7L)).thenReturn(user);
         when(tenantContextClient.resolve(anyString(), any()))
                 .thenReturn(ApiResponse.success(context));
         when(jwtUtils.generateAccessToken(
@@ -153,7 +153,7 @@ class AuthSessionServiceImplTest {
 
         when(tokenMapper.selectByHashForUpdate(anyString())).thenReturn(token);
         when(sessionMapper.selectForUpdate("session-id")).thenReturn(session);
-        when(userMapper.selectById(7L)).thenReturn(user(7L, 2));
+        when(userAccountGateway.findById(7L)).thenReturn(user(7L, 2));
         when(sessionMapper.markStepUpRequired("session-id", 3)).thenReturn(1);
 
         RefreshSessionException exception = assertThrows(
@@ -183,12 +183,12 @@ class AuthSessionServiceImplTest {
         session.setStepUpRequired(1);
         session.setVersion(4);
 
-        User user = user(7L, 2);
+        UserAccountSnapshotVO user = user(7L, 2);
         user.setEmail("alice@example.com");
         TenantContextVO context = tenantContext();
         when(tokenMapper.selectByHashForUpdate(anyString())).thenReturn(token);
         when(sessionMapper.selectForUpdate("session-id")).thenReturn(session);
-        when(userMapper.selectById(7L)).thenReturn(user);
+        when(userAccountGateway.findById(7L)).thenReturn(user);
         when(tenantContextClient.resolve(anyString(), any()))
                 .thenReturn(ApiResponse.success(context));
         when(tokenMapper.markRotated(eq("token-id"), anyString(), any())).thenReturn(1);
@@ -297,8 +297,8 @@ class AuthSessionServiceImplTest {
         return session;
     }
 
-    private User user(Long userId, Integer role) {
-        User user = new User();
+    private UserAccountSnapshotVO user(Long userId, Integer role) {
+        UserAccountSnapshotVO user = new UserAccountSnapshotVO();
         user.setUserId(userId);
         user.setUsername("alice");
         user.setNickname("Alice");

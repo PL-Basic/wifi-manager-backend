@@ -1,0 +1,106 @@
+{
+  "$id": "wifi-manager://contracts/http-envelope-v1",
+  "version": "http-envelope-v1",
+  "requestId": {
+    "header": "X-Request-Id",
+    "pattern": "^[A-Za-z0-9_-]{16,64}$",
+    "sample": "request_01JABCDEF1234"
+  },
+  "legacySuccess": {
+    "code": 200,
+    "message": "操作成功",
+    "data": {
+      "ok": true
+    }
+  },
+  "legacyError": {
+    "code": 409,
+    "message": "当前状态已变化，请刷新后重试",
+    "data": null
+  },
+  "extendedError": {
+    "code": 409,
+    "message": "当前状态已变化，请刷新后重试",
+    "data": null,
+    "errorKey": "RESOURCE_VERSION_CONFLICT",
+    "requestId": "request_01JABCDEF1234"
+  },
+  "baseErrorKeys": [
+    "VALIDATION_FAILED",
+    "MALFORMED_REQUEST",
+    "AUTHENTICATION_REQUIRED",
+    "SESSION_EXPIRED",
+    "PERMISSION_DENIED",
+    "RESOURCE_NOT_FOUND",
+    "RESOURCE_VERSION_CONFLICT",
+    "IDEMPOTENCY_KEY_CONFLICT",
+    "RATE_LIMITED",
+    "DEPENDENCY_UNAVAILABLE",
+    "DEPENDENCY_PROTOCOL_INVALID",
+    "PAYMENT_CHANNEL_UNAVAILABLE",
+    "AI_PROVIDER_UNAVAILABLE",
+    "AI_RESPONSE_INVALID",
+    "INTERNAL_ERROR"
+  ],
+  "statusSemantics": [
+    {
+      "status": 400,
+      "defaultErrorKey": "VALIDATION_FAILED"
+    },
+    {
+      "status": 401,
+      "defaultErrorKey": "AUTHENTICATION_REQUIRED"
+    },
+    {
+      "status": 403,
+      "defaultErrorKey": "PERMISSION_DENIED"
+    },
+    {
+      "status": 404,
+      "defaultErrorKey": "RESOURCE_NOT_FOUND"
+    },
+    {
+      "status": 409,
+      "defaultErrorKey": "RESOURCE_VERSION_CONFLICT"
+    },
+    {
+      "status": 429,
+      "defaultErrorKey": "RATE_LIMITED",
+      "retryAfterUnit": "seconds"
+    },
+    {
+      "status": 502,
+      "defaultErrorKey": "DEPENDENCY_PROTOCOL_INVALID"
+    },
+    {
+      "status": 503,
+      "defaultErrorKey": "DEPENDENCY_UNAVAILABLE"
+    },
+    {
+      "status": 500,
+      "defaultErrorKey": "INTERNAL_ERROR"
+    }
+  ],
+  "page": {
+    "defaultCurrent": 1,
+    "defaultSize": 10,
+    "maximumSize": 100,
+    "resultFields": [
+      "total",
+      "current",
+      "size",
+      "records"
+    ],
+    "requiresSortAllowlist": true,
+    "requiresStableSecondarySort": true
+  },
+  "units": {
+    "businessZone": "Asia/Shanghai",
+    "money": "cents",
+    "businessDuration": "seconds",
+    "internalLatency": "milliseconds",
+    "traffic": "bytes",
+    "aiConfidence": "0..1",
+    "aiConfidencePersistence": "basis-points"
+  }
+}

@@ -10,6 +10,7 @@ import com.plagod.mapper.GeofenceEventMapper;
 import com.plagod.mapper.GeofenceMapper;
 import com.plagod.mapper.GeofenceStateMapper;
 import com.plagod.service.GeofenceAdminService;
+import com.plagod.support.PageBounds;
 import com.plagod.vo.monitor.*;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,7 +36,10 @@ public class GeofenceAdminServiceImpl implements GeofenceAdminService {
     @Autowired
     private GeofenceEventMapper eventMapper;
 
-    @Audited(action = "geofence.create")
+    @Audited(
+            action = "geofence.create",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     public GeofenceVO create(GeofenceCreateDTO dto) {
         Geofence entity = new Geofence();
         entity.setName(requireName(dto.getName()));
@@ -53,7 +57,10 @@ public class GeofenceAdminServiceImpl implements GeofenceAdminService {
         return get(entity.getFenceId());
     }
 
-    @Audited(action = "geofence.update")
+    @Audited(
+            action = "geofence.update",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     @Transactional(rollbackFor = Exception.class)
     public GeofenceVO update(Long fenceId, GeofenceUpdateDTO dto) {
         Geofence entity = requireFence(fenceId);
@@ -100,7 +107,10 @@ public class GeofenceAdminServiceImpl implements GeofenceAdminService {
         return get(fenceId);
     }
 
-    @Audited(action = "geofence.toggle")
+    @Audited(
+            action = "geofence.toggle",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     @Transactional(rollbackFor = Exception.class)
     public GeofenceVO toggle(Long fenceId, Integer enabled) {
         Geofence entity = requireFence(fenceId);
@@ -120,7 +130,10 @@ public class GeofenceAdminServiceImpl implements GeofenceAdminService {
         return get(fenceId);
     }
 
-    @Audited(action = "geofence.delete")
+    @Audited(
+            action = "geofence.delete",
+            scope = Audited.Scope.TENANT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     @Transactional(rollbackFor = Exception.class)
     public void delete(Long fenceId) {
         requireFence(fenceId);
@@ -140,8 +153,13 @@ public class GeofenceAdminServiceImpl implements GeofenceAdminService {
             requireEnabled(enabled);
         }
 
-        long pageCurrent = current <= 0 ? 1 : current;
-        long pageSize = size <= 0 ? 10 : Math.min(size, 100);
+        PageBounds pageBounds = PageBounds.of(
+                current <= 0L
+                        ? null
+                        : (int) Math.min(current, Integer.MAX_VALUE),
+                size <= 0L
+                        ? null
+                        : (int) Math.min(size, Integer.MAX_VALUE));
 
         QueryWrapper<Geofence> query = new QueryWrapper<>();
 
@@ -158,7 +176,11 @@ public class GeofenceAdminServiceImpl implements GeofenceAdminService {
 
         query.orderByDesc("create_time").orderByDesc("fence_id");
 
-        Page<Geofence> page = geofenceMapper.selectPage(new Page<>(pageCurrent, pageSize), query);
+        Page<Geofence> page = geofenceMapper.selectPage(
+                new Page<>(
+                        pageBounds.getCurrent(),
+                        pageBounds.getSize()),
+                query);
 
         List<GeofenceVO> records = new ArrayList<>();
         for (Geofence entity : page.getRecords()) {
@@ -186,10 +208,25 @@ public class GeofenceAdminServiceImpl implements GeofenceAdminService {
         String normalizedMac = normalizeOptionalMac(mac);
         String normalizedType = normalizeEventType(eventType);
 
-        long pageCurrent = current <= 0 ? 1 : current;
-        long pageSize = size <= 0 ? 10 : Math.min(size, 100);
+        PageBounds pageBounds = PageBounds.of(
+                current <= 0L
+                        ? null
+                        : (int) Math.min(current, Integer.MAX_VALUE),
+                size <= 0L
+                        ? null
+                        : (int) Math.min(size, Integer.MAX_VALUE));
 
-        Page<GeofenceEventVO> page = eventMapper.selectEventPage(new Page<>(pageCurrent, pageSize), fenceId, userId, sessionId, normalizedMac, normalizedType, startTime, endTime);
+        Page<GeofenceEventVO> page = eventMapper.selectEventPage(
+                new Page<>(
+                        pageBounds.getCurrent(),
+                        pageBounds.getSize()),
+                fenceId,
+                userId,
+                sessionId,
+                normalizedMac,
+                normalizedType,
+                startTime,
+                endTime);
 
         for (GeofenceEventVO record : page.getRecords()) {
             record.setCoordinateSystem("WGS84");

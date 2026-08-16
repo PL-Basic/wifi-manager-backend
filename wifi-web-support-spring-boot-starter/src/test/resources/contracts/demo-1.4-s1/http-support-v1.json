@@ -1,0 +1,50 @@
+{
+  "version": "http-support-v1",
+  "envelopeVersion": "http-envelope-v1",
+  "requestId": {
+    "header": "X-Request-Id",
+    "pattern": "^[A-Za-z0-9_-]{16,64}$",
+    "sample": "request-id-00000001"
+  },
+  "statusCases": [
+    {
+      "status": 400,
+      "errorKey": "MALFORMED_REQUEST"
+    },
+    {
+      "status": 401,
+      "errorKey": "AUTHENTICATION_REQUIRED"
+    },
+    {
+      "status": 403,
+      "errorKey": "PERMISSION_DENIED"
+    },
+    {
+      "status": 404,
+      "errorKey": "RESOURCE_NOT_FOUND"
+    },
+    {
+      "status": 409,
+      "errorKey": "RESOURCE_VERSION_CONFLICT"
+    },
+    {
+      "status": 429,
+      "errorKey": "RATE_LIMITED",
+      "retryAfterSeconds": 7
+    },
+    {
+      "status": 502,
+      "errorKey": "DEPENDENCY_PROTOCOL_INVALID"
+    },
+    {
+      "status": 503,
+      "errorKey": "DEPENDENCY_UNAVAILABLE"
+    },
+    {
+      "status": 500,
+      "errorKey": "INTERNAL_ERROR"
+    }
+  ],
+  "unknownErrorMessage": "请求处理失败",
+  "retryAfterUnit": "seconds"
+}

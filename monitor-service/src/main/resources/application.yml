@@ -16,7 +16,19 @@ mybatis-plus:
       logic-delete-field: delFlag
       logic-delete-value: 1
       logic-not-delete-value: 0
-  mapper-locations: classpath:com/plagod/mapper/**/*.xml
+  mapper-locations:
+    - classpath:com/plagod/mapper/xml/AlertEventMapper.xml
+    - classpath:com/plagod/mapper/xml/AuditLogMapper.xml
+    - classpath:com/plagod/mapper/xml/ClientLocationMapper.xml
+    - classpath:com/plagod/mapper/xml/GeofenceEventMapper.xml
+    - classpath:com/plagod/mapper/xml/RuleHitRecordMapper.xml
+
+management:
+  endpoint:
+    health:
+      group:
+        readiness:
+          include: readinessState,db
 
 monitor:
   evaluation:

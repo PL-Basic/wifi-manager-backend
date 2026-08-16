@@ -9,7 +9,10 @@ import com.plagod.vo.RegisterResult;
 public interface UserService {
 
     //注册业务
-    public RegisterResult register(RegisterDTO registerDTO, String verifyIp);
+    public RegisterResult register(
+            RegisterDTO registerDTO,
+            String requestId,
+            String verifyIp);
 
     //登录业务
     public LoginResult login(LoginDTO loginDTO, String requestIp);

@@ -30,11 +30,18 @@ public class LocalDemoPaymentChannelAdapter implements PaymentChannelAdapter {
     }
 
     @Override
+    public boolean available() {
+        return properties.isLocalDemoEnabled();
+    }
+
+    @Override
     public PaymentChannelAction initiate(PaymentRecord payment) {
+        requireEnabled();
         return new PaymentChannelAction("LOCAL_DEMO_COMPLETE", "/entitlements/payments/" + payment.getPaymentNo() + "/demo-complete");
     }
 
     public LocalDemoPaymentCallbackRequest buildSuccessCallback(PaymentRecord payment) {
+        requireEnabled();
 
         LocalDemoPaymentCallbackRequest request = new LocalDemoPaymentCallbackRequest();
 
@@ -54,6 +61,7 @@ public class LocalDemoPaymentChannelAdapter implements PaymentChannelAdapter {
         return request;
     }
     public VerifiedPaymentCallback verify(LocalDemoPaymentCallbackRequest request) {
+        requireEnabled();
 
         if (request == null) {
             throw new IllegalArgumentException("支付回调不能为空");
@@ -103,6 +111,13 @@ public class LocalDemoPaymentChannelAdapter implements PaymentChannelAdapter {
                 + request.getChannelTransactionNo() + "\n"
                 + request.getPaidAmountCents() + "\n"
                 + request.getTimestamp();
+    }
+
+    private void requireEnabled() {
+        if (!available()) {
+            throw com.plagod.exception.ApiStatusException.serviceUnavailable(
+                    "PAYMENT_CHANNEL_UNAVAILABLE：本地 Demo 支付仅允许在显式测试配置中启用");
+        }
     }
 
     private String sign(String value) {

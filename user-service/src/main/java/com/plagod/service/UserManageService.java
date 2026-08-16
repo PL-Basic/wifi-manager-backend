@@ -11,7 +11,10 @@ import com.plagod.vo.user.UserRoleSnapshotVO;
 import java.util.List;
 
 public interface UserManageService {
-    UserPageResult pageUsers(long current, long size, String keyword);
+    UserPageResult pageUsers(
+            Integer current,
+            Integer size,
+            String keyword);
 
     UserVO getUser(Long userId);
 

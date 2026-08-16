@@ -5,10 +5,12 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.plagod.entity.entitlement.DurationPurchase;
 import com.plagod.entity.entitlement.EntitlementUsageLog;
 import com.plagod.entity.entitlement.NetworkEntitlement;
+import com.plagod.exception.ApiStatusException;
 import com.plagod.mapper.DurationPurchaseMapper;
 import com.plagod.mapper.EntitlementUsageLogMapper;
 import com.plagod.mapper.NetworkEntitlementMapper;
 import com.plagod.service.EntitlementQueryService;
+import com.plagod.support.PageBounds;
 import com.plagod.vo.entitlement.*;
 import com.plagod.vo.user.EntitlementSnapshotVO;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,8 +30,9 @@ public class EntitlementQueryServiceImpl implements EntitlementQueryService {
     private EntitlementUsageLogMapper usageLogMapper;
 
     @Override
-    public EntitlementSnapshotVO getSnapshot(Long userId, Long entitlementId) {
+    public EntitlementSnapshotVO getSnapshot(Long tenantId, Long userId, Long entitlementId) {
 
+        requireTenantId(tenantId);
         requireUserId(userId);
         if (entitlementId == null || entitlementId <= 0) {
             throw new IllegalArgumentException("权益标识无效");
@@ -37,36 +40,47 @@ public class EntitlementQueryServiceImpl implements EntitlementQueryService {
 
         NetworkEntitlement entitlement = entitlementMapper.selectById(entitlementId);
 
-        if (entitlement == null || !userId.equals(entitlement.getUserId())) {
-            throw new IllegalArgumentException("权益不存在或不属于当前用户");
+        if (entitlement == null
+                || !tenantId.equals(entitlement.getTenantId())
+                || !userId.equals(entitlement.getUserId())) {
+            throw ApiStatusException.notFound("权益不存在");
         }
 
         return toSnapshot(entitlement);
     }
 
     @Override
-    public EntitlementSnapshotVO getByUserId(Long userId) {
+    public EntitlementSnapshotVO getByUserId(Long tenantId, Long userId) {
+        requireTenantId(tenantId);
         requireUserId(userId);
 
         QueryWrapper<NetworkEntitlement> wrapper = new QueryWrapper<>();
-        wrapper.eq("user_id", userId).last("limit 1");
+        wrapper.eq("tenant_id", tenantId).eq("user_id", userId).last("limit 1");
 
         return toSnapshot(entitlementMapper.selectOne(wrapper));
     }
 
     @Override
-    public DurationPurchasePageResult pagePurchases(Long userId, long current, long size) {
+    public DurationPurchasePageResult pagePurchases(
+            Long tenantId,
+            Long userId,
+            Integer current,
+            Integer size) {
 
+        requireTenantId(tenantId);
         requireUserId(userId);
-        long pageCurrent = current <= 0 ? 1 : current;
-        long pageSize = size <= 0 ? 10 : Math.min(size, 100);
+        PageBounds pageBounds = PageBounds.of(current, size);
 
         QueryWrapper<DurationPurchase> wrapper = new QueryWrapper<>();
-        wrapper.eq("user_id", userId)
+        wrapper.eq("tenant_id", tenantId).eq("user_id", userId)
                 .orderByDesc("create_time")
                 .orderByDesc("purchase_id");
 
-        Page<DurationPurchase> page = purchaseMapper.selectPage(new Page<>(pageCurrent, pageSize), wrapper);
+        Page<DurationPurchase> page = purchaseMapper.selectPage(
+                new Page<>(
+                        pageBounds.getCurrent(),
+                        pageBounds.getSize()),
+                wrapper);
 
         List<DurationPurchaseVO> records = new ArrayList<>();
         for (DurationPurchase purchase : page.getRecords()) {
@@ -82,18 +96,26 @@ public class EntitlementQueryServiceImpl implements EntitlementQueryService {
     }
 
     @Override
-    public EntitlementUsagePageResult pageUsageLogs(Long userId, long current, long size) {
+    public EntitlementUsagePageResult pageUsageLogs(
+            Long tenantId,
+            Long userId,
+            Integer current,
+            Integer size) {
 
+        requireTenantId(tenantId);
         requireUserId(userId);
-        long pageCurrent = current <= 0 ? 1 : current;
-        long pageSize = size <= 0 ? 10 : Math.min(size, 100);
+        PageBounds pageBounds = PageBounds.of(current, size);
 
         QueryWrapper<EntitlementUsageLog> wrapper = new QueryWrapper<>();
-        wrapper.eq("user_id", userId)
+        wrapper.eq("tenant_id", tenantId).eq("user_id", userId)
                 .orderByDesc("create_time")
                 .orderByDesc("id");
 
-        Page<EntitlementUsageLog> page = usageLogMapper.selectPage(new Page<>(pageCurrent, pageSize), wrapper);
+        Page<EntitlementUsageLog> page = usageLogMapper.selectPage(
+                new Page<>(
+                        pageBounds.getCurrent(),
+                        pageBounds.getSize()),
+                wrapper);
 
         List<EntitlementUsageLogVO> records = new ArrayList<>();
 
@@ -117,6 +139,7 @@ public class EntitlementQueryServiceImpl implements EntitlementQueryService {
 
         EntitlementSnapshotVO snapshot = new EntitlementSnapshotVO();
         snapshot.setEntitlementId(entitlement.getEntitlementId());
+        snapshot.setTenantId(String.valueOf(entitlement.getTenantId()));
         snapshot.setUserId(entitlement.getUserId());
         snapshot.setMode(entitlement.getMode());
         snapshot.setSubscriptionStartTime(entitlement.getSubscriptionStartTime());
@@ -162,6 +185,12 @@ public class EntitlementQueryServiceImpl implements EntitlementQueryService {
     private void requireUserId(Long userId) {
         if (userId == null || userId <= 0) {
             throw new IllegalArgumentException("用户身份无效");
+        }
+    }
+
+    private void requireTenantId(Long tenantId) {
+        if (tenantId == null || tenantId <= 0) {
+            throw new IllegalArgumentException("租户身份无效");
         }
     }
 }

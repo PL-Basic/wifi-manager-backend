@@ -1,5 +1,6 @@
 package com.plagod.security;
 
+import com.plagod.request.RequestId;
 import feign.RequestTemplate;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -14,6 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+@SuppressWarnings("deprecation")
 class TrustedFeignRequestInterceptorTest {
 
     private static final String INTERNAL_TOKEN = "a-valid-internal-token-value";
@@ -57,7 +59,8 @@ class TrustedFeignRequestInterceptorTest {
                         TrustedHeaderNames.TENANT_ROLE,
                         TrustedHeaderNames.TENANT_CONTEXT_VERSION,
                         TrustedHeaderNames.MEMBER_CONTEXT_VERSION,
-                        TrustedHeaderNames.PLATFORM_AUTHORITIES),
+                        TrustedHeaderNames.PLATFORM_AUTHORITIES,
+                        RequestId.HEADER_NAME),
                 TrustedHeaderNames.PROPAGATED_CONTEXT_HEADERS);
     }
 
@@ -67,6 +70,9 @@ class TrustedFeignRequestInterceptorTest {
         request.setAttribute(
                 TrustedHeaderNames.TRUSTED_SOURCE_ATTRIBUTE,
                 TrustedHeaderNames.SOURCE_GATEWAY);
+        request.setAttribute(
+                RequestId.REQUEST_ATTRIBUTE,
+                "request-id-00000001");
         request.addHeader(TrustedHeaderNames.USER_ID, "17");
         request.addHeader(TrustedHeaderNames.USER_NAME, "p1accept0804");
         request.addHeader(TrustedHeaderNames.USER_ROLE, "1");
@@ -78,7 +84,6 @@ class TrustedFeignRequestInterceptorTest {
         request.addHeader(TrustedHeaderNames.TENANT_ROLE, "TENANT_ADMIN");
         request.addHeader(TrustedHeaderNames.TENANT_CONTEXT_VERSION, "4");
         request.addHeader(TrustedHeaderNames.MEMBER_CONTEXT_VERSION, "5");
-        request.addHeader(TrustedHeaderNames.PLATFORM_AUTHORITIES, "TENANT_MANAGE");
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
 
         RequestTemplate template = templateWithUntrustedHeaders();
@@ -89,8 +94,12 @@ class TrustedFeignRequestInterceptorTest {
         assertHeader(template, TrustedHeaderNames.SESSION_ID, "session-1");
         assertHeader(template, TrustedHeaderNames.TOKEN_ID, "token-1");
         assertHeader(template, TrustedHeaderNames.CONTEXT_TYPE, "TENANT");
+        assertHeader(template, TrustedHeaderNames.TENANT_ID, "3");
         assertHeader(template, TrustedHeaderNames.TENANT_CONTEXT_VERSION, "4");
         assertHeader(template, TrustedHeaderNames.MEMBER_CONTEXT_VERSION, "5");
+        assertHeader(template, RequestId.HEADER_NAME, "request-id-00000001");
+        assertFalse(template.headers().containsKey(
+                TrustedHeaderNames.PLATFORM_AUTHORITIES));
         assertFalse(template.headers().containsKey(TrustedHeaderNames.GATEWAY_TOKEN));
         assertFalse(template.headers().containsKey(TrustedHeaderNames.AUTHORIZATION));
         assertFalse(template.headers().containsKey(TrustedHeaderNames.COOKIE));
@@ -107,9 +116,42 @@ class TrustedFeignRequestInterceptorTest {
         assertHeader(template, TrustedHeaderNames.INTERNAL_TOKEN, INTERNAL_TOKEN);
         assertFalse(template.headers().containsKey(TrustedHeaderNames.USER_ID));
         assertFalse(template.headers().containsKey(TrustedHeaderNames.TENANT_ID));
+        assertFalse(template.headers().containsKey(RequestId.HEADER_NAME));
         assertFalse(template.headers().containsKey(TrustedHeaderNames.GATEWAY_TOKEN));
         assertFalse(template.headers().containsKey(TrustedHeaderNames.AUTHORIZATION));
         assertFalse(template.headers().containsKey(TrustedHeaderNames.COOKIE));
+    }
+
+    @Test
+    void internalServicePropagatesRequestIdWithoutUserAuthority() {
+        MockHttpServletRequest request =
+                new MockHttpServletRequest("POST", "/internal/jobs/run");
+        request.setAttribute(
+                TrustedRequestHeaders.TRUSTED_SOURCE_ATTRIBUTE,
+                TrustedRequestHeaders.SOURCE_INTERNAL);
+        request.setAttribute(
+                RequestId.REQUEST_ATTRIBUTE,
+                "request-id-00000001");
+        RequestContextHolder.setRequestAttributes(
+                new ServletRequestAttributes(request));
+
+        RequestTemplate template = templateWithUntrustedHeaders();
+        new TrustedFeignRequestInterceptor(INTERNAL_TOKEN).apply(template);
+
+        assertHeader(
+                template,
+                TrustedRequestHeaders.INTERNAL_TOKEN,
+                INTERNAL_TOKEN);
+        assertHeader(
+                template,
+                RequestId.HEADER_NAME,
+                "request-id-00000001");
+        assertFalse(template.headers().containsKey(
+                TrustedRequestHeaders.USER_ID));
+        assertFalse(template.headers().containsKey(
+                TrustedRequestHeaders.TENANT_ID));
+        assertFalse(template.headers().containsKey(
+                TrustedRequestHeaders.PLATFORM_AUTHORITIES));
     }
 
     private RequestTemplate templateWithUntrustedHeaders() {
@@ -118,6 +160,7 @@ class TrustedFeignRequestInterceptorTest {
         template.header(TrustedHeaderNames.GATEWAY_TOKEN, "caller-gateway-token");
         template.header(TrustedHeaderNames.USER_ID, "999");
         template.header(TrustedHeaderNames.TENANT_ID, "999");
+        template.header(RequestId.HEADER_NAME, "forged-request-id");
         template.header(TrustedHeaderNames.AUTHORIZATION, "Bearer browser-token");
         template.header(TrustedHeaderNames.COOKIE, "wifi_refresh=secret");
         return template;

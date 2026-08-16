@@ -10,9 +10,12 @@ import org.apache.ibatis.annotations.Select;
 public interface NetworkEntitlementMapper extends BaseMapper<NetworkEntitlement> {
 
     // 锁定用户权益，必须在数据库事务中调用。
-    @Select("select * from t_network_entitlement where user_id = #{userId} limit 1 for update")
-    NetworkEntitlement selectByUserIdForUpdate(@Param("userId") Long userId);
+    @Select("select * from t_network_entitlement where tenant_id = #{tenantId} and user_id = #{userId} limit 1 for update")
+    NetworkEntitlement selectByUserIdForUpdate(@Param("tenantId") Long tenantId,
+                                               @Param("userId") Long userId);
 
     // 原子扣减余额，返回0表示余额不足或权益无效。
-    int deductRemainingSeconds(@Param("entitlementId") Long entitlementId, @Param("seconds") Long seconds);
+    int deductRemainingSeconds(@Param("tenantId") Long tenantId,
+                               @Param("entitlementId") Long entitlementId,
+                               @Param("seconds") Long seconds);
 }

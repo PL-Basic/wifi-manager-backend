@@ -9,11 +9,14 @@ import com.plagod.entity.entitlement.EntitlementOrder;
 import com.plagod.entity.entitlement.PaymentRecord;
 import com.plagod.entity.entitlement.TradeStatusLog;
 import com.plagod.entity.user.User;
+import com.plagod.exception.ApiStatusException;
 import com.plagod.mapper.EntitlementOrderMapper;
 import com.plagod.mapper.PaymentRecordMapper;
 import com.plagod.mapper.TradeStatusLogMapper;
 import com.plagod.mapper.UserMapper;
 import com.plagod.service.EntitlementOrderService;
+import com.plagod.service.EntitlementPricingService;
+import com.plagod.support.PageBounds;
 import com.plagod.vo.entitlement.EntitlementOrderPageResult;
 import com.plagod.vo.entitlement.EntitlementOrderVO;
 import com.plagod.vo.entitlement.EntitlementProductVO;
@@ -32,6 +35,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
+import java.util.Objects;
 
 @Service
 public class EntitlementOrderServiceImpl implements EntitlementOrderService {
@@ -52,6 +56,8 @@ public class EntitlementOrderServiceImpl implements EntitlementOrderService {
 
     @Autowired
     private EntitlementProductProperties productProperties;
+    @Autowired
+    private EntitlementPricingService pricingService;
 
     @Autowired
     private EntitlementOrderMapper orderMapper;
@@ -67,6 +73,7 @@ public class EntitlementOrderServiceImpl implements EntitlementOrderService {
 
     @Override
     public List<EntitlementProductVO> listProducts() {
+        pricingService.validateCatalog();
         List<EntitlementProductVO> result = new ArrayList<>();
 
         for (EntitlementProductProperties.Product product : productProperties.getEnabledProducts()) {
@@ -75,8 +82,7 @@ public class EntitlementOrderServiceImpl implements EntitlementOrderService {
             vo.setProductCode(productProperties.normalizeProductCode(product.getCode()));
             vo.setName(product.getName());
             vo.setEntitlementMode(productProperties.normalizeMode(product.getMode()));
-            vo.setGrantSeconds(product.getGrantSeconds());
-            vo.setAmountCents(product.getAmountCents());
+            applyPricing(vo, pricingService.resolve(product));
             vo.setCustomAmountAllowed(false);
             result.add(vo);
         }
@@ -86,6 +92,7 @@ public class EntitlementOrderServiceImpl implements EntitlementOrderService {
             custom.setProductCode(EntitlementProductProperties.CUSTOM_DURATION_PRODUCT_CODE);
             custom.setName("自定义网络时长");
             custom.setEntitlementMode(EntitlementTradeConstants.MODE_DURATION);
+            custom.setPricingVersion(productProperties.effectivePricingVersion());
             custom.setCustomAmountAllowed(true);
             custom.setMinAmountCents(productProperties.getCustomDurationMinAmountCents());
             custom.setMaxAmountCents(productProperties.getCustomDurationMaxAmountCents());
@@ -98,8 +105,9 @@ public class EntitlementOrderServiceImpl implements EntitlementOrderService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public EntitlementOrderVO createOrder(Long userId, EntitlementOrderCreateRequest request) {
+    public EntitlementOrderVO createOrder(Long tenantId, Long userId, EntitlementOrderCreateRequest request) {
 
+        requireTenantId(tenantId);
         requireAvailableUser(userId);
 
         if (request == null) {
@@ -108,22 +116,30 @@ public class EntitlementOrderServiceImpl implements EntitlementOrderService {
 
         String clientRequestId = normalizeRequestId(request.getClientRequestId());
 
+        pricingService.validateCatalog();
         EntitlementProductProperties.Product product = productProperties.requireOrderProduct(
                 request.getProductCode(),
                 request.getCustomAmountCents()
         );
+        EntitlementPricingService.PricingSnapshot pricing = pricingService.resolve(product);
 
         LocalDateTime now = LocalDateTime.now();
 
         EntitlementOrder candidate = new EntitlementOrder();
+        candidate.setTenantId(tenantId);
         candidate.setOrderNo(generateOrderNo(now));
         candidate.setUserId(userId);
         candidate.setClientRequestId(clientRequestId);
         candidate.setProductCode(productProperties.normalizeProductCode(product.getCode()));
         candidate.setOrderType("PURCHASE");
         candidate.setEntitlementMode(productProperties.normalizeMode(product.getMode()));
-        candidate.setGrantSeconds(product.getGrantSeconds());
-        candidate.setAmountCents(product.getAmountCents());
+        candidate.setPricingVersion(pricing.getPricingVersion());
+        candidate.setGrantSeconds(pricing.getGrantSeconds());
+        candidate.setGrantMonths(pricing.getGrantMonths());
+        candidate.setAmountCents(pricing.getAmountCents());
+        candidate.setReferenceAmountCents(pricing.getReferenceAmountCents());
+        candidate.setSubscriptionRatioBps(pricing.getSubscriptionRatioBps());
+        candidate.setPeriodDiscountBps(pricing.getPeriodDiscountBps());
         candidate.setPaidAmountCents(0L);
         candidate.setRefundedAmountCents(0L);
         candidate.setStatus(EntitlementTradeConstants.ORDER_PENDING_PAYMENT);
@@ -134,41 +150,54 @@ public class EntitlementOrderServiceImpl implements EntitlementOrderService {
 
         orderMapper.insertOrResolveExisting(candidate);
 
-        EntitlementOrder stored = orderMapper.selectByUserRequestForUpdate(userId, clientRequestId);
+        EntitlementOrder stored = orderMapper.selectByUserRequestForUpdate(tenantId, userId, clientRequestId);
 
         if (stored == null) {
             throw new IllegalStateException("订单创建结果无法确认");
         }
 
-        if (!candidate.getProductCode().equals(stored.getProductCode())
+        if (!Objects.equals(candidate.getTenantId(), stored.getTenantId())
+                || !candidate.getProductCode().equals(stored.getProductCode())
                 || !candidate.getAmountCents().equals(stored.getAmountCents())
-                || !candidate.getGrantSeconds().equals(stored.getGrantSeconds())) {
+                || !Objects.equals(candidate.getGrantSeconds(), stored.getGrantSeconds())
+                || !Objects.equals(candidate.getGrantMonths(), stored.getGrantMonths())
+                || !Objects.equals(candidate.getPricingVersion(), stored.getPricingVersion())) {
             throw new IllegalArgumentException("clientRequestId 已被其他订单参数使用");
         }
 
-        appendStatusLog(EntitlementTradeConstants.BUSINESS_ORDER, stored.getOrderNo(), "CREATE:" + stored.getClientRequestId(), null, EntitlementTradeConstants.ORDER_PENDING_PAYMENT, EntitlementTradeConstants.OPERATOR_USER, userId, "用户创建权益订单");
+        appendStatusLog(stored.getTenantId(), EntitlementTradeConstants.BUSINESS_ORDER, stored.getOrderNo(), "CREATE:" + stored.getClientRequestId(), null, EntitlementTradeConstants.ORDER_PENDING_PAYMENT, EntitlementTradeConstants.OPERATOR_USER, userId, "用户创建权益订单");
         return toOrderVO(stored);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public EntitlementOrderPageResult pageOwnOrders(Long userId, long current, long size, String status) {
+    public EntitlementOrderPageResult pageOwnOrders(
+            Long tenantId,
+            Long userId,
+            Integer current,
+            Integer size,
+            String status) {
 
+        requireTenantId(tenantId);
         requireUserId(userId);
 
-        long pageCurrent = current <= 0 ? 1 : current;
-        long pageSize = size <= 0 ? 10 : Math.min(size, 100);
+        PageBounds pageBounds = PageBounds.of(current, size);
 
         QueryWrapper<EntitlementOrder> wrapper = new QueryWrapper<>();
-        wrapper.eq("user_id", userId);
+        wrapper.eq("tenant_id", tenantId).eq("user_id", userId);
 
         if (StringUtils.hasText(status)) {
             wrapper.eq("status", normalizeOrderStatus(status));
         }
 
         wrapper.orderByDesc("create_time");
+        wrapper.orderByDesc("order_id");
 
-        Page<EntitlementOrder> page = orderMapper.selectPage(new Page<>(pageCurrent, pageSize), wrapper);
+        Page<EntitlementOrder> page = orderMapper.selectPage(
+                new Page<>(
+                        pageBounds.getCurrent(),
+                        pageBounds.getSize()),
+                wrapper);
 
         List<EntitlementOrderVO> records = new ArrayList<>();
         for (EntitlementOrder order : page.getRecords()) {
@@ -186,15 +215,16 @@ public class EntitlementOrderServiceImpl implements EntitlementOrderService {
 
     @Override
     @Transactional(readOnly = true)
-    public EntitlementOrderVO getOwnOrder(Long userId, String orderNo) {
+    public EntitlementOrderVO getOwnOrder(Long tenantId, Long userId, String orderNo) {
 
+        requireTenantId(tenantId);
         requireUserId(userId);
         String normalizedOrderNo = normalizeOrderNo(orderNo);
 
-        EntitlementOrder order = orderMapper.selectOwnedOrder(normalizedOrderNo, userId);
+        EntitlementOrder order = orderMapper.selectOwnedOrder(tenantId, normalizedOrderNo, userId);
 
         if (order == null) {
-            throw new IllegalArgumentException("订单不存在或不属于当前用户");
+            throw ApiStatusException.notFound("订单不存在");
         }
 
         return toOrderVO(order);
@@ -202,19 +232,20 @@ public class EntitlementOrderServiceImpl implements EntitlementOrderService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public EntitlementOrderVO cancelOwnOrder(Long userId, String orderNo) {
+    public EntitlementOrderVO cancelOwnOrder(Long tenantId, Long userId, String orderNo) {
 
+        requireTenantId(tenantId);
         requireUserId(userId);
         String normalizedOrderNo = normalizeOrderNo(orderNo);
 
         // 固定锁顺序：订单 -> 支付。
         EntitlementOrder order = orderMapper.selectByOrderNoForUpdate(normalizedOrderNo);
 
-        if (order == null || !userId.equals(order.getUserId())) {
-            throw new IllegalArgumentException("订单不存在或不属于当前用户");
+        if (order == null || !tenantId.equals(order.getTenantId()) || !userId.equals(order.getUserId())) {
+            throw ApiStatusException.notFound("订单不存在");
         }
 
-        PaymentRecord payment = paymentMapper.selectByOrderNoForUpdate(normalizedOrderNo);
+        PaymentRecord payment = paymentMapper.selectByOrderNoForUpdate(tenantId, normalizedOrderNo);
 
         if (EntitlementTradeConstants.ORDER_CANCELLED.equals(order.getStatus())) {
             // 同时修复旧数据中“订单已取消、支付仍可操作”的状态。
@@ -257,7 +288,7 @@ public class EntitlementOrderServiceImpl implements EntitlementOrderService {
             if (order == null || !EntitlementTradeConstants.ORDER_PENDING_PAYMENT.equals(order.getStatus()) || order.getExpireTime() == null || order.getExpireTime().isAfter(now)) {
                 continue;
             }
-            PaymentRecord payment = paymentMapper.selectByOrderNoForUpdate(orderNo);
+            PaymentRecord payment = paymentMapper.selectByOrderNoForUpdate(order.getTenantId(), orderNo);
 
             closePendingOrder(order, EntitlementTradeConstants.ORDER_CLOSED, "PAYMENT_TIMEOUT", EntitlementTradeConstants.OPERATOR_SYSTEM, null, "TIMEOUT:" + order.getOrderNo(), now);
 
@@ -285,12 +316,13 @@ public class EntitlementOrderServiceImpl implements EntitlementOrderService {
         order.setVersion(order.getVersion() == null ? 1 : order.getVersion() + 1);
         order.setUpdateTime(now);
 
-        appendStatusLog(EntitlementTradeConstants.BUSINESS_ORDER, order.getOrderNo(), eventKey, previousStatus, targetStatus, operatorType, operatorId, closeReason);
+        appendStatusLog(order.getTenantId(), EntitlementTradeConstants.BUSINESS_ORDER, order.getOrderNo(), eventKey, previousStatus, targetStatus, operatorType, operatorId, closeReason);
     }
 
-    private void appendStatusLog(String businessType, String businessNo, String eventKey, String fromStatus, String toStatus, String operatorType, Long operatorId, String remark) {
+    private void appendStatusLog(Long tenantId, String businessType, String businessNo, String eventKey, String fromStatus, String toStatus, String operatorType, Long operatorId, String remark) {
 
         TradeStatusLog log = new TradeStatusLog();
+        log.setTenantId(tenantId);
         log.setBusinessType(businessType);
         log.setBusinessNo(businessNo);
         log.setEventKey(eventKey);
@@ -307,7 +339,7 @@ public class EntitlementOrderServiceImpl implements EntitlementOrderService {
     private void requireAvailableUser(Long userId) {
         requireUserId(userId);
 
-        User user = userMapper.selectById(userId);
+        User user = userMapper.selectByIdForUpdate(userId);
         if (user == null || !Integer.valueOf(1).equals(user.getStatus())) {
             throw new IllegalArgumentException("用户不存在或不可用");
         }
@@ -316,6 +348,12 @@ public class EntitlementOrderServiceImpl implements EntitlementOrderService {
     private void requireUserId(Long userId) {
         if (userId == null || userId <= 0) {
             throw new IllegalArgumentException("用户身份无效");
+        }
+    }
+
+    private void requireTenantId(Long tenantId) {
+        if (tenantId == null || tenantId <= 0) {
+            throw new IllegalArgumentException("租户身份无效");
         }
     }
 
@@ -369,12 +407,18 @@ public class EntitlementOrderServiceImpl implements EntitlementOrderService {
         EntitlementOrderVO vo = new EntitlementOrderVO();
 
         vo.setOrderNo(order.getOrderNo());
+        vo.setTenantId(String.valueOf(order.getTenantId()));
         vo.setUserId(order.getUserId());
         vo.setProductCode(order.getProductCode());
         vo.setOrderType(order.getOrderType());
         vo.setEntitlementMode(order.getEntitlementMode());
+        vo.setPricingVersion(order.getPricingVersion());
         vo.setGrantSeconds(order.getGrantSeconds());
+        vo.setGrantMonths(order.getGrantMonths());
         vo.setAmountCents(order.getAmountCents());
+        vo.setReferenceAmountCents(order.getReferenceAmountCents());
+        vo.setSubscriptionRatioBps(order.getSubscriptionRatioBps());
+        vo.setPeriodDiscountBps(order.getPeriodDiscountBps());
         vo.setPaidAmountCents(order.getPaidAmountCents());
         vo.setRefundedAmountCents(order.getRefundedAmountCents());
         vo.setStatus(order.getStatus());
@@ -421,6 +465,17 @@ public class EntitlementOrderServiceImpl implements EntitlementOrderService {
             throw new IllegalStateException("关联支付记录关闭失败");
         }
 
-        appendStatusLog(EntitlementTradeConstants.BUSINESS_PAYMENT, payment.getPaymentNo(), "ORDER_CLOSE:" + payment.getOrderNo(), previousStatus, EntitlementTradeConstants.PAYMENT_CLOSED, operatorType, operatorId, reason);
+        appendStatusLog(payment.getTenantId(), EntitlementTradeConstants.BUSINESS_PAYMENT, payment.getPaymentNo(), "ORDER_CLOSE:" + payment.getOrderNo(), previousStatus, EntitlementTradeConstants.PAYMENT_CLOSED, operatorType, operatorId, reason);
+    }
+
+    private void applyPricing(EntitlementProductVO vo,
+                              EntitlementPricingService.PricingSnapshot pricing) {
+        vo.setPricingVersion(pricing.getPricingVersion());
+        vo.setGrantSeconds(pricing.getGrantSeconds());
+        vo.setGrantMonths(pricing.getGrantMonths());
+        vo.setAmountCents(pricing.getAmountCents());
+        vo.setReferenceAmountCents(pricing.getReferenceAmountCents());
+        vo.setSubscriptionRatioBps(pricing.getSubscriptionRatioBps());
+        vo.setPeriodDiscountBps(pricing.getPeriodDiscountBps());
     }
 }

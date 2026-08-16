@@ -10,6 +10,8 @@ import com.plagod.dto.tenant.TenantContextSwitchRequest;
 import com.plagod.exception.ApiStatusException;
 import com.plagod.service.AuthSessionService;
 import com.plagod.vo.tenant.TenantContextVO;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import feign.FeignException;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -24,6 +26,9 @@ import javax.validation.Valid;
 @RestController
 @RequestMapping("/auth")
 public class TenantContextController {
+
+    private static final Logger LOGGER =
+            LoggerFactory.getLogger(TenantContextController.class);
 
     private final TenantContextClient tenantContextClient;
     private final AuthSessionService authSessionService;
@@ -52,6 +57,8 @@ public class TenantContextController {
     @PostMapping("/platform-context")
     @Audited(
             action = "auth.platform_context",
+            scope = Audited.Scope.PLATFORM,
+            tenantIdSource = Audited.TenantIdSource.REQUEST,
             target = "PLATFORM",
             includeArgs = false,
             includeResult = false)
@@ -67,7 +74,11 @@ public class TenantContextController {
     }
 
     @PostMapping("/platform-context/tenants/{tenantId}")
-    @Audited(action = "auth.platform_tenant_context", includeResult = false)
+    @Audited(
+            action = "auth.platform_tenant_context",
+            scope = Audited.Scope.PLATFORM,
+            tenantIdSource = Audited.TenantIdSource.REQUEST,
+            includeResult = false)
     public ApiResponse<AuthResultDTO> enterPlatformTenant(
             @PathVariable String tenantId,
             @Valid @RequestBody PlatformTenantContextRequest request,
@@ -94,6 +105,12 @@ public class TenantContextController {
         try {
             response = tenantContextClient.resolve(internalToken, request);
         } catch (FeignException exception) {
+            LOGGER.warn(
+                    "tenant context controller resolve failed: status={}, exception={}, contextType={}, tenantIdPresent={}",
+                    exception.status(),
+                    exception.getClass().getSimpleName(),
+                    contextType,
+                    tenantId != null);
             if (exception.status() == 400) {
                 throw new IllegalArgumentException("租户上下文请求无效");
             }
@@ -108,9 +125,21 @@ public class TenantContextController {
             }
             throw ApiStatusException.serviceUnavailable("租户上下文服务暂时不可用");
         } catch (RuntimeException exception) {
+            LOGGER.warn(
+                    "tenant context controller resolve failed before HTTP response: exception={}, contextType={}, tenantIdPresent={}",
+                    exception.getClass().getSimpleName(),
+                    contextType,
+                    tenantId != null);
             throw ApiStatusException.serviceUnavailable("租户上下文服务暂时不可用");
         }
         if (response == null || response.getCode() != 200 || response.getData() == null) {
+            LOGGER.warn(
+                    "tenant context controller resolve returned invalid response: responsePresent={}, code={}, dataPresent={}, contextType={}, tenantIdPresent={}",
+                    response != null,
+                    response == null ? null : response.getCode(),
+                    response != null && response.getData() != null,
+                    contextType,
+                    tenantId != null);
             throw ApiStatusException.serviceUnavailable("租户上下文服务返回无效结果");
         }
         return response.getData();

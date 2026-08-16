@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -28,29 +29,32 @@ public class InternalDeviceAnalyticsController {
      * 向 monitor-service 提供 RSSI 原始样本、趋势和节点标定参数。
      */
     @GetMapping("/signals")
-    public ApiResponse<SignalAnalyticsSourceVO> querySignals(@RequestParam Long nodeId,
+    public ApiResponse<SignalAnalyticsSourceVO> querySignals(@RequestHeader("X-Tenant-Id") Long tenantId,
+                                                             @RequestParam Long nodeId,
                                                              @RequestParam String mac,
                                                              @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTime,
                                                              @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime,
                                                              @RequestParam(defaultValue = "31") Integer sampleLimit,
                                                              @RequestParam(defaultValue = "5") Integer bucketMinutes) {
 
-        return ApiResponse.success(signalAnalyticsQueryService.query(nodeId, mac, startTime, endTime, sampleLimit, bucketMinutes));
+        return ApiResponse.success(signalAnalyticsQueryService.query(tenantId, nodeId, mac, startTime, endTime, sampleLimit, bucketMinutes));
     }
 
     @GetMapping("/signals/coverage")
-    public ApiResponse<SignalAnalyticsSourceVO> queryCoverageSignals(@RequestParam Long nodeId,
+    public ApiResponse<SignalAnalyticsSourceVO> queryCoverageSignals(@RequestHeader("X-Tenant-Id") Long tenantId,
+                                                                     @RequestParam Long nodeId,
                                                                      @RequestParam String mac,
                                                                      @RequestParam Long sessionId,
                                                                      @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTime,
                                                                      @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime,
                                                                      @RequestParam(defaultValue = "5000") Integer sampleLimit) {
 
-        return ApiResponse.success(signalAnalyticsQueryService.queryCoverage(nodeId, mac, sessionId, startTime, endTime, sampleLimit));
+        return ApiResponse.success(signalAnalyticsQueryService.queryCoverage(tenantId, nodeId, mac, sessionId, startTime, endTime, sampleLimit));
     }
 
     @GetMapping("/traffic")
-    public ApiResponse<TrafficAnalyticsSourceVO> queryTraffic(@RequestParam(required = false) Long userId,
+    public ApiResponse<TrafficAnalyticsSourceVO> queryTraffic(@RequestHeader("X-Tenant-Id") Long tenantId,
+                                                              @RequestParam(required = false) Long userId,
                                                               @RequestParam(required = false) String mac,
                                                               @RequestParam(required = false) Long sessionId,
                                                               @RequestParam(required = false) Long nodeId,
@@ -60,6 +64,6 @@ public class InternalDeviceAnalyticsController {
                                                               @RequestParam(defaultValue = "60") Integer bucketMinutes,
                                                               @RequestParam(defaultValue = "10") Integer topLimit) {
 
-        return ApiResponse.success(trafficAnalyticsQueryService.query(userId, mac, sessionId, nodeId, deviceCode, startTime, endTime, bucketMinutes, topLimit));
+        return ApiResponse.success(trafficAnalyticsQueryService.query(tenantId, userId, mac, sessionId, nodeId, deviceCode, startTime, endTime, bucketMinutes, topLimit));
     }
 }

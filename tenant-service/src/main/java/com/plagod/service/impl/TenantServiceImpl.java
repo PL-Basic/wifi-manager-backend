@@ -21,6 +21,8 @@ import com.plagod.mapper.TenantMapper;
 import com.plagod.mapper.TenantMemberMapper;
 import com.plagod.mapper.TenantSubscriptionMapper;
 import com.plagod.service.TenantService;
+import com.plagod.support.PageBounds;
+import com.plagod.support.StableUnits;
 import com.plagod.vo.tenant.SaasPlanVO;
 import com.plagod.vo.tenant.MyTenantVO;
 import com.plagod.vo.tenant.TenantMemberPageResult;
@@ -71,8 +73,9 @@ public class TenantServiceImpl implements TenantService {
     }
 
     @Override
-    public TenantPageResult pageTenants(long current, long size, String keyword) {
-        Page<Tenant> page = new Page<>(positivePage(current), pageSize(size));
+    public TenantPageResult pageTenants(Integer current, Integer size, String keyword) {
+        PageBounds bounds = PageBounds.of(current, size);
+        Page<Tenant> page = new Page<>(bounds.getCurrent(), bounds.getSize());
         QueryWrapper<Tenant> wrapper = new QueryWrapper<>();
         if (StringUtils.hasText(keyword)) {
             String normalized = keyword.trim();
@@ -95,9 +98,10 @@ public class TenantServiceImpl implements TenantService {
     }
 
     @Override
-    public TenantMemberPageResult pageMembers(String tenantId, long current, long size) {
+    public TenantMemberPageResult pageMembers(String tenantId, Integer current, Integer size) {
         Tenant tenant = requiredTenant(parseId(tenantId, "租户ID"));
-        Page<TenantMember> page = new Page<>(positivePage(current), pageSize(size));
+        PageBounds bounds = PageBounds.of(current, size);
+        Page<TenantMember> page = new Page<>(bounds.getCurrent(), bounds.getSize());
         QueryWrapper<TenantMember> wrapper = new QueryWrapper<TenantMember>()
                 .eq("tenant_id", tenant.getTenantId())
                 .orderByAsc("member_id");
@@ -168,7 +172,10 @@ public class TenantServiceImpl implements TenantService {
 
     @Override
     @Transactional
-    @Audited(action = "tenant.create")
+    @Audited(
+            action = "tenant.create",
+            scope = Audited.Scope.PLATFORM,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     public TenantVO createTenant(TenantCreateRequest request, Long operatorId, Integer operatorRole) {
         requireSuperAdmin(operatorRole);
         String code = request.getTenantCode().trim();
@@ -206,7 +213,10 @@ public class TenantServiceImpl implements TenantService {
 
     @Override
     @Transactional
-    @Audited(action = "tenant.update")
+    @Audited(
+            action = "tenant.update",
+            scope = Audited.Scope.PLATFORM,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     public TenantVO updateTenant(String tenantId, TenantUpdateRequest request, Integer operatorRole) {
         requireSuperAdmin(operatorRole);
         Tenant tenant = requiredTenant(parseId(tenantId, "租户ID"));
@@ -226,7 +236,10 @@ public class TenantServiceImpl implements TenantService {
 
     @Override
     @Transactional
-    @Audited(action = "tenant.status")
+    @Audited(
+            action = "tenant.status",
+            scope = Audited.Scope.PLATFORM,
+            tenantIdSource = Audited.TenantIdSource.REQUEST)
     public TenantVO updateStatus(String tenantId, TenantStatusRequest request, Integer operatorRole) {
         requireSuperAdmin(operatorRole);
         Tenant tenant = requiredTenant(parseId(tenantId, "租户ID"));
@@ -311,7 +324,7 @@ public class TenantServiceImpl implements TenantService {
         member.setStatus(ACTIVE);
         member.setIsDefault(defaultTenant ? 1 : 0);
         member.setContextVersion(1L);
-        member.setJoinTime(LocalDateTime.now());
+        member.setJoinTime(LocalDateTime.now(StableUnits.ASIA_SHANGHAI));
         member.setVersion(0);
         return member;
     }
@@ -441,17 +454,4 @@ public class TenantServiceImpl implements TenantService {
         return value;
     }
 
-    private long positivePage(long current) {
-        if (current < 1) {
-            throw new IllegalArgumentException("页码必须大于0");
-        }
-        return current;
-    }
-
-    private long pageSize(long size) {
-        if (size < 1 || size > 100) {
-            throw new IllegalArgumentException("每页数量必须在1到100之间");
-        }
-        return size;
-    }
 }

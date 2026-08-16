@@ -5,7 +5,8 @@ import com.plagod.vo.entitlement.EntitlementOrderVO;
 
 public interface EntitlementRewardOrderService {
 
-    EntitlementOrderVO create(Long userId,
+    EntitlementOrderVO create(Long tenantId,
+                              Long userId,
                               Long operatorId,
                               String operatorName,
                               EntitlementRewardOrderRequest request);

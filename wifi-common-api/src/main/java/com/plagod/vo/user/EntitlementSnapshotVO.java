@@ -8,6 +8,7 @@ import java.time.LocalDateTime;
 public class EntitlementSnapshotVO {
 
     private Long entitlementId;
+    private String tenantId;
     private Long userId;
     private String mode;
     private LocalDateTime subscriptionStartTime;
