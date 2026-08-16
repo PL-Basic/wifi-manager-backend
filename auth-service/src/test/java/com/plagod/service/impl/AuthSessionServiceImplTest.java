@@ -15,6 +15,7 @@ import com.plagod.service.UserAccountGateway;
 import com.plagod.service.VerificationCodeService;
 import com.plagod.utils.JwtUtils;
 import com.plagod.vo.AuthSessionIssue;
+import com.plagod.vo.auth.SessionValidationVO;
 import com.plagod.vo.tenant.TenantContextVO;
 import com.plagod.vo.user.UserAccountSnapshotVO;
 import org.junit.jupiter.api.BeforeEach;
@@ -103,6 +104,9 @@ class AuthSessionServiceImplTest {
         assertEquals(64, persisted.getTokenHash().length());
         assertEquals("access-token", issue.getAuthResult().getToken());
         assertEquals(Duration.ofDays(7), issue.getCookieMaxAge());
+        verify(tenantContextClient).resolve(
+                eq("test-internal-token-value"),
+                any());
     }
 
     @Test
@@ -276,6 +280,134 @@ class AuthSessionServiceImplTest {
         verify(sessionMapper, never()).revokeFamily(anyString(), anyString(), any());
     }
 
+    @Test
+    void revokedAccessTokenIsRejectedBeforeSessionLookup() {
+        when(redisTemplate.hasKey(
+                "auth:access-jti:revoked:old-access-jti"))
+                .thenReturn(true);
+
+        SessionValidationVO result = service.validate(
+                "session-id",
+                7L,
+                "old-access-jti");
+
+        assertFalse(result.getActive());
+        assertEquals("REVOKED", result.getStatus());
+        assertEquals("ACCESS_TOKEN_REVOKED", result.getReason());
+        verifyNoInteractions(sessionMapper, userAccountGateway);
+    }
+
+    @Test
+    void revokedSessionCannotValidateAnotherAccessToken() {
+        AuthRefreshSession session = activeSession(LocalDateTime.now());
+        session.setStatus("REVOKED");
+        session.setRevokeReason("ACCOUNT_SECURITY_CHANGED");
+        when(redisTemplate.hasKey(anyString())).thenReturn(false);
+        when(sessionMapper.selectById("session-id")).thenReturn(session);
+
+        SessionValidationVO result = service.validate(
+                "session-id",
+                7L,
+                "newer-access-jti");
+
+        assertFalse(result.getActive());
+        assertEquals("REVOKED", result.getStatus());
+        assertEquals("ACCOUNT_SECURITY_CHANGED", result.getReason());
+        verifyNoInteractions(userAccountGateway);
+    }
+
+    @Test
+    void validationReturnsCurrentPlatformTenantAndSecurityVersions() {
+        AuthRefreshSession session = activeSession(LocalDateTime.now());
+        session.setContextType("PLATFORM_TENANT");
+        session.setTenantId(19L);
+        session.setTenantContextVersion(8L);
+        session.setMemberContextVersion(null);
+        session.setSecurityVersion(6L);
+        when(redisTemplate.hasKey(anyString())).thenReturn(false);
+        when(sessionMapper.selectById("session-id")).thenReturn(session);
+        when(userAccountGateway.findById(7L)).thenReturn(user(7L, 0));
+
+        SessionValidationVO result = service.validate(
+                "session-id",
+                7L,
+                "current-access-jti");
+
+        assertTrue(result.getActive());
+        assertEquals("PLATFORM_TENANT", result.getContextType());
+        assertEquals("19", result.getTenantId());
+        assertEquals(8L, result.getContextVersion());
+        assertNull(result.getMemberContextVersion());
+        assertEquals(6L, result.getSecurityVersion());
+    }
+
+    @Test
+    void platformTenantSwitchSignsWithoutTenantMemberIdentity() {
+        LocalDateTime now = LocalDateTime.now();
+        AuthRefreshSession session = activeSession(now);
+        session.setSecurityVersion(6L);
+        UserAccountSnapshotVO user = user(7L, 0);
+        TenantContextVO context = platformTenantContext();
+        when(userAccountGateway.findById(7L)).thenReturn(user);
+        when(sessionMapper.selectForUpdate("session-id")).thenReturn(session);
+        when(sessionMapper.updateContext(
+                eq("session-id"),
+                eq(7L),
+                eq("PLATFORM_TENANT"),
+                eq(19L),
+                eq("managed-tenant"),
+                isNull(),
+                eq(8L),
+                isNull(),
+                eq("[\"TENANT_MANAGE\"]")))
+                .thenReturn(1);
+        when(jwtUtils.generateAccessToken(
+                eq(7L),
+                eq("alice"),
+                eq(0),
+                eq("session-id"),
+                eq("PLATFORM_TENANT"),
+                eq("19"),
+                eq("managed-tenant"),
+                isNull(),
+                eq(8L),
+                isNull(),
+                eq(6L),
+                eq(Collections.singletonList("TENANT_MANAGE"))))
+                .thenReturn("platform-tenant-access-token");
+
+        AuthResultDTO result = service.switchContext(
+                "session-id",
+                7L,
+                0,
+                context);
+
+        assertEquals("platform-tenant-access-token", result.getToken());
+        verify(sessionMapper).updateContext(
+                "session-id",
+                7L,
+                "PLATFORM_TENANT",
+                19L,
+                "managed-tenant",
+                null,
+                8L,
+                null,
+                "[\"TENANT_MANAGE\"]");
+        verify(jwtUtils).generateAccessToken(
+                7L,
+                "alice",
+                0,
+                "session-id",
+                "PLATFORM_TENANT",
+                "19",
+                "managed-tenant",
+                null,
+                8L,
+                null,
+                6L,
+                Collections.singletonList("TENANT_MANAGE"));
+    }
+
     private AuthRefreshToken activeToken(LocalDateTime now) {
         AuthRefreshToken token = new AuthRefreshToken();
         token.setTokenId("token-id");
@@ -318,6 +450,21 @@ class AuthSessionServiceImplTest {
         context.setMemberContextVersion(5L);
         context.setWritable(true);
         context.setAuthorities(Collections.emptyList());
+        return context;
+    }
+
+    private TenantContextVO platformTenantContext() {
+        TenantContextVO context = new TenantContextVO();
+        context.setContextType("PLATFORM_TENANT");
+        context.setTenantId("19");
+        context.setTenantCode("managed-tenant");
+        context.setTenantName("代管租户");
+        context.setTenantRole(null);
+        context.setContextVersion(8L);
+        context.setMemberContextVersion(null);
+        context.setWritable(true);
+        context.setAuthorities(
+                Collections.singletonList("TENANT_MANAGE"));
         return context;
     }
 }
