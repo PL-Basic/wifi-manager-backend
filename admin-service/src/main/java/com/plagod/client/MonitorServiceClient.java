@@ -53,7 +53,7 @@ public interface MonitorServiceClient {
     ApiResponse<AlertEventVO> getAlert(@PathVariable("id") Long id);
 
     @PatchMapping("/internal/admin/alerts/{id}/handle")
-    ApiResponse<Void> handleAlert(@PathVariable("id") Long id, @RequestHeader("X-User-Id") Long handleUserId);
+    ApiResponse<Void> handleAlert(@PathVariable("id") Long id);
 
     @GetMapping("/internal/admin/audits")
     ApiResponse<AuditLogPageResult> pageAudits(@RequestParam("current") Long current,

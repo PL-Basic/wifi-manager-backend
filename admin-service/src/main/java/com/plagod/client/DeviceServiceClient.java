@@ -63,10 +63,8 @@ public interface DeviceServiceClient {
                                                 @RequestParam(value = "status", required = false) Integer status);
 
     @PostMapping("/internal/admin/sessions/{sessionId}/revoke")
-    ApiResponse<SessionRecordVO> adminRevokeSession(@PathVariable("sessionId") Long sessionId,
-                                                    @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
-                                                    @RequestHeader(value = "X-User-Name", required = false) String operatorName,
-                                                    @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole);
+    ApiResponse<SessionRecordVO> adminRevokeSession(
+            @PathVariable("sessionId") Long sessionId);
 
     @GetMapping("/internal/admin/traffic")
     ApiResponse<TrafficPageResult> pageTraffic(@RequestParam("current") Long current,
@@ -92,17 +90,11 @@ public interface DeviceServiceClient {
 
     @PostMapping("/internal/admin/devices/{deviceCode}/disconnect-mac")
     ApiResponse<DeviceCommandResult> disconnectMac(@PathVariable("deviceCode") String deviceCode,
-                                                   @Valid @RequestBody ManualDisconnectMacDTO dto,
-                                                   @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
-                                                   @RequestHeader(value = "X-User-Name", required = false) String operatorName,
-                                                   @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole);
+                                                   @Valid @RequestBody ManualDisconnectMacDTO dto);
 
     @PostMapping("/internal/admin/devices/{deviceCode}/block-traffic")
     ApiResponse<DeviceCommandResult> blockTraffic(@PathVariable("deviceCode") String deviceCode,
-                                                  @Valid @RequestBody ManualBlockTrafficDTO dto,
-                                                  @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
-                                                  @RequestHeader(value = "X-User-Name", required = false) String operatorName,
-                                                  @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole);
+                                                  @Valid @RequestBody ManualBlockTrafficDTO dto);
 
     @GetMapping("/internal/admin/device-commands")
     ApiResponse<DeviceCommandPageResult> pageDeviceCommands(@RequestParam("current") Long current,

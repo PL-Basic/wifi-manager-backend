@@ -31,10 +31,7 @@ public class AdminAlertController {
     }
 
     @PatchMapping("/{id}/handle")
-    public ApiResponse<Void> handle(@PathVariable Long id,
-                                    @RequestHeader("X-User-Id") Long handleUserId) {
-
-        // 处理人只能来自 Gateway 注入的当前管理员身份。
-        return monitorServiceClient.handleAlert(id, handleUserId);
+    public ApiResponse<Void> handle(@PathVariable Long id) {
+        return monitorServiceClient.handleAlert(id);
     }
 }

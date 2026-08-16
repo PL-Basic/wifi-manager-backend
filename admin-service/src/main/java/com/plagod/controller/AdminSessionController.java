@@ -25,10 +25,8 @@ public class AdminSessionController {
     }
 
     @PostMapping("/{sessionId}/revoke")
-    public ApiResponse<SessionRecordVO> revokeSession(@PathVariable Long sessionId,
-                                                      @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
-                                                      @RequestHeader(value = "X-User-Name", required = false) String operatorName,
-                                                      @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole) {
-        return deviceServiceClient.adminRevokeSession(sessionId, operatorId, operatorName, operatorRole);
+    public ApiResponse<SessionRecordVO> revokeSession(
+            @PathVariable Long sessionId) {
+        return deviceServiceClient.adminRevokeSession(sessionId);
     }
 }

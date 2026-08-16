@@ -20,11 +20,9 @@ public class AdminEntitlementController {
 
     @PutMapping("/refunds/{refundNo}/review")
     public ApiResponse<RefundVO> reviewRefund(@PathVariable String refundNo,
-                                              @RequestHeader("X-User-Id") Long reviewerId,
-                                              @RequestHeader("X-User-Name") String reviewerName,
                                               @Valid @RequestBody RefundReviewRequest request) {
 
-        return userServiceClient.reviewRefund(refundNo, reviewerId, reviewerName, request);
+        return userServiceClient.reviewRefund(refundNo, request);
     }
 
     @PostMapping("/refunds/{refundNo}/demo-result")

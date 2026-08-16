@@ -4,6 +4,9 @@ import com.plagod.client.DeviceServiceClient;
 import com.plagod.client.MonitorServiceClient;
 import com.plagod.client.UserServiceClient;
 import com.plagod.dto.ApiResponse;
+import com.plagod.security.TrustedRequestContext;
+import com.plagod.security.TrustedRequestContextResolver;
+import com.plagod.security.TrustedSource;
 import com.plagod.vo.AdminDashboardVO;
 import com.plagod.vo.AdminOverviewVO;
 import com.plagod.vo.device.DevicePageResult;
@@ -17,12 +20,11 @@ import com.plagod.vo.user.UserStatsVO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import javax.servlet.http.HttpServletRequest;
 import java.util.function.Supplier;
 import java.time.LocalDateTime;
 
@@ -42,7 +44,8 @@ public class AdminOverviewController {
     private MonitorServiceClient monitorServiceClient;
 
     @GetMapping("/overview")
-    public ApiResponse<AdminOverviewVO> overview(@RequestHeader(value = "X-Gateway-Token", required = false) String gatewayToken) {
+    public ApiResponse<AdminOverviewVO> overview(
+            HttpServletRequest request) {
 
         DependencyResult<UserStatsVO> userResult = callDependency("user-service", userServiceClient::getUserStats);
 
@@ -52,9 +55,13 @@ public class AdminOverviewController {
 
         AdminOverviewVO overview = new AdminOverviewVO();
 
-        // 只有请求携带经过安全过滤器验证的 Gateway Token，
-        // 才能说明本次调用确实经过 Gateway。
-        overview.setGatewayStatus(StringUtils.hasText(gatewayToken) ? "UP" : "UNKNOWN");
+        TrustedRequestContext context =
+                TrustedRequestContextResolver.resolved(request);
+        overview.setGatewayStatus(context != null
+                && context.getTrustedSource()
+                == TrustedSource.GATEWAY_USER
+                ? "UP"
+                : "UNKNOWN");
 
         overview.setUserServiceStatus(userResult.getStatus());
 
