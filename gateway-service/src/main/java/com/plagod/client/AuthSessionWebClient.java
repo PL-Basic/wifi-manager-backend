@@ -2,6 +2,7 @@ package com.plagod.client;
 
 import com.plagod.dto.ApiResponse;
 import com.plagod.exception.ApiErrorKey;
+import com.plagod.security.TrustedRequestHeaders;
 import com.plagod.service.GatewayValidationException;
 import com.plagod.vo.auth.SessionValidationVO;
 import org.slf4j.Logger;
@@ -51,7 +52,7 @@ public class AuthSessionWebClient {
                         .queryParam("userId", userId)
                         .queryParam("jti", tokenId)
                         .build(sessionId))
-                .header("X-Internal-Token", internalToken)
+                .header(TrustedRequestHeaders.INTERNAL_TOKEN, internalToken)
                 .retrieve()
                 .onStatus(
                         status -> status.value() == 401 || status.value() == 403,

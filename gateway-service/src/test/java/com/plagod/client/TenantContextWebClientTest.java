@@ -3,6 +3,7 @@ package com.plagod.client;
 import com.plagod.configuration.InternalWebClientConfiguration;
 import com.plagod.dto.tenant.TenantContextValidationRequest;
 import com.plagod.request.RequestId;
+import com.plagod.security.TrustedRequestHeaders;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -21,12 +22,15 @@ class TenantContextWebClientTest {
     private static final String INTERNAL_TOKEN = "0123456789abcdef";
 
     @Test
-    void propagatesGatewayRequestIdToTenantValidation() {
+    void propagatesGatewayRequestIdAndServiceTokenToTenantValidation() {
         String requestId = "request_01JABCDEF1234";
         AtomicReference<String> forwarded = new AtomicReference<>();
+        AtomicReference<String> forwardedToken = new AtomicReference<>();
         ExchangeFunction exchange = request -> {
             forwarded.set(request.headers().getFirst(
                     RequestId.HEADER_NAME));
+            forwardedToken.set(request.headers().getFirst(
+                    TrustedRequestHeaders.INTERNAL_TOKEN));
             return Mono.just(successResponse());
         };
         TenantContextWebClient client = new TenantContextWebClient(
@@ -44,6 +48,7 @@ class TenantContextWebClientTest {
                 .block();
 
         assertEquals(requestId, forwarded.get());
+        assertEquals(INTERNAL_TOKEN, forwardedToken.get());
     }
 
     private ClientResponse successResponse() {

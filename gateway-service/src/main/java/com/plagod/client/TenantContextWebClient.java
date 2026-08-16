@@ -3,6 +3,7 @@ package com.plagod.client;
 import com.plagod.dto.ApiResponse;
 import com.plagod.dto.tenant.TenantContextResolveRequest;
 import com.plagod.dto.tenant.TenantContextValidationRequest;
+import com.plagod.security.TrustedRequestHeaders;
 import com.plagod.service.GatewayValidationException;
 import com.plagod.vo.tenant.TenantContextVO;
 import com.plagod.vo.tenant.TenantContextValidationVO;
@@ -51,7 +52,7 @@ public class TenantContextWebClient {
     public Mono<TenantContextVO> resolve(TenantContextResolveRequest request) {
         return webClient.post()
                 .uri("/internal/tenants/context/resolve")
-                .header("X-Internal-Token", internalToken)
+                .header(TrustedRequestHeaders.INTERNAL_TOKEN, internalToken)
                 .bodyValue(request)
                 .retrieve()
                 .onStatus(
@@ -75,7 +76,7 @@ public class TenantContextWebClient {
     public Mono<TenantContextVO> validate(TenantContextValidationRequest request) {
         return webClient.post()
                 .uri("/internal/tenants/context/validate")
-                .header("X-Internal-Token", internalToken)
+                .header(TrustedRequestHeaders.INTERNAL_TOKEN, internalToken)
                 .bodyValue(request)
                 .retrieve()
                 .onStatus(
