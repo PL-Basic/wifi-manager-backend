@@ -25,6 +25,19 @@ public interface EntitlementOrderMapper extends BaseMapper<EntitlementOrder> {
     @Select("select * from t_entitlement_order where order_no = #{orderNo} limit 1 for update")
     EntitlementOrder selectByOrderNoForUpdate(@Param("orderNo") String orderNo);
 
+    @Select("select * from t_entitlement_order where tenant_id = #{tenantId} " +
+            "and order_no = #{orderNo} and user_id = #{userId} limit 1 for update")
+    EntitlementOrder selectOwnedOrderForUpdate(
+            @Param("tenantId") Long tenantId,
+            @Param("orderNo") String orderNo,
+            @Param("userId") Long userId);
+
+    @Select("select * from t_entitlement_order where tenant_id = #{tenantId} " +
+            "and order_no = #{orderNo} limit 1 for update")
+    EntitlementOrder selectByTenantAndOrderNoForUpdate(
+            @Param("tenantId") Long tenantId,
+            @Param("orderNo") String orderNo);
+
     @Select("select * from t_entitlement_order where tenant_id = #{tenantId} and order_no = #{orderNo} and user_id = #{userId} limit 1")
     EntitlementOrder selectOwnedOrder(@Param("tenantId") Long tenantId,
                                       @Param("orderNo") String orderNo,

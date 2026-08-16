@@ -204,7 +204,7 @@ class P14UserStableSupportTest {
         outbox.setRetryCount(0);
 
         when(outboxMapper.selectOne(any())).thenReturn(outbox);
-        when(membershipClient.ensureDefaultMembership(any(), any()))
+        when(membershipClient.ensureDefaultMembership(any()))
                 .thenThrow(new IllegalStateException(CANARY_SECRET));
 
         Logger logger = (Logger) LoggerFactory.getLogger(
@@ -216,8 +216,7 @@ class P14UserStableSupportTest {
             DefaultTenantMembershipOutboxServiceImpl service =
                     new DefaultTenantMembershipOutboxServiceImpl(
                             outboxMapper,
-                            membershipClient,
-                            "internal-token-for-test");
+                            membershipClient);
             service.dispatchForUser(7L);
         } finally {
             logger.detachAppender(appender);

@@ -11,7 +11,6 @@ import com.plagod.service.DefaultTenantMembershipOutboxService;
 import com.plagod.support.StructuredRedactor;
 import com.plagod.web.SafeExceptionLogFormatter;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -35,12 +34,12 @@ public class DefaultTenantMembershipOutboxServiceImpl implements DefaultTenantMe
 
     private final DefaultTenantMembershipOutboxMapper outboxMapper;
     private final TenantMembershipClient tenantMembershipClient;
-    private final String internalToken;
 
-    public DefaultTenantMembershipOutboxServiceImpl(DefaultTenantMembershipOutboxMapper outboxMapper, TenantMembershipClient tenantMembershipClient, @Value("${wifi.internal.token}") String internalToken) {
+    public DefaultTenantMembershipOutboxServiceImpl(
+            DefaultTenantMembershipOutboxMapper outboxMapper,
+            TenantMembershipClient tenantMembershipClient) {
         this.outboxMapper = outboxMapper;
         this.tenantMembershipClient = tenantMembershipClient;
-        this.internalToken = internalToken;
     }
 
     @Override
@@ -56,7 +55,8 @@ public class DefaultTenantMembershipOutboxServiceImpl implements DefaultTenantMe
         request.setRole(outbox.getRole());
 
         try {
-            ApiResponse<Void> response = tenantMembershipClient.ensureDefaultMembership(internalToken, request);
+            ApiResponse<Void> response =
+                    tenantMembershipClient.ensureDefaultMembership(request);
             if (response == null || response.getCode() != 200) {
                 throw new IllegalStateException(
                         "default membership dependency rejected request");

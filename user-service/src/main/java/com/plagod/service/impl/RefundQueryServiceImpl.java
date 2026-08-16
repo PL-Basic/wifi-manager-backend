@@ -91,8 +91,10 @@ public class RefundQueryServiceImpl implements RefundQueryService {
     @Transactional(readOnly = true)
     public RefundVO getForAdmin(Long tenantId, String refundNo) {
         requireTenantId(tenantId);
-        RefundRecord refund = refundMapper.selectByRefundNo(normalizeRefundNo(refundNo));
-        if (refund == null || !tenantId.equals(refund.getTenantId())) {
+        RefundRecord refund = refundMapper.selectByTenantAndRefundNo(
+                tenantId,
+                normalizeRefundNo(refundNo));
+        if (refund == null) {
             throw ApiStatusException.notFound("退款单不存在");
         }
         return toVO(refund);

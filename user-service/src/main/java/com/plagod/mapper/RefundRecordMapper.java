@@ -19,6 +19,18 @@ public interface RefundRecordMapper extends BaseMapper<RefundRecord> {
             "where refund_no = #{refundNo} limit 1 for update")
     RefundRecord selectByRefundNoForUpdate(@Param("refundNo") String refundNo);
 
+    @Select("select * from t_refund_record " +
+            "where tenant_id = #{tenantId} and refund_no = #{refundNo} limit 1")
+    RefundRecord selectByTenantAndRefundNo(
+            @Param("tenantId") Long tenantId,
+            @Param("refundNo") String refundNo);
+
+    @Select("select * from t_refund_record " +
+            "where tenant_id = #{tenantId} and refund_no = #{refundNo} limit 1 for update")
+    RefundRecord selectByTenantAndRefundNoForUpdate(
+            @Param("tenantId") Long tenantId,
+            @Param("refundNo") String refundNo);
+
     @Select("select * from t_refund_record where tenant_id = #{tenantId} " +
             "and user_id = #{userId} and request_id = #{requestId} limit 1")
     RefundRecord selectByUserRequest(@Param("tenantId") Long tenantId,

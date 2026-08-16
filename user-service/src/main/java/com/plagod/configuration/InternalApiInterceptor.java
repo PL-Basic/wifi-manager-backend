@@ -2,6 +2,7 @@ package com.plagod.configuration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.plagod.dto.ApiResponse;
+import com.plagod.security.TrustedRequestHeaders;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -16,8 +17,6 @@ import java.security.MessageDigest;
 @Component
 public class InternalApiInterceptor implements HandlerInterceptor {
 
-    private static final String INTERNAL_TOKEN_HEADER = "X-Internal-Token";
-
     @Value("${wifi.internal.token}")
     private String expectedToken;
 
@@ -29,7 +28,8 @@ public class InternalApiInterceptor implements HandlerInterceptor {
     // 所有 /internal/** 请求进入 Controller 前都会执行该方法。Token 不正确时直接返回 401，Controller 不会被调用。
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
-        String aclToken = request.getHeader(INTERNAL_TOKEN_HEADER);
+        String aclToken = request.getHeader(
+                TrustedRequestHeaders.INTERNAL_TOKEN);
         if (tokenMatches(aclToken)) {
             return true;
         }

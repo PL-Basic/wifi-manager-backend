@@ -21,7 +21,6 @@ import com.plagod.service.UserManageService;
 import com.plagod.support.PageBounds;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,9 +43,6 @@ public class UserManageServiceImpl implements UserManageService {
 
     @Autowired
     private AuthSessionClient authSessionClient;
-
-    @Value("${wifi.internal.token}")
-    private String internalToken;
 
     @Override
     public UserPageResult pageUsers(
@@ -275,7 +271,7 @@ public class UserManageServiceImpl implements UserManageService {
     private void revokeAuthSessions(Long userId, String reason) {
         ApiResponse<Void> response;
         try {
-            response = authSessionClient.revokeAll(internalToken, userId, reason);
+            response = authSessionClient.revokeAll(userId, reason);
         } catch (RuntimeException exception) {
             throw ApiStatusException.serviceUnavailable("认证会话撤销服务暂时不可用");
         }

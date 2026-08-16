@@ -88,9 +88,13 @@ public class RefundServiceImpl implements RefundService {
         }
 
         // 固定锁顺序：订单 -> 支付 -> 退款 -> 用户 -> 权益 -> 购买批次。
-        EntitlementOrder order = orderMapper.selectByOrderNoForUpdate(orderNo);
+        EntitlementOrder order =
+                orderMapper.selectOwnedOrderForUpdate(
+                        tenantId,
+                        orderNo,
+                        userId);
 
-        if (order == null || !tenantId.equals(order.getTenantId()) || !userId.equals(order.getUserId())) {
+        if (order == null) {
             throw ApiStatusException.notFound("退款关联订单不存在");
         }
 
@@ -274,13 +278,18 @@ public class RefundServiceImpl implements RefundService {
             throw new IllegalArgumentException("拒绝退款必须填写原因");
         }
 
-        RefundRecord hint = refundMapper.selectByRefundNo(refundNo);
-        if (hint == null || !tenantId.equals(hint.getTenantId())) {
+        RefundRecord hint = refundMapper.selectByTenantAndRefundNo(
+                tenantId,
+                refundNo);
+        if (hint == null) {
             throw ApiStatusException.notFound("退款单不存在");
         }
 
         // 固定锁顺序：订单 -> 支付 -> 退款 -> 用户 -> 权益 -> 购买批次。
-        EntitlementOrder order = orderMapper.selectByOrderNoForUpdate(hint.getOrderNo());
+        EntitlementOrder order =
+                orderMapper.selectByTenantAndOrderNoForUpdate(
+                        tenantId,
+                        hint.getOrderNo());
 
         if (order == null) {
             throw new IllegalStateException("退款关联订单不存在");
@@ -292,7 +301,10 @@ public class RefundServiceImpl implements RefundService {
             throw new IllegalStateException("退款关联支付记录不存在");
         }
 
-        RefundRecord refund = refundMapper.selectByRefundNoForUpdate(refundNo);
+        RefundRecord refund =
+                refundMapper.selectByTenantAndRefundNoForUpdate(
+                        tenantId,
+                        refundNo);
 
         if (refund == null) {
             throw new IllegalArgumentException("退款单不存在");

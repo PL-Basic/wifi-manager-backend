@@ -4,6 +4,8 @@ import com.plagod.dto.ApiResponse;
 import com.plagod.dto.AvatarUploadResult;
 import com.plagod.dto.user.UserPurgeRequestDTO;
 import com.plagod.dto.user.UserUpdateDTO;
+import com.plagod.security.TrustedRequestContext;
+import com.plagod.security.UserRequestContextPolicy;
 import com.plagod.service.AvatarStorageService;
 import com.plagod.service.UserManageService;
 import com.plagod.service.UserOperationRequestService;
@@ -12,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.servlet.http.HttpServletRequest;
 import javax.validation.Valid;
 
 @RestController
@@ -27,23 +30,26 @@ public class UserController {
     @Autowired
     private AvatarStorageService avatarStorageService;
 
+    @Autowired
+    private UserRequestContextPolicy contextPolicy;
 
     @GetMapping("/{userId}")
     public ApiResponse<UserVO> getOwnUser(@PathVariable Long userId,
-                                          @RequestHeader("X-User-Id") Long currentUserId) {
-
-        requireSelf(userId, currentUserId);
+                                          HttpServletRequest request) {
+        TrustedRequestContext context =
+                contextPolicy.requireUserActor(request);
+        contextPolicy.requireSelf(context, userId);
 
         return ApiResponse.success(userManageService.getUser(userId));
     }
 
     @PutMapping("/{userId}")
     public ApiResponse<UserVO> updateOwnUser(@PathVariable Long userId,
-                                             @RequestHeader("X-User-Id") Long currentUserId,
-                                             @RequestHeader("X-User-Role") Integer currentRole,
+                                             HttpServletRequest servletRequest,
                                              @Valid @RequestBody UserUpdateDTO updateDTO) {
-
-        requireSelf(userId, currentUserId);
+        TrustedRequestContext context =
+                contextPolicy.requireUserActor(servletRequest);
+        contextPolicy.requireSelf(context, userId);
 
         if (updateDTO == null) {
             throw new IllegalArgumentException("用户修改参数不能为空");
@@ -59,46 +65,53 @@ public class UserController {
         updateDTO.setDailyQuotaMinutes(null);
         updateDTO.setExpireTime(null);
 
-        return ApiResponse.success("用户信息修改成功", userManageService.updateUser(userId, updateDTO, currentRole));
+        return ApiResponse.success(
+                "用户信息修改成功",
+                userManageService.updateUser(
+                        userId,
+                        updateDTO,
+                        context.getGlobalRole()));
     }
 
     @PostMapping("/{userId}/avatar")
     public ApiResponse<AvatarUploadResult> uploadOwnAvatar(@PathVariable Long userId,
-                                                           @RequestHeader("X-User-Id") Long currentUserId,
-                                                           @RequestHeader("X-User-Role") Integer currentRole,
+                                                           HttpServletRequest request,
                                                            @RequestParam("file") MultipartFile file) {
-
-        requireSelf(userId, currentUserId);
+        TrustedRequestContext context =
+                contextPolicy.requireUserActor(request);
+        contextPolicy.requireSelf(context, userId);
 
         AvatarUploadResult result = avatarStorageService.store(userId, file);
 
         UserUpdateDTO updateDTO = new UserUpdateDTO();
         updateDTO.setAvatar(result.getUrl());
 
-        userManageService.updateUser(userId, updateDTO, currentRole);
+        userManageService.updateUser(
+                userId,
+                updateDTO,
+                context.getGlobalRole());
 
         return ApiResponse.success("头像上传成功", result);
     }
 
     @PostMapping("/{userId}/purge-requests")
     public ApiResponse<Long> requestOwnPurge(@PathVariable Long userId,
-                                             @RequestHeader("X-User-Id") Long requesterId,
-                                             @RequestHeader("X-User-Name") String requesterName,
+                                             HttpServletRequest request,
                                              @RequestBody(required = false) UserPurgeRequestDTO purgeRequestDTO) {
-
-        requireSelf(userId, requesterId);
+        TrustedRequestContext context =
+                contextPolicy.requireUserActor(request);
+        contextPolicy.requireSelf(context, userId);
 
         String reason = purgeRequestDTO == null ? null : purgeRequestDTO.getReason();
+        String requesterName =
+                userManageService.getUser(context.getUserId()).getUsername();
 
-        Long requestId = userOperationRequestService.requestPurge(userId, requesterId, requesterName, reason);
+        Long requestId = userOperationRequestService.requestPurge(
+                userId,
+                context.getUserId(),
+                requesterName,
+                reason);
 
         return ApiResponse.success("物理删除申请已提交", requestId);
-    }
-
-    private void requireSelf(Long targetUserId, Long currentUserId) {
-        if (targetUserId == null || currentUserId == null || !targetUserId.equals(currentUserId)) {
-
-            throw new IllegalArgumentException("只能访问或修改本人资料");
-        }
     }
 }
