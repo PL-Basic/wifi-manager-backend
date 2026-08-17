@@ -18,6 +18,8 @@ import org.springframework.mail.javamail.JavaMailSender;
 
 import javax.sql.DataSource;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Locale;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -49,6 +51,8 @@ class AuthMapperXmlApplicationContextTest {
             AuthRefreshSessionMapper.class.getName() + ".";
     private static final String TOKEN_MAPPER =
             AuthRefreshTokenMapper.class.getName() + ".";
+    private static final String VERIFY_MAPPER =
+            VerifyCodeMapper.class.getName() + ".";
 
     @MockBean
     private DataSource dataSource;
@@ -129,12 +133,47 @@ class AuthMapperXmlApplicationContextTest {
                 SESSION_MAPPER + "revokeFamily",
                 SESSION_MAPPER + "revokeAllForUser",
                 SESSION_MAPPER + "markStepUpRequired",
+                TOKEN_MAPPER + "selectByHash",
                 TOKEN_MAPPER + "selectByHashForUpdate",
                 TOKEN_MAPPER + "markRotated",
                 TOKEN_MAPPER + "markReplayed",
                 TOKEN_MAPPER + "revokeActiveForSession",
                 TOKEN_MAPPER + "revokeActiveForUser"
         ).forEach(this::assertXmlStatement);
+
+        assertSqlContains(
+                SESSION_MAPPER + "revokeFamily",
+                "and status = 'active'");
+        assertSqlContains(
+                SESSION_MAPPER + "revokeAllForUser",
+                "and status = 'active'");
+        assertSqlContains(
+                TOKEN_MAPPER + "revokeActiveForSession",
+                "and status = 'active'");
+        assertSqlContains(
+                TOKEN_MAPPER + "revokeActiveForUser",
+                "and token.status = 'active'");
+        assertSqlContains(
+                VERIFY_MAPPER + "tryClaimVerification",
+                "verify_claim_owner is null or verify_lease_until <=");
+        assertSqlContains(
+                VERIFY_MAPPER + "tryClaimVerification",
+                "and verify_status = 0 and status = 0");
+        assertSqlContains(
+                VERIFY_MAPPER + "releaseVerificationClaim",
+                "and verify_claim_owner =");
+        assertSqlContains(
+                VERIFY_MAPPER + "finalizeSendSuccess",
+                "and provider_out_id <=>");
+        assertSqlContains(
+                VERIFY_MAPPER + "finalizeSendSuccess",
+                "and send_status = 0");
+        assertSqlContains(
+                VERIFY_MAPPER + "finalizeSendFailure",
+                "and provider_out_id <=>");
+        assertSqlContains(
+                VERIFY_MAPPER + "finalizeSendFailure",
+                "and send_status = 0");
     }
 
     private void assertXmlStatement(String statementId) {
@@ -152,5 +191,20 @@ class AuthMapperXmlApplicationContextTest {
         assertTrue(
                 statement.getResource().contains(expectedXml),
                 statementId + " loaded from " + statement.getResource());
+    }
+
+    private void assertSqlContains(
+            String statementId,
+            String expectedFragment) {
+        String sql = sqlSessionFactory.getConfiguration()
+                .getMappedStatement(statementId, false)
+                .getBoundSql(Collections.emptyMap())
+                .getSql()
+                .replaceAll("\\s+", " ")
+                .trim()
+                .toLowerCase(Locale.ROOT);
+        assertTrue(
+                sql.contains(expectedFragment),
+                statementId + " SQL: " + sql);
     }
 }

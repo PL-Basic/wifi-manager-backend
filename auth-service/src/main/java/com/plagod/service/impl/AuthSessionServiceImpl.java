@@ -26,7 +26,9 @@ import com.plagod.vo.user.UserAccountSnapshotVO;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,8 +42,11 @@ import java.time.LocalDateTime;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.Collections;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 @Service
 public class AuthSessionServiceImpl implements AuthSessionService {
@@ -62,6 +67,8 @@ public class AuthSessionServiceImpl implements AuthSessionService {
     private final String internalToken;
     private final StringRedisTemplate redisTemplate;
     private final VerificationCodeService verificationCodeService;
+    private final TransactionTemplate transactionTemplate;
+    private final TransactionTemplate remoteCallTemplate;
 
     public AuthSessionServiceImpl(AuthRefreshSessionMapper sessionMapper,
                                   AuthRefreshTokenMapper tokenMapper,
@@ -73,6 +80,7 @@ public class AuthSessionServiceImpl implements AuthSessionService {
                                   AuthSessionProperties properties,
                                   StringRedisTemplate redisTemplate,
                                   VerificationCodeService verificationCodeService,
+                                  PlatformTransactionManager transactionManager,
                                   @Value("${wifi.internal.token}") String internalToken) {
         this.sessionMapper = sessionMapper;
         this.tokenMapper = tokenMapper;
@@ -84,11 +92,14 @@ public class AuthSessionServiceImpl implements AuthSessionService {
         this.properties = properties;
         this.redisTemplate = redisTemplate;
         this.verificationCodeService = verificationCodeService;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
+        this.remoteCallTemplate = new TransactionTemplate(transactionManager);
+        this.remoteCallTemplate.setPropagationBehavior(
+                TransactionDefinition.PROPAGATION_NOT_SUPPORTED);
         this.internalToken = internalToken;
     }
 
     @Override
-    @Transactional
     public AuthSessionIssue open(AuthResultDTO identity,
                                  String clientInstanceId,
                                  String userAgent,
@@ -96,6 +107,20 @@ public class AuthSessionServiceImpl implements AuthSessionService {
         Long userId = parsePositiveId(identity == null ? null : identity.getUserId(), "用户ID");
         UserAccountSnapshotVO user = requireActiveUser(userId);
         TenantContextVO context = resolveContext(userId, user.getRole(), null, null);
+        return inTransaction(() -> openLocal(
+                user,
+                context,
+                clientInstanceId,
+                userAgent,
+                clientIp));
+    }
+
+    private AuthSessionIssue openLocal(
+            UserAccountSnapshotVO user,
+            TenantContextVO context,
+            String clientInstanceId,
+            String userAgent,
+            String clientIp) {
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime absoluteExpiresAt = now.plus(properties.getRefreshAbsoluteTtl());
         String sessionId = UUID.randomUUID().toString();
@@ -106,7 +131,7 @@ public class AuthSessionServiceImpl implements AuthSessionService {
 
         AuthRefreshSession session = new AuthRefreshSession();
         session.setSessionId(sessionId);
-        session.setUserId(userId);
+        session.setUserId(user.getUserId());
         session.setClientInstanceId(normalizeClientInstance(clientInstanceId));
         applyContext(session, context);
         session.setStatus(ACTIVE);
@@ -143,12 +168,11 @@ public class AuthSessionServiceImpl implements AuthSessionService {
     }
 
     @Override
-    @Transactional(noRollbackFor = RefreshSessionException.class)
     public AuthSessionIssue refresh(String refreshToken,
                                     String clientInstanceId,
                                     String userAgent,
                                     String clientIp) {
-        return refreshInternal(
+        return prepareRefresh(
                 refreshToken,
                 clientInstanceId,
                 userAgent,
@@ -159,14 +183,13 @@ public class AuthSessionServiceImpl implements AuthSessionService {
     }
 
     @Override
-    @Transactional(noRollbackFor = RefreshSessionException.class)
     public AuthSessionIssue refreshAfterStepUp(String refreshToken,
                                                String target,
                                                String code,
                                                String clientInstanceId,
                                                String userAgent,
                                                String clientIp) {
-        return refreshInternal(
+        return prepareRefresh(
                 refreshToken,
                 clientInstanceId,
                 userAgent,
@@ -176,18 +199,121 @@ public class AuthSessionServiceImpl implements AuthSessionService {
                 code);
     }
 
-    private AuthSessionIssue refreshInternal(String refreshToken,
-                                             String clientInstanceId,
-                                             String userAgent,
-                                             String clientIp,
-                                             boolean stepUpVerified,
-                                             String stepUpTarget,
-                                             String stepUpCode) {
+    private AuthSessionIssue prepareRefresh(
+            String refreshToken,
+            String clientInstanceId,
+            String userAgent,
+            String clientIp,
+            boolean stepUpVerified,
+            String stepUpTarget,
+            String stepUpCode) {
         if (!StringUtils.hasText(refreshToken)) {
             throw rejected(401, "REFRESH_TOKEN_MISSING", "登录会话不存在，请重新登录");
         }
+        String tokenHash = hashToken(refreshToken);
+        AuthRefreshToken tokenSnapshot = tokenMapper.selectByHash(tokenHash);
+        if (tokenSnapshot == null) {
+            throw rejected(401, "REFRESH_TOKEN_INVALID", "登录会话无效，请重新登录");
+        }
+        AuthRefreshSession sessionSnapshot =
+                sessionMapper.selectById(tokenSnapshot.getSessionId());
+        if (sessionSnapshot == null) {
+            throw rejected(401, "REFRESH_SESSION_MISSING", "登录会话无效，请重新登录");
+        }
+
+        UserAccountSnapshotVO user = null;
+        TenantContextVO context = null;
         LocalDateTime now = LocalDateTime.now();
-        AuthRefreshToken currentToken = tokenMapper.selectByHashForUpdate(hashToken(refreshToken));
+        boolean activeCandidate = ACTIVE.equals(tokenSnapshot.getStatus())
+                && ACTIVE.equals(sessionSnapshot.getStatus())
+                && now.isBefore(sessionSnapshot.getAbsoluteExpiresAt())
+                && now.isBefore(tokenSnapshot.getExpiresAt());
+        if (activeCandidate) {
+            user = findUser(sessionSnapshot.getUserId());
+            if (user != null && Integer.valueOf(1).equals(user.getStatus())) {
+                boolean ipChanged = !constantTimeEquals(
+                        sessionSnapshot.getLastIpNetworkHash(),
+                        hashSignal(ipNetwork(clientIp)));
+                boolean userAgentChanged = !constantTimeEquals(
+                        sessionSnapshot.getUserAgentHash(),
+                        hashSignal(normalizeUserAgent(userAgent)));
+                String effectiveClientInstance = StringUtils.hasText(clientInstanceId)
+                        ? normalizeClientInstance(clientInstanceId)
+                        : sessionSnapshot.getClientInstanceId();
+                boolean clientInstanceChanged =
+                        !sessionSnapshot.getClientInstanceId()
+                                .equals(effectiveClientInstance);
+                int changedSignals = (ipChanged ? 1 : 0)
+                        + (userAgentChanged ? 1 : 0)
+                        + (clientInstanceChanged ? 1 : 0);
+
+                boolean stepUpRequired =
+                        Integer.valueOf(1)
+                                .equals(sessionSnapshot.getStepUpRequired());
+                if (stepUpRequired && stepUpVerified) {
+                    verifyRefreshStepUp(
+                            user,
+                            stepUpTarget,
+                            stepUpCode,
+                            clientIp);
+                }
+
+                boolean contextNeeded =
+                        (stepUpRequired && stepUpVerified)
+                                || (!stepUpRequired
+                                && !stepUpVerified
+                                && changedSignals < 2);
+                if (contextNeeded) {
+                    try {
+                        context = resolveContext(
+                                user.getUserId(),
+                                user.getRole(),
+                                sessionSnapshot.getContextType(),
+                                sessionSnapshot.getTenantId());
+                    } catch (ApiStatusException exception) {
+                        if (exception.getHttpStatus() == 401
+                                || exception.getHttpStatus() == 403
+                                || exception.getHttpStatus() == 404) {
+                            revokePreparedFamily(
+                                    sessionSnapshot,
+                                    "TENANT_CONTEXT_INVALID");
+                            throw rejected(
+                                    401,
+                                    "TENANT_CONTEXT_INVALID",
+                                    "当前租户上下文已失效，请重新登录");
+                        }
+                        throw exception;
+                    }
+                }
+            }
+        }
+
+        UserAccountSnapshotVO preparedUser = user;
+        TenantContextVO preparedContext = context;
+        Integer expectedVersion = sessionSnapshot.getVersion();
+        return inTransactionNoRollbackOnRefresh(() -> refreshLocal(
+                tokenHash,
+                clientInstanceId,
+                userAgent,
+                clientIp,
+                stepUpVerified,
+                preparedUser,
+                preparedContext,
+                expectedVersion));
+    }
+
+    private AuthSessionIssue refreshLocal(
+            String tokenHash,
+            String clientInstanceId,
+            String userAgent,
+            String clientIp,
+            boolean stepUpVerified,
+            UserAccountSnapshotVO preparedUser,
+            TenantContextVO preparedContext,
+            Integer expectedSessionVersion) {
+        LocalDateTime now = LocalDateTime.now();
+        AuthRefreshToken currentToken =
+                tokenMapper.selectByHashForUpdate(tokenHash);
         if (currentToken == null) {
             throw rejected(401, "REFRESH_TOKEN_INVALID", "登录会话无效，请重新登录");
         }
@@ -210,8 +336,17 @@ public class AuthSessionServiceImpl implements AuthSessionService {
             throw rejected(401, "REFRESH_SESSION_EXPIRED", "登录会话已超过7天绝对有效期，请重新验证身份");
         }
 
-        UserAccountSnapshotVO user = requireActiveUserForRefresh(
-                session.getUserId(), session.getSessionId(), now);
+        if (!Objects.equals(expectedSessionVersion, session.getVersion())) {
+            throw rejected(
+                    409,
+                    "REFRESH_SESSION_CHANGED",
+                    "登录会话已变化，请重新发起刷新");
+        }
+        UserAccountSnapshotVO user = preparedUser;
+        if (user == null || !Integer.valueOf(1).equals(user.getStatus())) {
+            revokeLockedFamily(session.getSessionId(), "ACCOUNT_UNAVAILABLE", now);
+            throw rejected(401, "ACCOUNT_UNAVAILABLE", "账号已停用或删除，请重新验证身份");
+        }
         String currentUserAgentHash = hashSignal(normalizeUserAgent(userAgent));
         String currentIpNetworkHash = hashSignal(ipNetwork(clientIp));
         String effectiveClientInstance = StringUtils.hasText(clientInstanceId)
@@ -230,7 +365,6 @@ public class AuthSessionServiceImpl implements AuthSessionService {
                         "REFRESH_STEP_UP_REQUIRED",
                         "登录环境变化较大，请使用验证码重新验证身份");
             }
-            verifyRefreshStepUp(user, stepUpTarget, stepUpCode, clientIp);
             recordRisk(session.getSessionId(), "STEP_UP_COMPLETED", null, null);
         } else {
             if (stepUpVerified) {
@@ -254,21 +388,9 @@ public class AuthSessionServiceImpl implements AuthSessionService {
             }
         }
 
-        TenantContextVO context;
-        try {
-            context = resolveContext(
-                    user.getUserId(),
-                    user.getRole(),
-                    session.getContextType(),
-                    session.getTenantId());
-        } catch (ApiStatusException exception) {
-            if (exception.getHttpStatus() == 401
-                    || exception.getHttpStatus() == 403
-                    || exception.getHttpStatus() == 404) {
-                revokeLockedFamily(session.getSessionId(), "TENANT_CONTEXT_INVALID", now);
-                throw rejected(401, "TENANT_CONTEXT_INVALID", "当前租户上下文已失效，请重新登录");
-            }
-            throw exception;
+        TenantContextVO context = preparedContext;
+        if (context == null) {
+            throw new IllegalStateException("Refresh租户上下文准备缺失");
         }
         String nextTokenId = UUID.randomUUID().toString();
         String nextRefreshToken = randomToken();
@@ -323,7 +445,6 @@ public class AuthSessionServiceImpl implements AuthSessionService {
     }
 
     @Override
-    @Transactional(noRollbackFor = RefreshSessionException.class)
     public AuthSessionIssue replace(String currentRefreshToken,
                                     String expectedSessionId,
                                     AuthResultDTO nextIdentity,
@@ -333,7 +454,59 @@ public class AuthSessionServiceImpl implements AuthSessionService {
         if (!StringUtils.hasText(currentRefreshToken)) {
             throw ApiStatusException.conflict("当前登录会话不存在，不能执行账号切换");
         }
-        AuthRefreshToken currentToken = tokenMapper.selectByHashForUpdate(hashToken(currentRefreshToken));
+        String tokenHash = hashToken(currentRefreshToken);
+        AuthRefreshToken tokenSnapshot = tokenMapper.selectByHash(tokenHash);
+        AuthRefreshSession sessionSnapshot = tokenSnapshot == null
+                ? null
+                : sessionMapper.selectById(tokenSnapshot.getSessionId());
+        UserAccountSnapshotVO nextUser = null;
+        TenantContextVO nextContext = null;
+        LocalDateTime now = LocalDateTime.now();
+        boolean activeCandidate = tokenSnapshot != null
+                && sessionSnapshot != null
+                && StringUtils.hasText(expectedSessionId)
+                && expectedSessionId.equals(tokenSnapshot.getSessionId())
+                && ACTIVE.equals(tokenSnapshot.getStatus())
+                && ACTIVE.equals(sessionSnapshot.getStatus())
+                && now.isBefore(sessionSnapshot.getAbsoluteExpiresAt())
+                && now.isBefore(tokenSnapshot.getExpiresAt());
+        if (activeCandidate) {
+            Long nextUserId = parsePositiveId(
+                    nextIdentity == null ? null : nextIdentity.getUserId(),
+                    "用户ID");
+            nextUser = requireActiveUser(nextUserId);
+            nextContext = resolveContext(
+                    nextUserId,
+                    nextUser.getRole(),
+                    null,
+                    null);
+        }
+        UserAccountSnapshotVO preparedUser = nextUser;
+        TenantContextVO preparedContext = nextContext;
+        Integer expectedVersion = sessionSnapshot == null
+                ? null : sessionSnapshot.getVersion();
+        return inTransactionNoRollbackOnRefresh(() -> replaceLocal(
+                tokenHash,
+                expectedSessionId,
+                preparedUser,
+                preparedContext,
+                expectedVersion,
+                clientInstanceId,
+                userAgent,
+                clientIp));
+    }
+
+    private AuthSessionIssue replaceLocal(
+            String tokenHash,
+            String expectedSessionId,
+            UserAccountSnapshotVO nextUser,
+            TenantContextVO nextContext,
+            Integer expectedSessionVersion,
+            String clientInstanceId,
+            String userAgent,
+            String clientIp) {
+        AuthRefreshToken currentToken =
+                tokenMapper.selectByHashForUpdate(tokenHash);
         if (currentToken == null) {
             throw ApiStatusException.conflict("当前登录会话已失效，请重新登录");
         }
@@ -376,12 +549,27 @@ public class AuthSessionServiceImpl implements AuthSessionService {
                     "REFRESH_SESSION_EXPIRED",
                     "当前登录会话已超过7天绝对有效期，请重新验证身份");
         }
+        if (!Objects.equals(
+                expectedSessionVersion,
+                currentSession.getVersion())) {
+            throw rejected(
+                    409,
+                    "ACCOUNT_SWITCH_SESSION_CHANGED",
+                    "当前登录会话已变化，请刷新页面后重试");
+        }
+        if (nextUser == null || nextContext == null) {
+            throw new IllegalStateException("账号切换会话准备缺失");
+        }
         revokeLockedFamily(currentToken.getSessionId(), "ACCOUNT_SWITCHED", now);
-        return open(nextIdentity, clientInstanceId, userAgent, clientIp);
+        return openLocal(
+                nextUser,
+                nextContext,
+                clientInstanceId,
+                userAgent,
+                clientIp);
     }
 
     @Override
-    @Transactional
     public AuthResultDTO switchContext(String sessionId,
                                        Long userId,
                                        Integer role,
@@ -393,6 +581,15 @@ public class AuthSessionServiceImpl implements AuthSessionService {
         if (!user.getRole().equals(role)) {
             throw ApiStatusException.forbidden("用户角色已变化，请重新登录");
         }
+        return inTransaction(() ->
+                switchContextLocal(sessionId, userId, context, user));
+    }
+
+    private AuthResultDTO switchContextLocal(
+            String sessionId,
+            Long userId,
+            TenantContextVO context,
+            UserAccountSnapshotVO user) {
         AuthRefreshSession currentSession = sessionMapper.selectForUpdate(sessionId);
         if (currentSession == null
                 || !userId.equals(currentSession.getUserId())
@@ -421,40 +618,54 @@ public class AuthSessionServiceImpl implements AuthSessionService {
     }
 
     @Override
-    @Transactional
     public void logout(String refreshToken, String reason) {
         if (!StringUtils.hasText(refreshToken)) {
             return;
         }
-        AuthRefreshToken token = tokenMapper.selectByHashForUpdate(hashToken(refreshToken));
-        if (token == null) {
-            return;
-        }
-        revokeLockedFamily(token.getSessionId(), safeReason(reason), LocalDateTime.now());
+        inTransaction(() -> {
+            AuthRefreshToken token =
+                    tokenMapper.selectByHashForUpdate(hashToken(refreshToken));
+            if (token != null) {
+                revokeLockedFamily(
+                        token.getSessionId(),
+                        safeReason(reason),
+                        LocalDateTime.now());
+            }
+            return null;
+        });
     }
 
     @Override
-    @Transactional
     public void revokeSession(String sessionId, String reason) {
         if (!StringUtils.hasText(sessionId)) {
             return;
         }
-        revokeLockedFamily(sessionId, safeReason(reason), LocalDateTime.now());
+        inTransaction(() -> {
+            revokeLockedFamily(
+                    sessionId,
+                    safeReason(reason),
+                    LocalDateTime.now());
+            return null;
+        });
     }
 
     @Override
-    @Transactional
     public void revokeAllForUser(Long userId, String reason) {
         if (userId == null || userId <= 0) {
             throw new IllegalArgumentException("用户ID无效");
         }
-        LocalDateTime now = LocalDateTime.now();
-        tokenMapper.revokeActiveForUser(userId, now);
-        sessionMapper.revokeAllForUser(userId, safeReason(reason), now);
+        inTransaction(() -> {
+            LocalDateTime now = LocalDateTime.now();
+            tokenMapper.revokeActiveForUser(userId, now);
+            sessionMapper.revokeAllForUser(
+                    userId,
+                    safeReason(reason),
+                    now);
+            return null;
+        });
     }
 
     @Override
-    @Transactional
     public SessionValidationVO validate(String sessionId, Long userId, String tokenId) {
         SessionValidationVO result = new SessionValidationVO();
         result.setSessionId(sessionId);
@@ -505,7 +716,13 @@ public class AuthSessionServiceImpl implements AuthSessionService {
             return result;
         }
         if (!now.isBefore(session.getAbsoluteExpiresAt())) {
-            revokeLockedFamily(sessionId, "REFRESH_SESSION_EXPIRED", now);
+            inTransaction(() -> {
+                revokeLockedFamily(
+                        sessionId,
+                        "REFRESH_SESSION_EXPIRED",
+                        now);
+                return null;
+            });
             result.setActive(false);
             result.setStatus("EXPIRED");
             result.setReason("REFRESH_SESSION_EXPIRED");
@@ -513,7 +730,13 @@ public class AuthSessionServiceImpl implements AuthSessionService {
         }
         UserAccountSnapshotVO user = findUser(userId);
         if (user == null || !Integer.valueOf(1).equals(user.getStatus())) {
-            revokeLockedFamily(sessionId, "ACCOUNT_UNAVAILABLE", now);
+            inTransaction(() -> {
+                revokeLockedFamily(
+                        sessionId,
+                        "ACCOUNT_UNAVAILABLE",
+                        now);
+                return null;
+            });
             result.setActive(false);
             result.setStatus("REVOKED");
             result.setReason("ACCOUNT_UNAVAILABLE");
@@ -555,7 +778,8 @@ public class AuthSessionServiceImpl implements AuthSessionService {
         request.setTenantId(tenantId == null ? null : String.valueOf(tenantId));
         ApiResponse<TenantContextVO> response;
         try {
-            response = tenantContextClient.resolve(internalToken, request);
+            response = remoteCallTemplate.execute(status ->
+                    tenantContextClient.resolve(internalToken, request));
         } catch (FeignException exception) {
             LOGGER.warn(
                     "tenant context resolve failed: status={}, exception={}, contextType={}, tenantIdPresent={}",
@@ -604,18 +828,6 @@ public class AuthSessionServiceImpl implements AuthSessionService {
         UserAccountSnapshotVO user = findUser(userId);
         if (user == null || !Integer.valueOf(1).equals(user.getStatus())) {
             throw ApiStatusException.forbidden("用户当前不可用");
-        }
-        return user;
-    }
-
-    private UserAccountSnapshotVO requireActiveUserForRefresh(
-            Long userId,
-            String sessionId,
-            LocalDateTime now) {
-        UserAccountSnapshotVO user = findUser(userId);
-        if (user == null || !Integer.valueOf(1).equals(user.getStatus())) {
-            revokeLockedFamily(sessionId, "ACCOUNT_UNAVAILABLE", now);
-            throw rejected(401, "ACCOUNT_UNAVAILABLE", "账号已停用或删除，请重新验证身份");
         }
         return user;
     }
@@ -692,6 +904,48 @@ public class AuthSessionServiceImpl implements AuthSessionService {
         sessionMapper.revokeFamily(sessionId, reason, now);
     }
 
+    private void revokePreparedFamily(
+            AuthRefreshSession prepared,
+            String reason) {
+        inTransaction(() -> {
+            AuthRefreshSession current =
+                    sessionMapper.selectForUpdate(prepared.getSessionId());
+            if (current != null
+                    && ACTIVE.equals(current.getStatus())
+                    && Objects.equals(
+                    prepared.getVersion(),
+                    current.getVersion())) {
+                revokeLockedFamily(
+                        current.getSessionId(),
+                        reason,
+                        LocalDateTime.now());
+            }
+            return null;
+        });
+    }
+
+    private <T> T inTransaction(Supplier<T> action) {
+        return transactionTemplate.execute(status -> action.get());
+    }
+
+    private <T> T inTransactionNoRollbackOnRefresh(
+            Supplier<T> action) {
+        AtomicReference<RefreshSessionException> failure =
+                new AtomicReference<>();
+        T result = transactionTemplate.execute(status -> {
+            try {
+                return action.get();
+            } catch (RefreshSessionException exception) {
+                failure.set(exception);
+                return null;
+            }
+        });
+        if (failure.get() != null) {
+            throw failure.get();
+        }
+        return result;
+    }
+
     private void recordRiskChanges(AuthRefreshSession session,
                                    boolean ipChanged,
                                    boolean userAgentChanged,
@@ -762,7 +1016,8 @@ public class AuthSessionServiceImpl implements AuthSessionService {
 
     private UserAccountSnapshotVO findUser(Long userId) {
         try {
-            return userAccountGateway.findById(userId);
+            return remoteCallTemplate.execute(status ->
+                    userAccountGateway.findById(userId));
         } catch (RuntimeException exception) {
             throw userAccountGateway.mapFailure("账号读取", exception);
         }

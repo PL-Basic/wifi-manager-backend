@@ -4,6 +4,12 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.plagod.mapper.AuthRefreshTokenMapper">
 
+    <select id="selectByHash" resultType="com.plagod.entity.auth.AuthRefreshToken">
+        select *
+        from t_auth_refresh_token
+        where token_hash = #{tokenHash}
+    </select>
+
     <select id="selectByHashForUpdate" resultType="com.plagod.entity.auth.AuthRefreshToken">
         select *
         from t_auth_refresh_token

@@ -1,13 +1,10 @@
 package com.plagod.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.plagod.client.UserSocialIdentityClient;
-import com.plagod.constant.OAuthProvider;
 import com.plagod.dto.ApiResponse;
 import com.plagod.dto.OAuthProfile;
 import com.plagod.dto.OAuthStateContext;
 import com.plagod.exception.ApiStatusException;
-import com.plagod.service.oauth.OAuthProviderAdapter;
 import com.plagod.service.oauth.OAuthProviderRegistry;
 import com.plagod.vo.user.SocialIdentityResolveResultVO;
 import com.plagod.vo.user.SocialLoginPrincipalVO;
@@ -96,9 +93,10 @@ class OAuthServiceSessionOrderingTest {
         OAuthProviderRegistry providerRegistry = mock(OAuthProviderRegistry.class);
         OAuthStateTransactionService stateService =
                 mock(OAuthStateTransactionService.class);
-        UserSocialIdentityClient userClient = mock(UserSocialIdentityClient.class);
+        OAuthStateClaimTransactionBoundary claimBoundary =
+                mock(OAuthStateClaimTransactionBoundary.class);
+        OAuthRemoteGateway remoteGateway = mock(OAuthRemoteGateway.class);
         AuthSessionService authSessionService = mock(AuthSessionService.class);
-        OAuthProviderAdapter adapter = mock(OAuthProviderAdapter.class);
 
         ReflectionTestUtils.setField(
                 service,
@@ -106,24 +104,21 @@ class OAuthServiceSessionOrderingTest {
                 userAccountGateway);
         ReflectionTestUtils.setField(service, "providerRegistry", providerRegistry);
         ReflectionTestUtils.setField(service, "stateService", stateService);
-        ReflectionTestUtils.setField(service, "userClient", userClient);
+        ReflectionTestUtils.setField(service, "claimBoundary", claimBoundary);
+        ReflectionTestUtils.setField(service, "remoteGateway", remoteGateway);
         ReflectionTestUtils.setField(service, "authSessionService", authSessionService);
         ReflectionTestUtils.setField(service, "objectMapper", new ObjectMapper());
-        ReflectionTestUtils.setField(
-                service,
-                "internalToken",
-                "test-internal-token-value");
 
         OAuthStateContext context = new OAuthStateContext();
         context.setStateId(1L);
         context.setProvider("github");
         context.setPurpose("LOGIN");
         context.setCodeHash("code-hash");
-        when(stateService.claim("github", "state", "code")).thenReturn(context);
-        when(providerRegistry.require("github")).thenReturn(adapter);
-        when(adapter.provider()).thenReturn(OAuthProvider.GITHUB);
-        when(adapter.exchange("code")).thenReturn(profile());
-        when(userClient.resolve(anyString(), any()))
+        when(claimBoundary.claim("github", "state", "code"))
+                .thenReturn(context);
+        when(remoteGateway.exchange("github", "code"))
+                .thenReturn(profile());
+        when(remoteGateway.resolve(any()))
                 .thenReturn(ApiResponse.success(loginReady()));
         return new Fixture(
                 service,

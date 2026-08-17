@@ -5,6 +5,7 @@ import com.plagod.security.TrustedRequestFilter;
 import com.plagod.security.TrustedRequestHeaders;
 import com.plagod.security.TrustedRequestProperties;
 import com.plagod.service.AuthSessionService;
+import com.plagod.transaction.TestTransactionManager;
 import com.plagod.vo.auth.SessionValidationVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -53,6 +54,7 @@ class InternalAuthSessionTrustedBoundaryTest {
                         new TenantContextController(
                                 tenantContextClient,
                                 authSessionService,
+                                new TestTransactionManager(),
                                 INTERNAL_TOKEN))
                 .addFilters(new TrustedRequestFilter(properties))
                 .build();

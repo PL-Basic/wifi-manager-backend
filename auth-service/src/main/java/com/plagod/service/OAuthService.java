@@ -2,7 +2,6 @@ package com.plagod.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.plagod.client.UserSocialIdentityClient;
 import com.plagod.constant.OAuthProvider;
 import com.plagod.constant.OAuthPurpose;
 import com.plagod.constant.SocialIdentityResolveStatus;
@@ -21,7 +20,6 @@ import com.plagod.vo.user.UserAccountSnapshotVO;
 import feign.FeignException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -40,16 +38,16 @@ public class OAuthService {
     private OAuthStateTransactionService stateService;
 
     @Autowired
-    private UserSocialIdentityClient userClient;
+    private OAuthStateClaimTransactionBoundary claimBoundary;
+
+    @Autowired
+    private OAuthRemoteGateway remoteGateway;
 
     @Autowired
     private AuthSessionService authSessionService;
 
     @Autowired
     private ObjectMapper objectMapper;
-
-    @Value("${wifi.internal.token:local-internal-token-change-me}")
-    private String internalToken;
 
     public OAuthAuthorizationVO startLogin(String provider, String returnUri) {
 
@@ -80,7 +78,10 @@ public class OAuthService {
 
         OAuthStateContext context;
         try {
-            context = stateService.claim(provider.value(), rawState, authorizationCode);
+            context = claimBoundary.claim(
+                    provider.value(),
+                    rawState,
+                    authorizationCode);
         } catch (DuplicateKeyException exception) {
             throw new IllegalArgumentException("该 OAuth 授权码已经被使用");
         }
@@ -91,13 +92,14 @@ public class OAuthService {
 
         AuthSessionIssue sessionIssue = null;
         try {
-            OAuthProviderAdapter adapter = providerRegistry.require(provider.value());
-
-            OAuthProfile profile = adapter.exchange(authorizationCode);
+            OAuthProfile profile = remoteGateway.exchange(
+                    provider.value(),
+                    authorizationCode);
 
             SocialIdentityResolveDTO resolveDTO = buildResolveDTO(profile, context);
 
-            ApiResponse<SocialIdentityResolveResultVO> response = userClient.resolve(internalToken, resolveDTO);
+            ApiResponse<SocialIdentityResolveResultVO> response =
+                    remoteGateway.resolve(resolveDTO);
 
             SocialIdentityResolveResultVO resolved = requireResolveResult(response);
 
@@ -112,7 +114,11 @@ public class OAuthService {
 
             String resultMessage = StringUtils.hasText(resolved.getMessage()) ? resolved.getMessage() : result.getMessage();
 
-            stateService.complete(context, resolved.getStatus().name(), resultUserId, resultMessage);
+            claimBoundary.complete(
+                    context,
+                    resolved.getStatus().name(),
+                    resultUserId,
+                    resultMessage);
 
             return new OAuthCallbackIssue(result, sessionIssue);
         } catch (FeignException exception) {
@@ -329,7 +335,7 @@ public class OAuthService {
     private void failQuietly(OAuthStateContext context, String message) {
 
         try {
-            stateService.fail(context, message);
+            claimBoundary.fail(context, message);
         } catch (RuntimeException failureException) {
             log.warn("OAuth 失败状态写入未完成");
         }

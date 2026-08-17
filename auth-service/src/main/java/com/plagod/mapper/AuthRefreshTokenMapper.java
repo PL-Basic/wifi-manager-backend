@@ -10,6 +10,8 @@ import java.time.LocalDateTime;
 @Mapper
 public interface AuthRefreshTokenMapper extends BaseMapper<AuthRefreshToken> {
 
+    AuthRefreshToken selectByHash(@Param("tokenHash") String tokenHash);
+
     AuthRefreshToken selectByHashForUpdate(@Param("tokenHash") String tokenHash);
 
     int markRotated(@Param("tokenId") String tokenId,

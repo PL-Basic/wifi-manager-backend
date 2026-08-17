@@ -8,6 +8,7 @@ import com.plagod.ratelimit.VerificationCodeRedisRateLimiter;
 import com.plagod.sender.VerifyCodeSender;
 import com.plagod.sender.phone.PhoneVerificationProviderRegistry;
 import com.plagod.service.VerificationCodeStateService;
+import com.plagod.transaction.TestTransactionManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.env.MockEnvironment;
@@ -40,7 +41,8 @@ class VerificationCodeCommandBindingTest {
                 mock(VerifyCodeSender.class),
                 mock(PhoneVerificationProviderRegistry.class),
                 stateService,
-                mock(VerificationCodeRedisRateLimiter.class));
+                mock(VerificationCodeRedisRateLimiter.class),
+                new TestTransactionManager());
     }
 
     @Test

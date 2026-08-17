@@ -20,7 +20,9 @@ import com.plagod.verification.VerificationCodeTime;
 import com.plagod.web.SafeExceptionLogFormatter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
 import java.security.SecureRandom;
@@ -69,8 +71,19 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
     private final VerificationCodeStateService stateService;
     private final SecureRandom random = new SecureRandom();
     private final VerificationCodeRedisRateLimiter redisRateLimiter;
+    private final TransactionTemplate transactionTemplate;
+    private final TransactionTemplate sendTransactionTemplate;
+    private final TransactionTemplate remoteCallTemplate;
 
-    public VerificationCodeServiceImpl(VerificationCodeProperties properties, PhoneVerificationProperties phoneProperties, VerifyCodeMapper verifyCodeMapper, VerifyCodeSender verifyCodeSender, PhoneVerificationProviderRegistry providerRegistry, VerificationCodeStateService stateService, VerificationCodeRedisRateLimiter redisRateLimiter) {
+    public VerificationCodeServiceImpl(
+            VerificationCodeProperties properties,
+            PhoneVerificationProperties phoneProperties,
+            VerifyCodeMapper verifyCodeMapper,
+            VerifyCodeSender verifyCodeSender,
+            PhoneVerificationProviderRegistry providerRegistry,
+            VerificationCodeStateService stateService,
+            VerificationCodeRedisRateLimiter redisRateLimiter,
+            PlatformTransactionManager transactionManager) {
 
         this.properties = properties;
         this.phoneProperties = phoneProperties;
@@ -79,6 +92,16 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
         this.providerRegistry = providerRegistry;
         this.stateService = stateService;
         this.redisRateLimiter = redisRateLimiter;
+        this.transactionTemplate =
+                new TransactionTemplate(transactionManager);
+        this.sendTransactionTemplate =
+                new TransactionTemplate(transactionManager);
+        this.sendTransactionTemplate.setPropagationBehavior(
+                TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        this.remoteCallTemplate =
+                new TransactionTemplate(transactionManager);
+        this.remoteCallTemplate.setPropagationBehavior(
+                TransactionDefinition.PROPAGATION_NOT_SUPPORTED);
     }
 
     @Override
@@ -139,13 +162,24 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
         record.setExpireTime(resolveExpireTime(now, providerName));
         record.setSendIp(sendIp);
 
-        if (verifyCodeMapper.insert(record) != 1) {
-            throw new IllegalStateException("验证码发送记录创建失败");
-        }
+        sendTransactionTemplate.execute(status -> {
+            if (verifyCodeMapper.insert(record) != 1) {
+                throw new IllegalStateException("验证码发送记录创建失败");
+            }
+            return null;
+        });
 
         try {
             if ("email".equals(targetType)) {
-                verifyCodeSender.send(cleanTarget, targetType, cleanScene, rawEmailCode);
+                String emailCode = rawEmailCode;
+                remoteCallTemplate.execute(status -> {
+                    verifyCodeSender.send(
+                            cleanTarget,
+                            targetType,
+                            cleanScene,
+                            emailCode);
+                    return null;
+                });
 
                 markSendSuccess(record, "SMTP_OK");
             } else {
@@ -177,7 +211,8 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
 
     private void sendPhoneCode(VerifyCode record, PhoneVerificationProvider provider, String phone, String scene, String outId) {
 
-        PhoneVerificationSendResult result = provider.send(phone, scene, outId);
+        PhoneVerificationSendResult result = remoteCallTemplate.execute(
+                status -> provider.send(phone, scene, outId));
 
         if (result != null) {
             record.setProviderRequestId(result.getRequestId());
@@ -233,13 +268,11 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
     }
 
     @Override
-    @Transactional
     public void consumeCode(String target, String scene, String code, String verifyIp) {
         consumeCodeForRequest(target, scene, code, verifyIp, null);
     }
 
     @Override
-    @Transactional
     public void consumeCodeForRequest(
             String target,
             String scene,
@@ -257,19 +290,26 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
         LocalDateTime now =
                 VerificationCodeTime.currentLocalDateTime();
 
-        int affected = verifyCodeMapper.consumeVerifiedCode(
-                decision.getRecordId(),
-                now,
-                verifyIp,
-                StringUtils.hasText(consumeRequestKey)
-                        ? consumeRequestKey.trim()
-                        : null);
+        transactionTemplate.execute(status -> {
+            int affected = verifyCodeMapper.consumeVerifiedCode(
+                    decision.getRecordId(),
+                    now,
+                    verifyIp,
+                    StringUtils.hasText(consumeRequestKey)
+                            ? consumeRequestKey.trim()
+                            : null);
 
-        if (affected != 1
-                && !(StringUtils.hasText(consumeRequestKey)
-                && wasConsumedByRequest(target, scene, consumeRequestKey))) {
-            throw new IllegalArgumentException("验证码已被使用或已经过期");
-        }
+            if (affected != 1
+                    && !(StringUtils.hasText(consumeRequestKey)
+                    && wasConsumedByRequest(
+                    target,
+                    scene,
+                    consumeRequestKey))) {
+                throw new IllegalArgumentException(
+                        "验证码已被使用或已经过期");
+            }
+            return null;
+        });
     }
 
     private boolean wasConsumedByRequest(
@@ -328,7 +368,11 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
                 VerificationCodeTime.currentLocalDateTime());
         record.setSendError("");
 
-        updateRecord(record);
+        Integer affected = sendTransactionTemplate.execute(status ->
+                verifyCodeMapper.finalizeSendSuccess(record));
+        if (!Integer.valueOf(1).equals(affected)) {
+            throw new IllegalStateException("验证码发送成功状态已发生变化");
+        }
     }
 
     private void markSendFailure(VerifyCode record, String providerCode, String message) {
@@ -343,12 +387,10 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
                 safeProviderCode,
                 message));
 
-        updateRecord(record);
-    }
-
-    private void updateRecord(VerifyCode record) {
-        if (verifyCodeMapper.updateById(record) != 1) {
-            throw new IllegalStateException("验证码发送状态更新失败");
+        Integer affected = sendTransactionTemplate.execute(status ->
+                verifyCodeMapper.finalizeSendFailure(record));
+        if (!Integer.valueOf(1).equals(affected)) {
+            throw new IllegalStateException("验证码发送失败状态已发生变化");
         }
     }
 

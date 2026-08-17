@@ -11,12 +11,15 @@ import com.plagod.utils.PasswordUtils;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.Locale;
+import java.util.Objects;
+import java.util.UUID;
 
 @Service
 public class VerificationCodeStateService {
@@ -24,29 +27,74 @@ public class VerificationCodeStateService {
     private static final int STATUS_AVAILABLE = 0;
     private static final int STATUS_EXPIRED = 2;
     private static final int VERIFY_STATUS_VERIFIED = 1;
+    private static final int VERIFY_LEASE_SECONDS = 60;
 
     private final VerifyCodeMapper verifyCodeMapper;
     private final PhoneVerificationProviderRegistry providerRegistry;
     private final PhoneVerificationProperties phoneProperties;
+    private final TransactionTemplate transactionTemplate;
+    private final TransactionTemplate remoteCallTemplate;
 
-    public VerificationCodeStateService(VerifyCodeMapper verifyCodeMapper, PhoneVerificationProviderRegistry providerRegistry, PhoneVerificationProperties phoneProperties) {
+    public VerificationCodeStateService(
+            VerifyCodeMapper verifyCodeMapper,
+            PhoneVerificationProviderRegistry providerRegistry,
+            PhoneVerificationProperties phoneProperties,
+            PlatformTransactionManager transactionManager) {
 
         this.verifyCodeMapper = verifyCodeMapper;
         this.providerRegistry = providerRegistry;
         this.phoneProperties = phoneProperties;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
+        this.transactionTemplate.setPropagationBehavior(
+                TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        this.remoteCallTemplate = new TransactionTemplate(transactionManager);
+        this.remoteCallTemplate.setPropagationBehavior(
+                TransactionDefinition.PROPAGATION_NOT_SUPPORTED);
     }
 
     /**
-     * 使用独立事务保存核验结果。
-     * 即使后续注册或重置密码失败，已通过的供应商核验也不会回滚。
+     * 供应商调用前后各使用一个短事务，网络调用期间不持有本地事务或行锁。
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Decision verifyAndRemember(String target, String scene, String submittedCode) {
+        PreparedVerification prepared = Objects.requireNonNull(
+                transactionTemplate.execute(status ->
+                        prepareVerification(target, scene, submittedCode)));
+        if (prepared.getDecision() != null) {
+            return prepared.getDecision();
+        }
 
+        ProviderVerification providerVerification;
+        try {
+            PhoneVerificationCheckResult result = remoteCallTemplate.execute(
+                    status -> {
+                        PhoneVerificationProvider provider =
+                                providerRegistry.get(
+                                        prepared.getProviderName());
+                        return provider.verify(
+                                prepared.getTarget(),
+                                prepared.getProviderOutId(),
+                                prepared.getCleanCode(),
+                                prepared.getCodeHash());
+                    });
+            providerVerification = ProviderVerification.completed(result);
+        } catch (RuntimeException exception) {
+            providerVerification = ProviderVerification.failed();
+        }
+
+        ProviderVerification completed = providerVerification;
+        return Objects.requireNonNull(transactionTemplate.execute(status ->
+                completeProviderVerification(prepared, completed)));
+    }
+
+    private PreparedVerification prepareVerification(
+            String target,
+            String scene,
+            String submittedCode) {
         VerifyCode record = verifyCodeMapper.selectLatestUsableForUpdate(target, scene);
 
         if (record == null) {
-            return Decision.rejected("验证码不存在或已失效");
+            return PreparedVerification.completed(
+                    Decision.rejected("验证码不存在或已失效"));
         }
 
         LocalDateTime now =
@@ -57,7 +105,8 @@ public class VerificationCodeStateService {
             record.setStatus(STATUS_EXPIRED);
             record.setVerifyError("验证码已经过期");
             updateRecord(record);
-            return Decision.rejected("验证码已经过期");
+            return PreparedVerification.completed(
+                    Decision.rejected("验证码已经过期"));
         }
 
         String cleanCode = cleanCode(submittedCode);
@@ -68,51 +117,143 @@ public class VerificationCodeStateService {
             record.setStatus(STATUS_EXPIRED);
             record.setVerifyError("验证码错误次数过多");
             updateRecord(record);
-            return Decision.rejected("验证码错误次数过多，请重新获取");
+            return PreparedVerification.completed(
+                    Decision.rejected("验证码错误次数过多，请重新获取"));
         }
 
-        // 已经通过供应商核验时，只比较本地摘要，不再次调用外部接口。
         if (Integer.valueOf(VERIFY_STATUS_VERIFIED).equals(record.getVerifyStatus())) {
 
             if (matches(cleanCode, record.getCodeHash())) {
-                return Decision.verified(record.getId());
+                return PreparedVerification.completed(
+                        Decision.verified(record.getId()));
             }
 
-            return rejectAttempt(record, attempts + 1, maxAttempts, "CACHED_CHECK", "UNKNOWN", "验证码错误");
+            return PreparedVerification.completed(rejectAttempt(
+                    record,
+                    attempts + 1,
+                    maxAttempts,
+                    "CACHED_CHECK",
+                    "UNKNOWN",
+                    "验证码错误"));
         }
 
         if ("email".equals(record.getTargetType())) {
             boolean verified = matches(cleanCode, record.getCodeHash());
 
-            return finishAttempt(record, cleanCode, attempts + 1, maxAttempts, verified, "LOCAL_HASH", verified ? "PASS" : "UNKNOWN", verified ? null : "验证码错误");
+            return PreparedVerification.completed(finishAttempt(
+                    record,
+                    cleanCode,
+                    attempts + 1,
+                    maxAttempts,
+                    verified,
+                    "LOCAL_HASH",
+                    verified ? "PASS" : "UNKNOWN",
+                    verified ? null : "验证码错误"));
         }
 
         if (!"phone".equals(record.getTargetType())) {
             record.setStatus(STATUS_EXPIRED);
             record.setVerifyError("验证码接收方类型无效");
             updateRecord(record);
-            return Decision.rejected("验证码记录无效");
+            return PreparedVerification.completed(
+                    Decision.rejected("验证码记录无效"));
         }
 
-        PhoneVerificationCheckResult result;
+        String claimOwner = UUID.randomUUID().toString();
+        LocalDateTime leaseUntil = now.plusSeconds(VERIFY_LEASE_SECONDS);
+        if (verifyCodeMapper.tryClaimVerification(
+                record.getId(),
+                claimOwner,
+                now,
+                leaseUntil) != 1) {
+            return PreparedVerification.completed(
+                    Decision.providerUnavailable("验证码正在核验，请稍后重试"));
+        }
 
-        try {
-            // 必须按发送记录中的 Provider 核验，不能使用当前配置覆盖旧记录。
-            PhoneVerificationProvider provider = providerRegistry.get(record.getVerificationProvider());
+        return PreparedVerification.pending(
+                record.getId(),
+                record.getTarget(),
+                record.getScene(),
+                record.getVerificationProvider(),
+                record.getProviderOutId(),
+                record.getCodeHash(),
+                cleanCode,
+                claimOwner);
+    }
 
-            result = provider.verify(record.getTarget(), record.getProviderOutId(), cleanCode, record.getCodeHash());
-        } catch (RuntimeException exception) {
+    private Decision completeProviderVerification(
+            PreparedVerification prepared,
+            ProviderVerification providerVerification) {
+        VerifyCode record =
+                verifyCodeMapper.selectByIdForUpdate(prepared.getRecordId());
+        if (record == null
+                || !Integer.valueOf(STATUS_AVAILABLE).equals(record.getStatus())
+                || !Objects.equals(
+                prepared.getClaimOwner(),
+                record.getVerifyClaimOwner())
+                || !prepared.matches(record)) {
+            return Decision.providerUnavailable("验证码核验状态已变化，请重试");
+        }
+
+        releaseClaim(record, prepared.getClaimOwner());
+
+        LocalDateTime now =
+                VerificationCodeTime.currentLocalDateTime();
+        if (record.getExpireTime() == null
+                || !record.getExpireTime().isAfter(now)) {
+            record.setStatus(STATUS_EXPIRED);
+            record.setVerifyError("验证码已经过期");
+            updateRecord(record);
+            return Decision.rejected("验证码已经过期");
+        }
+
+        int attempts = safeAttempts(record);
+        int maxAttempts = Math.max(
+                1,
+                phoneProperties.getMaxVerifyAttempts());
+        if (attempts >= maxAttempts) {
+            record.setStatus(STATUS_EXPIRED);
+            record.setVerifyError("验证码错误次数过多");
+            updateRecord(record);
+            return Decision.rejected("验证码错误次数过多，请重新获取");
+        }
+
+        if (Integer.valueOf(VERIFY_STATUS_VERIFIED)
+                .equals(record.getVerifyStatus())) {
+            if (matches(prepared.getCleanCode(), record.getCodeHash())) {
+                return Decision.verified(record.getId());
+            }
+            return rejectAttempt(
+                    record,
+                    attempts + 1,
+                    maxAttempts,
+                    "CACHED_CHECK",
+                    "UNKNOWN",
+                    "验证码错误");
+        }
+
+        if (providerVerification.isFailed()) {
             recordProviderFailure(record, "PROVIDER_EXCEPTION", null, "短信认证服务暂时不可用");
             return Decision.providerUnavailable("短信认证服务暂时不可用");
         }
 
+        PhoneVerificationCheckResult result =
+                providerVerification.getResult();
         if (result == null || !result.isRequestSuccessful()) {
             recordProviderFailure(record, result == null ? null : result.getProviderCode(), result == null ? null : result.getProviderResult(), result == null ? "短信认证服务没有返回结果" : result.getMessage());
 
             return Decision.providerUnavailable(result == null || !StringUtils.hasText(result.getMessage()) ? "短信认证服务暂时不可用" : result.getMessage());
         }
 
-        return finishAttempt(record, cleanCode, attempts + 1, maxAttempts, result.isVerified(), result.getProviderCode(), result.getProviderResult(), result.isVerified() ? null : result.getMessage());
+        return finishAttempt(
+                record,
+                prepared.getCleanCode(),
+                attempts + 1,
+                maxAttempts,
+                result.isVerified(),
+                result.getProviderCode(),
+                result.getProviderResult(),
+                result.isVerified() ? null : result.getMessage());
     }
 
     private Decision finishAttempt(VerifyCode record, String cleanCode, int attempts, int maxAttempts, boolean verified, String providerCode, String providerResult, String error) {
@@ -173,6 +314,17 @@ public class VerificationCodeStateService {
         }
     }
 
+    private void releaseClaim(VerifyCode record, String claimOwner) {
+        if (verifyCodeMapper.releaseVerificationClaim(
+                record.getId(),
+                claimOwner) != 1) {
+            throw new IllegalStateException("验证码核验 Claim 释放失败");
+        }
+        record.setVerifyClaimOwner(null);
+        record.setVerifyLeaseUntil(null);
+        record.setVerifyClaimedTime(null);
+    }
+
     private boolean matches(String rawCode, String codeHash) {
         return StringUtils.hasText(codeHash) && PasswordUtils.matches(rawCode, codeHash);
     }
@@ -218,6 +370,73 @@ public class VerificationCodeStateService {
 
         public static Decision providerUnavailable(String message) {
             return new Decision(false, true, null, message);
+        }
+    }
+
+    @Getter
+    @AllArgsConstructor
+    private static final class PreparedVerification {
+
+        private final Long recordId;
+        private final String target;
+        private final String scene;
+        private final String providerName;
+        private final String providerOutId;
+        private final String codeHash;
+        private final String cleanCode;
+        private final String claimOwner;
+        private final Decision decision;
+
+        private static PreparedVerification completed(Decision decision) {
+            return new PreparedVerification(
+                    null, null, null, null, null, null, null, null, decision);
+        }
+
+        private static PreparedVerification pending(
+                Long recordId,
+                String target,
+                String scene,
+                String providerName,
+                String providerOutId,
+                String codeHash,
+                String cleanCode,
+                String claimOwner) {
+            return new PreparedVerification(
+                    recordId,
+                    target,
+                    scene,
+                    providerName,
+                    providerOutId,
+                    codeHash,
+                    cleanCode,
+                    claimOwner,
+                    null);
+        }
+
+        private boolean matches(VerifyCode record) {
+            return Objects.equals(target, record.getTarget())
+                    && Objects.equals(scene, record.getScene())
+                    && Objects.equals(providerName,
+                    record.getVerificationProvider())
+                    && Objects.equals(providerOutId,
+                    record.getProviderOutId());
+        }
+    }
+
+    @Getter
+    @AllArgsConstructor
+    private static final class ProviderVerification {
+
+        private final PhoneVerificationCheckResult result;
+        private final boolean failed;
+
+        private static ProviderVerification completed(
+                PhoneVerificationCheckResult result) {
+            return new ProviderVerification(result, false);
+        }
+
+        private static ProviderVerification failed() {
+            return new ProviderVerification(null, true);
         }
     }
 }

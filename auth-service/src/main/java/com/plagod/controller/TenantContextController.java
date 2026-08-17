@@ -14,6 +14,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import feign.FeignException;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -33,13 +36,18 @@ public class TenantContextController {
     private final TenantContextClient tenantContextClient;
     private final AuthSessionService authSessionService;
     private final String internalToken;
+    private final TransactionTemplate remoteCallTemplate;
 
     public TenantContextController(TenantContextClient tenantContextClient,
                                    AuthSessionService authSessionService,
+                                   PlatformTransactionManager transactionManager,
                                    @Value("${wifi.internal.token}") String internalToken) {
         this.tenantContextClient = tenantContextClient;
         this.authSessionService = authSessionService;
         this.internalToken = internalToken;
+        this.remoteCallTemplate = new TransactionTemplate(transactionManager);
+        this.remoteCallTemplate.setPropagationBehavior(
+                TransactionDefinition.PROPAGATION_NOT_SUPPORTED);
     }
 
     @PostMapping("/tenant-context/switch")
@@ -103,7 +111,8 @@ public class TenantContextController {
         request.setTenantId(tenantId);
         ApiResponse<TenantContextVO> response;
         try {
-            response = tenantContextClient.resolve(internalToken, request);
+            response = remoteCallTemplate.execute(status ->
+                    tenantContextClient.resolve(internalToken, request));
         } catch (FeignException exception) {
             LOGGER.warn(
                     "tenant context controller resolve failed: status={}, exception={}, contextType={}, tenantIdPresent={}",
