@@ -94,6 +94,127 @@ Demo 1.5 C0 冻结事务、Outbox 与 HTTP 幂等共享载体：
   回退。该字段是 additive JSON 字段，旧 payload 仍可反序列化，但因缺少
   必填字段明确返回 400。
 
+Demo 1.5 S1 冻结 `audit-v1` 与条件状态转换共享模板：
+
+- 审计 actor/context 只来自 `TrustedRequestContext`；后台服务和设备事件
+  必须显式传入 `AuditActorContext`。匿名 Auth 请求仅在 Security Starter
+  已标记可信 Gateway source 后记录为 `ANONYMOUS`，不解释调用方提交的
+  user/tenant Header。
+- `@Audited` 不再默认序列化 args/result。动态目标只通过
+  `@AuditTargetId`，detail 只接受 `@AuditDetail("固定键")` 标记的安全
+  标量；未标记的密码、Token、Cookie、正文和任意返回对象不会进入审计。
+- SUCCESS 在当前业务事务 `afterCommit` 回调内使用独立
+  `REQUIRES_NEW` 事务追加；无本地事务时在业务成功返回后也使用独立事务。
+  DENIED/FAILED 使用固定 `errorKey` 和独立 `REQUIRES_NEW` writer。
+  writer 失败只产生固定 warning、
+  `wifi.audit.write.failures` 低基数指标和本地失败计数，不改变业务提交或
+  原异常。
+- `Future`/`CompletionStage` 当前不支持异步完成态审计。切面必须返回原
+  异步对象，不得提前记录 SUCCESS，也不得注册无上下文传播保证的完成回调；
+  事件按固定原因 `unsupported_async_result` 丢弃，并写入
+  `wifi.audit.events.dropped` 指标和本地丢弃计数，不影响业务。
+- 沿用 `t_audit_log` 现有列。`requestId/eventId`、actor/context、
+  `platformManaged`、target、outcome、errorKey 和 sourceService 以固定
+  安全 envelope 写入 JSON detail；业务 detail 位于显式 allowlist
+  `fields` 下。
+- `ConditionalStateTransition` 先校验条件更新影响行数：`1` 直接返回
+  `APPLIED`，`0` 才按 duplicate event、资源、状态、版本分类，其他值拒绝。
+  模板只冻结 `fromStates/toState`、`expectedVersion/eventKey` 校验和
+  `APPLIED/REPLAYED/RESOURCE_NOT_FOUND/ILLEGAL_STATE/VERSION_CONFLICT`
+  分类。领域服务仍负责合法边、tenant-scoped 条件更新以及主状态与
+  transition log 的同事务写入。
+- 后续调用方仅分 AUTH、TENANT、USER、DEVICE、MONITOR 五组，并只在以下
+  冻结入口补 target/detail 元数据、可信 context、DENIED/FAILED 开关及
+  本域 transition 接入；不得复制 Starter、修改共享路径或扩大入口集合。
+
+`AUTH` 冻结 4 个入口：
+
+- `auth-service/src/main/java/com/plagod/controller/TenantContextController.java`：
+  `TenantContextController#returnPlatform`（`auth.platform_context`）、
+  `TenantContextController#enterPlatformTenant`
+  （`auth.platform_tenant_context`）。
+- `auth-service/src/main/java/com/plagod/service/impl/UserServiceImpl.java`：
+  `UserServiceImpl#register`（`auth.register`）、
+  `UserServiceImpl#resetPassword`（`auth.reset_password`）。
+
+`TENANT` 冻结 3 个入口：
+
+- `tenant-service/src/main/java/com/plagod/service/impl/TenantServiceImpl.java`：
+  `TenantServiceImpl#createTenant`（`tenant.create`）、
+  `TenantServiceImpl#updateTenant`（`tenant.update`）、
+  `TenantServiceImpl#updateStatus`（`tenant.status`）。
+
+`USER` 冻结 10 个入口：
+
+- `user-service/src/main/java/com/plagod/service/impl/UserManageServiceImpl.java`：
+  `UserManageServiceImpl#updateUser`（`user.update`）、
+  `UserManageServiceImpl#updateStatus`（`user.status`）、
+  `UserManageServiceImpl#deleteUser`（`user.delete`）、
+  `UserManageServiceImpl#purgeUser`（`user.purge`）。
+- `user-service/src/main/java/com/plagod/service/impl/RefundServiceImpl.java`：
+  `RefundServiceImpl#apply`（`refund.apply`）、
+  `RefundServiceImpl#review`（`refund.review`）、
+  `RefundServiceImpl#handleChannelResult`（`refund.channel.result`）。
+- `user-service/src/main/java/com/plagod/service/impl/EntitlementRewardOrderServiceImpl.java`：
+  `EntitlementRewardOrderServiceImpl#create`
+  （`entitlement.reward-order.create`）。
+- `user-service/src/main/java/com/plagod/service/impl/EntitlementAdjustmentServiceImpl.java`：
+  `EntitlementAdjustmentServiceImpl#adjust`（`entitlement.adjust`）、
+  `EntitlementAdjustmentServiceImpl#adjustUnlimited`
+  （`entitlement.unlimited.adjust`）。
+
+`DEVICE` 冻结 17 个入口：
+
+- `device-service/src/main/java/com/plagod/service/RuleActionExecutor.java`：
+  `RuleActionExecutor#disconnectMac`（`monitor.auto.disconnect-mac`）、
+  `RuleActionExecutor#blockTraffic`（`monitor.auto.block-traffic`）。
+- `device-service/src/main/java/com/plagod/service/impl/SessionRevokeServiceImpl.java`：
+  `SessionRevokeServiceImpl#logout`（`session.logout`）、
+  `SessionRevokeServiceImpl#adminRevoke`（`session.admin-revoke`）。
+- `device-service/src/main/java/com/plagod/service/impl/PortalSessionServiceImpl.java`：
+  `PortalSessionServiceImpl#authorize`（`session.portal-authorize`）。
+- `device-service/src/main/java/com/plagod/service/impl/MacBlacklistServiceImpl.java`：
+  `MacBlacklistServiceImpl#addBlacklist`（`blacklist.add`）。
+- `device-service/src/main/java/com/plagod/service/impl/DeviceCommandServiceImpl.java`：
+  `DeviceCommandServiceImpl#restoreDevice`（`device.restore`）、
+  `DeviceCommandServiceImpl#createDevice`（`device.create`）、
+  `DeviceCommandServiceImpl#updateDevice`（`device.update`）、
+  `DeviceCommandServiceImpl#deleteDevice`（`device.delete`）、
+  `DeviceCommandServiceImpl#allowDevice`（`device.allow`）、
+  `DeviceCommandServiceImpl#kickDevice`（`device.kick`）、
+  `DeviceCommandServiceImpl#allowClient`（`device.allow-client`）、
+  `DeviceCommandServiceImpl#removeBlacklist`（`blacklist.remove`）。
+- `device-service/src/main/java/com/plagod/service/impl/DeviceWifiConfigServiceImpl.java`：
+  `DeviceWifiConfigServiceImpl#stageCandidate`（`device.wifi.stage`）。
+- `device-service/src/main/java/com/plagod/service/impl/ManualDeviceControlServiceImpl.java`：
+  `ManualDeviceControlServiceImpl#disconnectMac`
+  （`device.manual-disconnect-mac`）、
+  `ManualDeviceControlServiceImpl#blockTraffic`
+  （`device.manual-block-traffic`）。
+
+`MONITOR` 冻结 13 个入口：
+
+- `monitor-service/src/main/java/com/plagod/service/impl/ClientLocationServiceImpl.java`：
+  `ClientLocationServiceImpl#report`（`location.report`）、
+  `ClientLocationServiceImpl#grantAuthorization`
+  （`location.consent.grant`）、
+  `ClientLocationServiceImpl#revokeAuthorization`
+  （`location.consent.revoke`）、
+  `ClientLocationServiceImpl#clearOwnedHistory`
+  （`location.history.clear`）。
+- `monitor-service/src/main/java/com/plagod/service/impl/AlertEventServiceImpl.java`：
+  `AlertEventServiceImpl#handle`（`alert.handle`）。
+- `monitor-service/src/main/java/com/plagod/service/impl/GeofenceAdminServiceImpl.java`：
+  `GeofenceAdminServiceImpl#create`（`geofence.create`）、
+  `GeofenceAdminServiceImpl#update`（`geofence.update`）、
+  `GeofenceAdminServiceImpl#toggle`（`geofence.toggle`）、
+  `GeofenceAdminServiceImpl#delete`（`geofence.delete`）。
+- `monitor-service/src/main/java/com/plagod/service/impl/AccessRuleServiceImpl.java`：
+  `AccessRuleServiceImpl#create`（`rule.create`）、
+  `AccessRuleServiceImpl#update`（`rule.update`）、
+  `AccessRuleServiceImpl#delete`（`rule.delete`）、
+  `AccessRuleServiceImpl#toggleEnabled`（`rule.toggle`）。
+
 `mqtt-protocol-v1` 的最终规范化 SHA-256 为
 `26ABC67B1DCA9A99173D079359B87C57366F74D9D243728EDFB4AE52A5E8AE87`。
 后端与固件本地副本按 UTF-8、LF 换行规范化后必须得到该值；原始文件换行符

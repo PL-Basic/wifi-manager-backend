@@ -4,10 +4,15 @@ final class AuditScope {
 
     private final Long tenantId;
     private final String scopeType;
+    private final boolean platformManaged;
 
-    AuditScope(Long tenantId, String scopeType) {
+    AuditScope(
+            Long tenantId,
+            String scopeType,
+            boolean platformManaged) {
         this.tenantId = tenantId;
         this.scopeType = scopeType;
+        this.platformManaged = platformManaged;
     }
 
     Long getTenantId() {
@@ -16,5 +21,9 @@ final class AuditScope {
 
     String getScopeType() {
         return scopeType;
+    }
+
+    boolean isPlatformManaged() {
+        return platformManaged;
     }
 }
