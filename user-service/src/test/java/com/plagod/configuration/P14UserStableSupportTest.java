@@ -4,9 +4,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
-import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.plagod.client.AuthSessionClient;
 import com.plagod.client.TenantMembershipClient;
 import com.plagod.dto.ApiResponse;
 import com.plagod.entity.auth.DefaultTenantMembershipOutbox;
@@ -17,6 +15,7 @@ import com.plagod.mapper.SocialIdentityMapper;
 import com.plagod.mapper.UserMapper;
 import com.plagod.service.impl.DefaultTenantMembershipOutboxServiceImpl;
 import com.plagod.service.impl.UserManageServiceImpl;
+import com.plagod.support.NoOpTransactionManager;
 import com.plagod.support.StableUnits;
 import com.plagod.web.ApiErrorResponseFactory;
 import com.plagod.web.LowCardinalityTagPolicy;
@@ -39,7 +38,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -47,7 +45,9 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -166,11 +166,6 @@ class P14UserStableSupportTest {
                 service,
                 "socialIdentityMapper",
                 mock(SocialIdentityMapper.class));
-        ReflectionTestUtils.setField(
-                service,
-                "authSessionClient",
-                mock(AuthSessionClient.class));
-
         service.pageUsers(-9, 1000, null);
 
         ArgumentCaptor<Page> pageCaptor =
@@ -204,6 +199,19 @@ class P14UserStableSupportTest {
         outbox.setRetryCount(0);
 
         when(outboxMapper.selectOne(any())).thenReturn(outbox);
+        when(outboxMapper.claim(
+                anyLong(),
+                anyString(),
+                any(),
+                any(),
+                anyInt())).thenReturn(1);
+        when(outboxMapper.selectById(17L)).thenReturn(outbox);
+        when(outboxMapper.finalizeFailed(
+                anyLong(),
+                anyString(),
+                any(),
+                anyString(),
+                anyInt())).thenReturn(1);
         when(membershipClient.ensureDefaultMembership(any()))
                 .thenThrow(new IllegalStateException(CANARY_SECRET));
 
@@ -216,7 +224,8 @@ class P14UserStableSupportTest {
             DefaultTenantMembershipOutboxServiceImpl service =
                     new DefaultTenantMembershipOutboxServiceImpl(
                             outboxMapper,
-                            membershipClient);
+                            membershipClient,
+                            new NoOpTransactionManager());
             service.dispatchForUser(7L);
         } finally {
             logger.detachAppender(appender);
@@ -231,16 +240,17 @@ class P14UserStableSupportTest {
         assertTrue(renderedLogs.toString()
                 .contains("java.lang.IllegalStateException"));
 
-        ArgumentCaptor<UpdateWrapper> wrapperCaptor =
-                ArgumentCaptor.forClass(UpdateWrapper.class);
-        verify(outboxMapper).update(
-                isNull(),
-                wrapperCaptor.capture());
-        Map<String, Object> values =
-                wrapperCaptor.getValue().getParamNameValuePairs();
-        assertFalse(values.toString().contains(CANARY_SECRET));
-        assertTrue(values.toString()
-                .contains("java.lang.IllegalStateException"));
+        ArgumentCaptor<String> errorCaptor =
+                ArgumentCaptor.forClass(String.class);
+        verify(outboxMapper).finalizeFailed(
+                anyLong(),
+                anyString(),
+                any(),
+                errorCaptor.capture(),
+                anyInt());
+        assertEquals(
+                "TENANT_MEMBERSHIP_DELIVERY_FAILED",
+                errorCaptor.getValue());
     }
 
     @Test

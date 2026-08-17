@@ -4,8 +4,6 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.plagod.audit.Audited;
-import com.plagod.client.AuthSessionClient;
-import com.plagod.dto.ApiResponse;
 import com.plagod.exception.ApiStatusException;
 import com.plagod.mapper.SocialIdentityMapper;
 import com.plagod.vo.user.UserConnectionPolicyVO;
@@ -17,6 +15,7 @@ import com.plagod.vo.user.UserVO;
 import com.plagod.vo.user.UserRoleSnapshotVO;
 import com.plagod.entity.user.User;
 import com.plagod.mapper.UserMapper;
+import com.plagod.service.UserAuthSessionRevokeOutboxAppender;
 import com.plagod.service.UserManageService;
 import com.plagod.support.PageBounds;
 import org.springframework.beans.BeanUtils;
@@ -42,7 +41,7 @@ public class UserManageServiceImpl implements UserManageService {
     private SocialIdentityMapper socialIdentityMapper;
 
     @Autowired
-    private AuthSessionClient authSessionClient;
+    private UserAuthSessionRevokeOutboxAppender revokeOutboxAppender;
 
     @Override
     public UserPageResult pageUsers(
@@ -110,12 +109,14 @@ public class UserManageServiceImpl implements UserManageService {
     }
 
     @Override
+    @Transactional
     @Audited(
             action = "user.update",
             scope = Audited.Scope.PLATFORM,
             tenantIdSource = Audited.TenantIdSource.REQUEST)
     public UserVO updateUser(Long userId, UserUpdateDTO updateDTO, Integer operatorRole) {
         User user = getExistingUser(userId);
+        boolean roleChanged = false;
 
         String rawEmail = updateDTO.getEmail();
         String rawNickname = updateDTO.getNickname();
@@ -146,7 +147,8 @@ public class UserManageServiceImpl implements UserManageService {
         }
         if (updateDTO.getRole() != null) {
             if (!updateDTO.getRole().equals(user.getRole())) {
-                revokeAuthSessions(userId, "ROLE_CHANGED");
+                roleChanged = true;
+                appendAuthSessionRevoke(userId, "ROLE_CHANGED");
             }
             updateWrapper.set("role", updateDTO.getRole());
         }
@@ -160,7 +162,10 @@ public class UserManageServiceImpl implements UserManageService {
             updateWrapper.set("expire_time", updateDTO.getExpireTime());
         }
 
-        userMapper.update(null, updateWrapper);
+        int updated = userMapper.update(null, updateWrapper);
+        if (roleChanged && updated != 1) {
+            throw new IllegalStateException("用户角色更新失败");
+        }
         return toVO(userMapper.selectById(userId));
     }
 
@@ -174,10 +179,12 @@ public class UserManageServiceImpl implements UserManageService {
         User user = getExistingUser(userId);
         if (Integer.valueOf(0).equals(statusDTO.getStatus())
                 && !Integer.valueOf(0).equals(user.getStatus())) {
-            revokeAuthSessions(userId, "ACCOUNT_DISABLED");
+            appendAuthSessionRevoke(userId, "ACCOUNT_DISABLED");
         }
         user.setStatus(statusDTO.getStatus());
-        userMapper.updateById(user);
+        if (userMapper.updateById(user) != 1) {
+            throw new IllegalStateException("用户状态更新失败");
+        }
     }
 
     @Override
@@ -188,8 +195,10 @@ public class UserManageServiceImpl implements UserManageService {
             tenantIdSource = Audited.TenantIdSource.REQUEST)
     public void deleteUser(Long userId) {
         requireDeletableUser(getExistingUser(userId));
-        revokeAuthSessions(userId, "ACCOUNT_DELETED");
-        userMapper.deleteById(userId);
+        appendAuthSessionRevoke(userId, "ACCOUNT_DELETED");
+        if (userMapper.deleteById(userId) != 1) {
+            throw new IllegalStateException("用户删除失败");
+        }
     }
 
     @Override
@@ -210,9 +219,13 @@ public class UserManageServiceImpl implements UserManageService {
         requireDeletableUser(user);
         requireNoEntitlementHistory(userId);
 
-        revokeAuthSessions(userId, "ACCOUNT_PURGED");
+        appendAuthSessionRevoke(userId, "ACCOUNT_PURGED");
         socialIdentityMapper.physicalDeleteByUserId(userId);
-        jdbcTemplate.update("DELETE FROM sys_user WHERE user_id = ?", userId);
+        if (jdbcTemplate.update(
+                "DELETE FROM sys_user WHERE user_id = ?",
+                userId) != 1) {
+            throw new IllegalStateException("用户物理删除失败");
+        }
     }
     @Override
     public UserConnectionPolicyVO getConnectionPolicy(Long userId) {
@@ -268,16 +281,8 @@ public class UserManageServiceImpl implements UserManageService {
         return user;
     }
 
-    private void revokeAuthSessions(Long userId, String reason) {
-        ApiResponse<Void> response;
-        try {
-            response = authSessionClient.revokeAll(userId, reason);
-        } catch (RuntimeException exception) {
-            throw ApiStatusException.serviceUnavailable("认证会话撤销服务暂时不可用");
-        }
-        if (response == null || response.getCode() != 200) {
-            throw ApiStatusException.serviceUnavailable("认证会话撤销服务返回无效结果");
-        }
+    private void appendAuthSessionRevoke(Long userId, String reason) {
+        revokeOutboxAppender.append(userId, reason);
     }
 
     private void requireDeletableUser(User user) {
