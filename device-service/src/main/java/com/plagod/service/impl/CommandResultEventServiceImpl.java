@@ -93,11 +93,19 @@ public class CommandResultEventServiceImpl implements CommandResultEventService 
             commandRecordMapper.clearEncryptedPayload(
                     command.getTenantId(), command.getCommandId(), LocalDateTime.now());
             wifiConfigLifecycleService.handleTerminalCommand(command);
+            sessionCommandLifecycleService.handleTerminalCommand(command);
             return;
         }
 
-        // 只有已经发布的命令才有资格接收固件执行结果。
-        if (!Integer.valueOf(DeviceCommandStatus.PUBLISHED).equals(command.getStatus())) {
+        boolean published =
+                Integer.valueOf(DeviceCommandStatus.PUBLISHED)
+                        .equals(command.getStatus());
+        boolean claimedPublishWindow =
+                Integer.valueOf(DeviceCommandStatus.PENDING)
+                        .equals(command.getStatus())
+                        && StringUtils.hasText(command.getDispatchWorkerId())
+                        && command.getDispatchLeaseUntil() != null;
+        if (!published && !claimedPublishWindow) {
             throw new IllegalStateException("命令尚未进入已发布状态，不能接收执行结果");
         }
 
@@ -108,7 +116,14 @@ public class CommandResultEventServiceImpl implements CommandResultEventService 
         command.setResultMessage(message);
         command.setUpdateTime(now);
 
-        if (commandRecordMapper.updateById(command) != 1) {
+        if (commandRecordMapper.finalizeFromCommandResult(
+                command.getCommandId(),
+                command.getTenantId(),
+                targetStatus,
+                DeviceCommandStatus.PUBLISHED,
+                DeviceCommandStatus.PENDING,
+                now,
+                message) != 1) {
             throw new IllegalStateException("命令结果保存失败");
         }
         commandRecordMapper.clearEncryptedPayload(

@@ -44,6 +44,10 @@ import java.util.regex.Pattern;
 public class DeviceCommandServiceImpl implements DeviceCommandService {
 
     private static final Pattern MAC_PATTERN = Pattern.compile("(?i)^[0-9a-f]{2}(:[0-9a-f]{2}){5}$");
+    private static final Pattern CLIENT_REQUEST_ID_PATTERN =
+            Pattern.compile("^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$");
+    private static final Pattern REQUEST_FINGERPRINT_PATTERN =
+            Pattern.compile("^[0-9a-f]{64}$");
     private static final int DEFAULT_RSSI_AT_ONE_METER = -59;
     private static final BigDecimal DEFAULT_PATH_LOSS_EXPONENT = new BigDecimal("2.00");
 
@@ -330,13 +334,39 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
             action = "device.allow-client",
             scope = Audited.Scope.TENANT,
             tenantIdSource = Audited.TenantIdSource.REQUEST)
-    public DeviceCommandResult allowClient(Long nodeId, String deviceCode, String mac, Long sessionId, Integer ttlSeconds) {
-        return enqueueClientLease(nodeId, deviceCode, mac, sessionId, ttlSeconds, DeviceCommandPurpose.PORTAL_AUTHORIZE);
+    public DeviceCommandResult allowClient(
+            Long nodeId,
+            String deviceCode,
+            String mac,
+            Long sessionId,
+            Integer ttlSeconds,
+            Long actorUserId,
+            String clientRequestId,
+            String requestFingerprint) {
+        return enqueueClientLease(
+                nodeId,
+                deviceCode,
+                mac,
+                sessionId,
+                ttlSeconds,
+                DeviceCommandPurpose.PORTAL_AUTHORIZE,
+                actorUserId,
+                clientRequestId,
+                requestFingerprint);
     }
 
     @Override
     public DeviceCommandResult refreshClientLease(Long nodeId, String deviceCode, String mac, Long sessionId, Integer ttlSeconds) {
-        return enqueueClientLease(nodeId, deviceCode, mac, sessionId, ttlSeconds, DeviceCommandPurpose.LEASE_RENEW);
+        return enqueueClientLease(
+                nodeId,
+                deviceCode,
+                mac,
+                sessionId,
+                ttlSeconds,
+                DeviceCommandPurpose.LEASE_RENEW,
+                null,
+                null,
+                null);
     }
 
     @Override
@@ -557,7 +587,16 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     }
 
     // Portal 首次授权和后台续租共用同一套参数校验与 MQTT 序列化逻辑。
-    private DeviceCommandResult enqueueClientLease(Long nodeId, String deviceCode, String mac, Long sessionId, Integer ttlSeconds, String purpose) {
+    private DeviceCommandResult enqueueClientLease(
+            Long nodeId,
+            String deviceCode,
+            String mac,
+            Long sessionId,
+            Integer ttlSeconds,
+            String purpose,
+            Long actorUserId,
+            String clientRequestId,
+            String requestFingerprint) {
 
         if (nodeId == null || nodeId <= 0) {
             throw new IllegalArgumentException("nodeId 必须是有效值");
@@ -578,6 +617,16 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         if (ttlSeconds == null || ttlSeconds < 1 || ttlSeconds > 86400) {
             throw new IllegalArgumentException("ttlSeconds 必须在 1 到 86400 之间");
         }
+        if (DeviceCommandPurpose.PORTAL_AUTHORIZE.equals(purpose)) {
+            if (actorUserId == null || actorUserId <= 0) {
+                throw new IllegalArgumentException(
+                        "Portal ALLOW 命令缺少 actorUserId");
+            }
+            clientRequestId =
+                    requirePortalClientRequestId(clientRequestId);
+            requestFingerprint =
+                    requirePortalRequestFingerprint(requestFingerprint);
+        }
 
         String requestId = UUID.randomUUID().toString();
         String topic = MqttTopics.deviceAllow(normalizedDeviceCode);
@@ -588,6 +637,9 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
 
             DeviceCommandRecord command = new DeviceCommandRecord();
             command.setTenantId(resolveCommandTenant(nodeId, normalizedDeviceCode));
+            command.setActorUserId(actorUserId);
+            command.setClientRequestId(clientRequestId);
+            command.setRequestFingerprint(requestFingerprint);
             command.setRequestId(requestId);
             command.setNodeId(nodeId);
             command.setDeviceCode(normalizedDeviceCode);
@@ -604,6 +656,28 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("ALLOW 命令序列化失败", exception);
         }
+    }
+
+    private String requirePortalClientRequestId(String value) {
+        if (!StringUtils.hasText(value)) {
+            throw new IllegalArgumentException(
+                    "Portal ALLOW 命令缺少 clientRequestId");
+        }
+        String cleaned = value.trim();
+        if (!CLIENT_REQUEST_ID_PATTERN.matcher(cleaned).matches()) {
+            throw new IllegalArgumentException(
+                    "Portal ALLOW 命令 clientRequestId 格式不正确");
+        }
+        return cleaned;
+    }
+
+    private String requirePortalRequestFingerprint(String value) {
+        if (!StringUtils.hasText(value)
+                || !REQUEST_FINGERPRINT_PATTERN.matcher(value).matches()) {
+            throw new IllegalArgumentException(
+                    "Portal ALLOW 命令缺少有效 requestFingerprint");
+        }
+        return value;
     }
 
     private Long resolveCommandTenant(Long nodeId, String deviceCode) {

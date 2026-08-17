@@ -72,6 +72,7 @@ wifi:
   command:
     publish-max-attempts: ${WIFI_COMMAND_PUBLISH_MAX_ATTEMPTS:3}
     publish-retry-delay-seconds: ${WIFI_COMMAND_PUBLISH_RETRY_DELAY_SECONDS:3}
+    dispatch-lease-seconds: ${WIFI_COMMAND_DISPATCH_LEASE_SECONDS:30}
     result-timeout-seconds: ${WIFI_COMMAND_RESULT_TIMEOUT_SECONDS:15}
     scheduler-enabled: ${WIFI_COMMAND_SCHEDULER_ENABLED:true}
     scan-batch-size: ${WIFI_COMMAND_SCAN_BATCH_SIZE:50}

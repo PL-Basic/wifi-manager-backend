@@ -86,6 +86,9 @@ public class DeviceCommandOutboxServiceImpl implements DeviceCommandOutboxServic
         command.setStatus(DeviceCommandStatus.PENDING);
         command.setRetryCount(0);
         command.setNextRetryTime(now);
+        command.setDispatchWorkerId(null);
+        command.setDispatchLeaseUntil(null);
+        command.setDispatchClaimedTime(null);
         command.setPublishTime(null);
         command.setDeadlineTime(null);
         command.setResultTime(null);

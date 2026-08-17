@@ -26,7 +26,15 @@ public interface DeviceCommandService {
 
     DeviceNodeVO restoreDevice(Long tenantId, Long nodeId);
 
-    DeviceCommandResult allowClient(Long nodeId, String deviceCode, String mac, Long sessionId, Integer ttlSeconds);
+    DeviceCommandResult allowClient(
+            Long nodeId,
+            String deviceCode,
+            String mac,
+            Long sessionId,
+            Integer ttlSeconds,
+            Long actorUserId,
+            String clientRequestId,
+            String requestFingerprint);
 
     DeviceCommandResult refreshClientLease(Long nodeId, String deviceCode, String mac, Long sessionId, Integer ttlSeconds);
 

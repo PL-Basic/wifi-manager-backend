@@ -18,10 +18,15 @@ import com.plagod.service.SessionLeaseService;
 import com.plagod.utils.TenantScopeUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
@@ -44,13 +49,17 @@ public class MacBlacklistServiceImpl implements MacBlacklistService {
     private SessionLeaseService sessionLeaseService;
     @Autowired
     private DeviceCommandService deviceCommandService;
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     @Override
     @Audited(
             action = "blacklist.add",
             scope = Audited.Scope.TENANT,
             tenantIdSource = Audited.TenantIdSource.REQUEST)
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(
+            propagation = Propagation.NOT_SUPPORTED,
+            rollbackFor = Exception.class)
     public void addBlacklist(Long tenantId, MacBlacklistCreateDTO createDTO) {
         TenantScopeUtils.requireTenantId(tenantId);
         if (createDTO == null) {
@@ -68,8 +77,58 @@ public class MacBlacklistServiceImpl implements MacBlacklistService {
         }
 
         String reason = cleanReason(createDTO.getReason());
-        lockClientAccess(tenantId, mac);
+        TransactionTemplate transaction =
+                new TransactionTemplate(transactionManager);
+        transaction.setPropagationBehavior(
+                TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        List<Long> activeSessionIds = transaction.execute(status ->
+                prepareActiveSettlementIds(tenantId, mac));
+        if (activeSessionIds == null) {
+            throw new IllegalStateException("黑名单准备事务没有返回结果");
+        }
 
+        // 准备事务已释放客户端和 Session 行锁，逐个完成 User 最终结算。
+        for (Long sessionId : activeSessionIds) {
+            sessionLeaseService.settleFinalUsage(sessionId);
+        }
+
+        transaction.executeWithoutResult(status ->
+                addBlacklistAndCloseSessions(
+                        tenantId,
+                        createDTO,
+                        mac,
+                        reason,
+                        now));
+    }
+
+    private List<Long> prepareActiveSettlementIds(
+            Long tenantId,
+            String mac) {
+        lockClientAccess(tenantId, mac);
+        QueryWrapper<MacBlacklist> existingQuery = new QueryWrapper<>();
+        existingQuery.eq("tenant_id", tenantId).eq("mac", mac);
+        if (macBlacklistMapper.selectCount(existingQuery) > 0) {
+            throw new IllegalArgumentException("该 MAC 已存在黑名单记录");
+        }
+        List<SessionRecord> sessions =
+                sessionRecordMapper.selectAllocatedByMacForUpdate(
+                        tenantId, mac);
+        List<Long> activeSessionIds = new ArrayList<>();
+        for (SessionRecord session : sessions) {
+            if (SessionStatus.isActive(session.getStatus())) {
+                activeSessionIds.add(session.getSessionId());
+            }
+        }
+        return activeSessionIds;
+    }
+
+    private void addBlacklistAndCloseSessions(
+            Long tenantId,
+            MacBlacklistCreateDTO createDTO,
+            String mac,
+            String reason,
+            LocalDateTime now) {
+        lockClientAccess(tenantId, mac);
         QueryWrapper<MacBlacklist> existingQuery = new QueryWrapper<>();
         existingQuery.eq("tenant_id", tenantId).eq("mac", mac);
         if (macBlacklistMapper.selectCount(existingQuery) > 0) {
@@ -95,11 +154,6 @@ public class MacBlacklistServiceImpl implements MacBlacklistService {
 
         for (SessionRecord session : sessions) {
             boolean waitingReplacement = SessionStatus.isWaitingReplacement(session.getStatus());
-
-            // 只有固件已经确认放行的 ACTIVE Session 需要最终结算。
-            if (SessionStatus.isActive(session.getStatus())) {
-                sessionLeaseService.settleFinalUsage(session, now);
-            }
 
             session.setStatus(SessionStatus.CLOSED);
             session.setExpireTime(now);
