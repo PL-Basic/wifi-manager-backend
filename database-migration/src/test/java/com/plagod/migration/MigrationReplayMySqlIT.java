@@ -150,7 +150,7 @@ class MigrationReplayMySqlIT {
             return;
         }
         if ("verify-expand".equals(action)) {
-            verifyReplaySchemas(configuration, "2.9.2");
+            verifyReplaySchemas(configuration, "2.9.3");
             return;
         }
         if ("generated-columns".equals(action)) {
@@ -220,7 +220,7 @@ class MigrationReplayMySqlIT {
                     "select count(*) from flyway_schema_history "
                             + "where version in "
                             + "('2.4.2','2.5','2.5.1','2.6','2.7','2.8',"
-                            + "'2.9','2.9.1','2.9.2','2.10')"));
+                            + "'2.9','2.9.1','2.9.2','2.9.3','2.10')"));
             assertEquals(0L, queryLong(
                     connection,
                     "select count(*) from information_schema.tables "
@@ -354,9 +354,31 @@ class MigrationReplayMySqlIT {
                 false);
         assertEquals(1, candidate.migrate());
         candidate.validate();
-        assertCandidateLatest(configuration, schema);
+        assertC0Latest(configuration, schema);
         assertPreservedCounts(configuration, schema, before);
         assertTransactionOutboxIdempotencyContract(
+                configuration,
+                schema);
+        applyC01Candidate(configuration, schema);
+    }
+
+    private static void applyC01Candidate(
+            ReplayConfiguration configuration,
+            String schema) throws Exception {
+        assertOwnership(configuration, schema);
+        assertC0Latest(configuration, schema);
+        insertC01UpgradeFixtures(configuration, schema);
+        List<TableCount> before = readTableCounts(configuration, schema);
+        Flyway candidate = flyway(
+                configuration,
+                schema,
+                "2.9.3",
+                false);
+        assertEquals(1, candidate.migrate());
+        candidate.validate();
+        assertCandidateLatest(configuration, schema);
+        assertPreservedCounts(configuration, schema, before);
+        assertCrossCuttingRecoveryContract(
                 configuration,
                 schema);
     }
@@ -920,6 +942,12 @@ class MigrationReplayMySqlIT {
     private static void assertCandidateLatest(
             ReplayConfiguration configuration,
             String schema) throws SQLException {
+        assertSchemaState(configuration, schema, "2.9.3");
+    }
+
+    private static void assertC0Latest(
+            ReplayConfiguration configuration,
+            String schema) throws SQLException {
         assertSchemaState(configuration, schema, "2.9.2");
     }
 
@@ -969,6 +997,266 @@ class MigrationReplayMySqlIT {
                             + Math.abs((long) schema.hashCode()));
             assertEquals(1, statement.executeUpdate());
         }
+    }
+
+    private static void insertC01UpgradeFixtures(
+            ReplayConfiguration configuration,
+            String schema) throws SQLException {
+        long businessId =
+                9_300_000_000L + Math.abs((long) schema.hashCode());
+        try (Connection connection = configuration.openSchema(schema)) {
+            execute(
+                    connection,
+                    "insert into t_verify_code "
+                            + "(target, target_type, scene, code_hash, "
+                            + "verification_provider, provider_out_id, "
+                            + "send_status, verify_status, status, "
+                            + "expire_time) values "
+                            + "('c01-phone-" + configuration.runId
+                            + "', 'phone', 'register', 'unusable-test-hash', "
+                            + "'aliyun-number-auth', 'c01-provider-"
+                            + configuration.runId
+                            + "', 1, 0, 0, "
+                            + "date_add(current_timestamp, interval 1 hour))");
+            execute(
+                    connection,
+                    "insert into t_ai_review_task "
+                            + "(review_request_id, scene, business_type, "
+                            + "business_id, content_version, content_hash, "
+                            + "policy_version_id, task_status, attempt_count) "
+                            + "values ('c01-legacy-ai-"
+                            + configuration.runId
+                            + "', 'ANNOUNCEMENT_REVIEW', 'ANNOUNCEMENT', "
+                            + businessId + ", 1, '"
+                            + repeatHex(configuration.runId)
+                            + "', 9300000001, 'RUNNING', 1)");
+        }
+    }
+
+    private static void assertCrossCuttingRecoveryContract(
+            ReplayConfiguration configuration,
+            String schema) throws SQLException {
+        try (Connection connection = configuration.openSchema(schema)) {
+            assertEquals(3L, queryLong(
+                    connection,
+                    "select count(*) "
+                            + "from information_schema.columns "
+                            + "where table_schema = database() "
+                            + "and table_name = 't_verify_code' "
+                            + "and column_name in ("
+                            + "'verify_claim_owner',"
+                            + "'verify_lease_until',"
+                            + "'verify_claimed_time')"));
+            assertEquals(7L, queryLong(
+                    connection,
+                    "select count(*) "
+                            + "from information_schema.statistics "
+                            + "where table_schema = database() "
+                            + "and table_name = 't_verify_code' "
+                            + "and index_name = 'idx_verify_code_claim'"));
+            assertEquals(4L, queryLong(
+                    connection,
+                    "select count(*) "
+                            + "from information_schema.table_constraints "
+                            + "where constraint_schema = database() "
+                            + "and constraint_name in ("
+                            + "'chk_verify_code_claim_owner',"
+                            + "'chk_support_submission_review_task',"
+                            + "'chk_support_manual_without_ai_task',"
+                            + "'chk_ai_review_task_claim_owner')"));
+            assertEquals(0L, queryLong(
+                    connection,
+                    "select count(*) "
+                            + "from information_schema.table_constraints "
+                            + "where constraint_schema = database() "
+                            + "and table_name = 't_support_submission' "
+                            + "and constraint_name = "
+                            + "'t_support_submission_chk_12'"));
+
+            assertVerificationCodeClaimContract(
+                    connection,
+                    configuration.runId);
+            assertSupportManualReviewContract(
+                    connection,
+                    configuration.runId);
+            assertLegacyAiClaimRecoveryContract(
+                    connection,
+                    configuration.runId);
+        }
+    }
+
+    private static void assertVerificationCodeClaimContract(
+            Connection connection,
+            String runId) throws SQLException {
+        String target = "c01-phone-" + runId;
+        assertEquals(1L, queryLong(
+                connection,
+                "select count(*) from t_verify_code "
+                        + "where target = '" + target + "' "
+                        + "and verify_claim_owner is null "
+                        + "and verify_lease_until is null "
+                        + "and verify_claimed_time is null"));
+
+        assertThrows(
+                SQLException.class,
+                () -> execute(
+                        connection,
+                        "update t_verify_code "
+                                + "set verify_claim_owner = 'worker-c01' "
+                                + "where target = '" + target + "'"));
+        execute(
+                connection,
+                "update t_verify_code "
+                        + "set verify_claim_owner = 'worker-c01', "
+                        + "verify_claimed_time = current_timestamp, "
+                        + "verify_lease_until = date_add("
+                        + "current_timestamp, interval 1 minute) "
+                        + "where target = '" + target + "'");
+        assertThrows(
+                SQLException.class,
+                () -> execute(
+                        connection,
+                        "update t_verify_code "
+                                + "set verify_lease_until = date_sub("
+                                + "verify_claimed_time, interval 1 second) "
+                                + "where target = '" + target + "'"));
+        execute(
+                connection,
+                "update t_verify_code "
+                        + "set verify_claim_owner = null, "
+                        + "verify_claimed_time = null, "
+                        + "verify_lease_until = null "
+                        + "where target = '" + target + "'");
+    }
+
+    private static void assertSupportManualReviewContract(
+            Connection connection,
+            String runId) throws SQLException {
+        String fingerprint = repeatHex(runId);
+        execute(
+                connection,
+                "insert into t_support_submission "
+                        + "(tenant_id, user_id, client_request_id, "
+                        + "request_fingerprint, title, content_hash, "
+                        + "accepted_time, quota_date, status, "
+                        + "review_request_id, review_decision, "
+                        + "outcome_reason_code) values "
+                        + "(9400000001, 9400000002, 'c01-manual-" + runId
+                        + "', '" + fingerprint
+                        + "', 'C0.1 manual review', '" + fingerprint
+                        + "', current_timestamp, current_date, "
+                        + "'MANUAL_REVIEW', 'c01-manual-review-" + runId
+                        + "', 'MANUAL', 'AI_REVIEW_MANUAL_REQUIRED')");
+        assertEquals(1L, queryLong(
+                connection,
+                "select count(*) from t_support_submission "
+                        + "where client_request_id = 'c01-manual-" + runId
+                        + "' and status = 'MANUAL_REVIEW' "
+                        + "and ai_review_task_id is null"));
+
+        assertThrows(
+                SQLException.class,
+                () -> execute(
+                        connection,
+                        "insert into t_support_submission "
+                                + "(tenant_id, user_id, client_request_id, "
+                                + "request_fingerprint, title, content_hash, "
+                                + "accepted_time, quota_date, status, "
+                                + "review_request_id, review_decision, "
+                                + "outcome_reason_code) values "
+                                + "(9400000001, 9400000003, "
+                                + "'c01-bad-manual-" + runId
+                                + "', '" + fingerprint
+                                + "', 'Invalid manual review', '"
+                                + fingerprint
+                                + "', current_timestamp, current_date, "
+                                + "'MANUAL_REVIEW', 'c01-bad-review-" + runId
+                                + "', 'MANUAL', 'AI_PROVIDER_UNAVAILABLE')"));
+        assertThrows(
+                SQLException.class,
+                () -> execute(
+                        connection,
+                        "insert into t_support_submission "
+                                + "(tenant_id, user_id, client_request_id, "
+                                + "request_fingerprint, title, content_hash, "
+                                + "accepted_time, quota_date, status, "
+                                + "review_request_id, review_decision) values "
+                                + "(9400000001, 9400000004, "
+                                + "'c01-null-manual-" + runId
+                                + "', '" + fingerprint
+                                + "', 'Null manual reason', '"
+                                + fingerprint
+                                + "', current_timestamp, current_date, "
+                                + "'MANUAL_REVIEW', 'c01-null-review-" + runId
+                                + "', 'MANUAL')"));
+        assertThrows(
+                SQLException.class,
+                () -> execute(
+                        connection,
+                        "insert into t_support_submission "
+                                + "(tenant_id, user_id, client_request_id, "
+                                + "request_fingerprint, title, content_hash, "
+                                + "accepted_time, quota_date, status, "
+                                + "review_request_id, review_decision) values "
+                                + "(9400000001, 9400000005, "
+                                + "'c01-bad-accepted-" + runId
+                                + "', '" + fingerprint
+                                + "', 'Invalid accepted review', '"
+                                + fingerprint
+                                + "', current_timestamp, current_date, "
+                                + "'ACCEPTED', 'c01-bad-accepted-review-"
+                                + runId + "', 'APPROVE')"));
+    }
+
+    private static void assertLegacyAiClaimRecoveryContract(
+            Connection connection,
+            String runId) throws SQLException {
+        String requestId = "c01-legacy-ai-" + runId;
+        assertEquals(1L, queryLong(
+                connection,
+                "select count(*) from t_ai_review_task "
+                        + "where review_request_id = '" + requestId + "' "
+                        + "and task_status = 'QUEUED' "
+                        + "and worker_id is null "
+                        + "and lease_until is null "
+                        + "and claimed_time is null "
+                        + "and next_retry_time is not null "
+                        + "and last_error_code = "
+                        + "'LEGACY_RUNNING_CLAIM_RECOVERED' "
+                        + "and attempt_count = 1"));
+
+        assertThrows(
+                SQLException.class,
+                () -> execute(
+                        connection,
+                        "update t_ai_review_task "
+                                + "set task_status = 'RUNNING' "
+                                + "where review_request_id = '"
+                                + requestId + "'"));
+        execute(
+                connection,
+                "update t_ai_review_task "
+                        + "set task_status = 'RUNNING', "
+                        + "worker_id = 'worker-c01', "
+                        + "claimed_time = current_timestamp, "
+                        + "lease_until = date_add("
+                        + "current_timestamp, interval 1 minute) "
+                        + "where review_request_id = '" + requestId + "'");
+        assertThrows(
+                SQLException.class,
+                () -> execute(
+                        connection,
+                        "update t_ai_review_task "
+                                + "set task_status = 'QUEUED' "
+                                + "where review_request_id = '"
+                                + requestId + "'"));
+        execute(
+                connection,
+                "update t_ai_review_task "
+                        + "set task_status = 'QUEUED', "
+                        + "worker_id = null, lease_until = null, "
+                        + "claimed_time = null "
+                        + "where review_request_id = '" + requestId + "'");
     }
 
     private static void assertTransactionOutboxIdempotencyContract(
