@@ -22,6 +22,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.aop.framework.ProxyFactory;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
+import org.springframework.transaction.interceptor.TransactionInterceptor;
+import org.springframework.transaction.support.AbstractPlatformTransactionManager;
+import org.springframework.transaction.support.DefaultTransactionStatus;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
@@ -29,6 +37,7 @@ import java.time.LocalDateTime;
 import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -65,18 +74,105 @@ class ClientLocationRegressionTest {
     private GeofenceEvaluationService geofenceEvaluationService;
 
     private ClientLocationServiceImpl clientLocationService;
+    private DeviceLocationSessionGateway deviceLocationSessionGateway;
 
     @BeforeEach
     void setUp() {
         clientLocationService = new ClientLocationServiceImpl();
+        deviceLocationSessionGateway = deviceLocationSessionGateway();
+        ClientLocationReportTransactionService reportTransactionService =
+                reportTransactionService();
 
         ReflectionTestUtils.setField(clientLocationService, "clientLocationMapper", clientLocationMapper);
         ReflectionTestUtils.setField(clientLocationService, "locationAuthorizationMapper", locationAuthorizationMapper);
-        ReflectionTestUtils.setField(clientLocationService, "deviceLocationSessionClient", deviceLocationSessionClient);
+        ReflectionTestUtils.setField(clientLocationService, "deviceLocationSessionGateway", deviceLocationSessionGateway);
+        ReflectionTestUtils.setField(clientLocationService, "reportTransactionService", reportTransactionService);
         ReflectionTestUtils.setField(clientLocationService, "geofenceEvaluationService", geofenceEvaluationService);
         ReflectionTestUtils.setField(clientLocationService, "tenantScope", new MonitorTenantScope());
         ReflectionTestUtils.setField(clientLocationService, "minimumReportIntervalSeconds", 3L);
         ReflectionTestUtils.setField(clientLocationService, "maximumSpeedMetersPerSecond", 100.0D);
+    }
+
+    @Test
+    void deviceFeignSuspendsAndRestoresCallerTransaction() {
+        TestTransactionManager transactionManager =
+                new TestTransactionManager();
+        DeviceLocationSessionGateway gatewayProxy =
+                transactionProxy(
+                        deviceLocationSessionGateway(),
+                        transactionManager);
+        ClientLocationReportTransactionService transactionTarget =
+                reportTransactionService();
+        ReflectionTestUtils.setField(
+                clientLocationService,
+                "deviceLocationSessionGateway",
+                gatewayProxy);
+        ReflectionTestUtils.setField(
+                clientLocationService,
+                "reportTransactionService",
+                transactionProxy(
+                        transactionTarget,
+                        transactionManager));
+
+        LocationAuthorization authorization = enabledAuthorization();
+        when(deviceLocationSessionClient.getLocationContext(SESSION_ID))
+                .thenAnswer(invocation -> {
+                    assertFalse(TransactionSynchronizationManager
+                            .isActualTransactionActive());
+                    return ApiResponse.success(sessionContext());
+                });
+        when(locationAuthorizationMapper.ensureAuthorizationRowByTenant(
+                TENANT_A,
+                USER_ID)).thenAnswer(invocation -> {
+                    assertTrue(TransactionSynchronizationManager
+                            .isActualTransactionActive());
+                    return 1;
+                });
+        when(locationAuthorizationMapper.selectByUserIdForUpdateAndTenant(
+                TENANT_A,
+                USER_ID)).thenReturn(authorization);
+        when(clientLocationMapper.selectLatestTrustedPointByTenant(
+                TENANT_A,
+                USER_ID,
+                SESSION_ID)).thenReturn(null);
+        when(clientLocationMapper.insert(any(ClientLocation.class)))
+                .thenAnswer(invocation -> {
+                    ClientLocation location = invocation.getArgument(0);
+                    location.setId(302L);
+                    return 1;
+                });
+        when(locationAuthorizationMapper.updateByTenantAndVersion(
+                eq(TENANT_A),
+                eq(USER_ID),
+                eq(1),
+                eq(authorization.getConsentTime()),
+                isNull(),
+                any(LocalDateTime.class),
+                eq(0))).thenReturn(1);
+
+        TransactionTemplate outerTransaction =
+                new TransactionTemplate(transactionManager);
+        Long locationId = outerTransaction.execute(status -> {
+            assertTrue(TransactionSynchronizationManager
+                    .isActualTransactionActive());
+            assertTrue(TransactionSynchronizationManager
+                    .isSynchronizationActive());
+            Long result = clientLocationService.report(
+                    tenantContext(TENANT_A),
+                    SESSION_ID,
+                    locationRequest());
+            assertTrue(TransactionSynchronizationManager
+                    .isActualTransactionActive());
+            assertTrue(TransactionSynchronizationManager
+                    .isSynchronizationActive());
+            return result;
+        });
+
+        assertEquals(302L, locationId);
+        assertFalse(TransactionSynchronizationManager
+                .isActualTransactionActive());
+        assertFalse(TransactionSynchronizationManager
+                .isSynchronizationActive());
     }
 
     @Test
@@ -353,6 +449,49 @@ class ClientLocationRegressionTest {
         return authorization;
     }
 
+    private ClientLocationReportTransactionService reportTransactionService() {
+        ClientLocationReportTransactionService service =
+                new ClientLocationReportTransactionService();
+        ReflectionTestUtils.setField(
+                service,
+                "clientLocationMapper",
+                clientLocationMapper);
+        ReflectionTestUtils.setField(
+                service,
+                "locationAuthorizationMapper",
+                locationAuthorizationMapper);
+        ReflectionTestUtils.setField(
+                service,
+                "geofenceEvaluationService",
+                geofenceEvaluationService);
+        return service;
+    }
+
+    private DeviceLocationSessionGateway deviceLocationSessionGateway() {
+        DeviceLocationSessionGateway gateway =
+                new DeviceLocationSessionGateway();
+        ReflectionTestUtils.setField(
+                gateway,
+                "deviceLocationSessionClient",
+                deviceLocationSessionClient);
+        return gateway;
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> T transactionProxy(
+            T target,
+            TestTransactionManager transactionManager) {
+        ProxyFactory proxyFactory = new ProxyFactory(target);
+        proxyFactory.setProxyTargetClass(true);
+        TransactionInterceptor transactionInterceptor =
+                new TransactionInterceptor();
+        transactionInterceptor.setTransactionManager(transactionManager);
+        transactionInterceptor.setTransactionAttributeSource(
+                new AnnotationTransactionAttributeSource());
+        proxyFactory.addAdvice(transactionInterceptor);
+        return (T) proxyFactory.getProxy();
+    }
+
     private TrustedRequestContext tenantContext(Long tenantId) {
         return TrustedRequestContext.user(
                 TrustedSource.GATEWAY_USER,
@@ -368,5 +507,68 @@ class ClientLocationRegressionTest {
                 1L,
                 Collections.emptyList(),
                 "request-location-" + tenantId);
+    }
+
+    private static final class TestTransactionManager
+            extends AbstractPlatformTransactionManager {
+
+        private final ThreadLocal<TestTransaction> currentTransaction =
+                new ThreadLocal<>();
+
+        @Override
+        protected Object doGetTransaction() {
+            TestTransaction transaction = currentTransaction.get();
+            return transaction == null
+                    ? new TestTransaction()
+                    : transaction;
+        }
+
+        @Override
+        protected boolean isExistingTransaction(Object transaction) {
+            return ((TestTransaction) transaction).active;
+        }
+
+        @Override
+        protected void doBegin(
+                Object transaction,
+                TransactionDefinition definition) {
+            TestTransaction testTransaction =
+                    (TestTransaction) transaction;
+            testTransaction.active = true;
+            currentTransaction.set(testTransaction);
+        }
+
+        @Override
+        protected Object doSuspend(Object transaction) {
+            currentTransaction.remove();
+            return transaction;
+        }
+
+        @Override
+        protected void doResume(
+                Object transaction,
+                Object suspendedResources) {
+            currentTransaction.set(
+                    (TestTransaction) suspendedResources);
+        }
+
+        @Override
+        protected void doCommit(DefaultTransactionStatus status) {
+        }
+
+        @Override
+        protected void doRollback(DefaultTransactionStatus status) {
+        }
+
+        @Override
+        protected void doCleanupAfterCompletion(Object transaction) {
+            ((TestTransaction) transaction).active = false;
+            currentTransaction.remove();
+        }
+    }
+
+    private static final class TestTransaction {
+
+        private boolean active;
     }
 }
