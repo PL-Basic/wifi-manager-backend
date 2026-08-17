@@ -8,9 +8,14 @@ import com.plagod.dto.tenant.DefaultTenantMembershipRequest;
 import com.plagod.dto.tenant.TenantCreateRequest;
 import com.plagod.dto.tenant.TenantStatusRequest;
 import com.plagod.entity.Tenant;
+import com.plagod.entity.TenantCreationReceipt;
+import com.plagod.entity.TenantDomainOutbox;
 import com.plagod.entity.TenantMember;
 import com.plagod.exception.ApiStatusException;
+import com.plagod.exception.ApiErrorKey;
 import com.plagod.mapper.SaasPlanMapper;
+import com.plagod.mapper.TenantCreationReceiptMapper;
+import com.plagod.mapper.TenantDomainOutboxMapper;
 import com.plagod.mapper.TenantMapper;
 import com.plagod.mapper.TenantMemberMapper;
 import com.plagod.mapper.TenantSubscriptionMapper;
@@ -24,10 +29,15 @@ import com.plagod.vo.user.UserRoleSnapshotVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.AbstractPlatformTransactionManager;
+import org.springframework.transaction.support.DefaultTransactionStatus;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -44,6 +54,8 @@ class TenantServiceImplTest {
 
     private TenantMapper tenantMapper;
     private TenantMemberMapper tenantMemberMapper;
+    private TenantCreationReceiptMapper creationReceiptMapper;
+    private TenantDomainOutboxMapper tenantDomainOutboxMapper;
     private UserRoleClient userRoleClient;
     private TenantServiceImpl service;
 
@@ -51,13 +63,20 @@ class TenantServiceImplTest {
     void setUp() {
         tenantMapper = mock(TenantMapper.class);
         tenantMemberMapper = mock(TenantMemberMapper.class);
+        creationReceiptMapper =
+                mock(TenantCreationReceiptMapper.class);
+        tenantDomainOutboxMapper =
+                mock(TenantDomainOutboxMapper.class);
         userRoleClient = mock(UserRoleClient.class);
         service = new TenantServiceImpl(
                 tenantMapper,
                 tenantMemberMapper,
                 mock(SaasPlanMapper.class),
                 mock(TenantSubscriptionMapper.class),
-                userRoleClient);
+                creationReceiptMapper,
+                tenantDomainOutboxMapper,
+                userRoleClient,
+                new TestTransactionManager());
     }
 
     @Test
@@ -69,6 +88,159 @@ class TenantServiceImplTest {
 
         assertEquals(403, exception.getHttpStatus());
         verify(tenantMapper, never()).insert(any(Tenant.class));
+    }
+
+    @Test
+    void createTenantReplaysNormalizedInputWithoutDuplicateWrites() {
+        AtomicReference<TenantCreationReceipt> storedReceipt =
+                new AtomicReference<>();
+        AtomicReference<Tenant> storedTenant =
+                new AtomicReference<>();
+        when(creationReceiptMapper.selectOne(any()))
+                .thenAnswer(invocation -> storedReceipt.get());
+        when(tenantMapper.selectById(41L))
+                .thenAnswer(invocation -> storedTenant.get());
+        when(tenantMemberMapper.selectCount(any())).thenReturn(1L);
+        when(userRoleClient.getRoleSnapshots(any()))
+                .thenAnswer(invocation -> {
+                    assertFalse(TransactionSynchronizationManager
+                            .isActualTransactionActive());
+                    return ApiResponse.success(
+                            Collections.singletonList(
+                                    activePlatformUser()));
+                });
+        when(tenantMapper.insert(any(Tenant.class)))
+                .thenAnswer(invocation -> {
+                    assertTrue(TransactionSynchronizationManager
+                            .isActualTransactionActive());
+                    Tenant tenant = invocation.getArgument(0);
+                    tenant.setTenantId(41L);
+                    storedTenant.set(tenant);
+                    return 1;
+                });
+        when(tenantMemberMapper.insert(any(TenantMember.class)))
+                .thenAnswer(invocation -> {
+                    assertTrue(TransactionSynchronizationManager
+                            .isActualTransactionActive());
+                    return 1;
+                });
+        when(tenantDomainOutboxMapper.insert(
+                any(TenantDomainOutbox.class)))
+                .thenAnswer(invocation -> {
+                    assertTrue(TransactionSynchronizationManager
+                            .isActualTransactionActive());
+                    return 1;
+                });
+        when(creationReceiptMapper.insert(
+                any(TenantCreationReceipt.class)))
+                .thenAnswer(invocation -> {
+                    assertTrue(TransactionSynchronizationManager
+                            .isActualTransactionActive());
+                    storedReceipt.set(invocation.getArgument(0));
+                    return 1;
+                });
+
+        TenantCreateRequest first =
+                createRequest("request-tenant-1",
+                        "  示例租户  ",
+                        "  Asia/Shanghai  ");
+        TenantCreateRequest replay =
+                createRequest("request-tenant-1",
+                        "示例租户",
+                        "Asia/Shanghai");
+
+        assertEquals("41",
+                service.createTenant(
+                        first,
+                        platformContext()).getTenantId());
+        assertEquals("41",
+                service.createTenant(
+                        replay,
+                        platformContext()).getTenantId());
+
+        verify(userRoleClient).getRoleSnapshots(any());
+        verify(tenantMapper).insert(any(Tenant.class));
+        verify(tenantMemberMapper)
+                .insert(any(TenantMember.class));
+        verify(tenantDomainOutboxMapper)
+                .insert(any(TenantDomainOutbox.class));
+        verify(creationReceiptMapper)
+                .insert(any(TenantCreationReceipt.class));
+
+        TenantCreationReceipt receipt = storedReceipt.get();
+        assertEquals(1L, receipt.getPlatformActorId());
+        assertEquals("request-tenant-1",
+                receipt.getClientRequestId());
+        assertEquals(64,
+                receipt.getRequestFingerprint().length());
+        assertEquals(41L, receipt.getTargetTenantId());
+        assertEquals("APPLIED", receipt.getReceiptStatus());
+
+        ArgumentCaptor<TenantDomainOutbox> outboxCaptor =
+                ArgumentCaptor.forClass(TenantDomainOutbox.class);
+        verify(tenantDomainOutboxMapper)
+                .insert(outboxCaptor.capture());
+        assertEquals(64, outboxCaptor.getValue()
+                .getEventId().length());
+        assertEquals("TENANT_CREATED",
+                outboxCaptor.getValue().getEventType());
+        assertEquals("PENDING",
+                outboxCaptor.getValue().getOutboxStatus());
+    }
+
+    @Test
+    void reusedClientRequestIdWithDifferentInputConflicts() {
+        TenantCreationReceipt receipt =
+                new TenantCreationReceipt();
+        receipt.setPlatformActorId(1L);
+        receipt.setClientRequestId("request-tenant-2");
+        receipt.setRequestFingerprint(
+                "0000000000000000000000000000000000000000000000000000000000000000");
+        receipt.setTargetTenantId(41L);
+        receipt.setReceiptStatus("APPLIED");
+        when(creationReceiptMapper.selectOne(any()))
+                .thenReturn(receipt);
+
+        ApiStatusException exception = assertThrows(
+                ApiStatusException.class,
+                () -> service.createTenant(
+                        createRequest(
+                                "request-tenant-2",
+                                "不同租户",
+                                "Asia/Shanghai"),
+                        platformContext()));
+
+        assertEquals(409, exception.getHttpStatus());
+        assertEquals(
+                ApiErrorKey.IDEMPOTENCY_KEY_CONFLICT.value(),
+                exception.getErrorKey());
+        verify(userRoleClient, never())
+                .getRoleSnapshots(any());
+        verify(tenantMapper, never())
+                .insert(any(Tenant.class));
+        verify(tenantDomainOutboxMapper, never())
+                .insert(any(TenantDomainOutbox.class));
+    }
+
+    @Test
+    void clientRequestIdNeverFallsBackToRequestContext() {
+        TenantCreateRequest request = createRequest(
+                null,
+                "示例租户",
+                "Asia/Shanghai");
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service.createTenant(
+                        request,
+                        platformContext()));
+
+        verify(creationReceiptMapper, never())
+                .selectOne(any());
+        verify(userRoleClient, never())
+                .getRoleSnapshots(any());
+        verify(tenantMapper, never())
+                .insert(any(Tenant.class));
     }
 
     @Test
@@ -95,10 +267,20 @@ class TenantServiceImplTest {
         user.setRole(2);
         user.setStatus(1);
         when(userRoleClient.getRoleSnapshots(any()))
-                .thenReturn(ApiResponse.success(Collections.singletonList(user)));
+                .thenAnswer(invocation -> {
+                    assertFalse(TransactionSynchronizationManager
+                            .isActualTransactionActive());
+                    return ApiResponse.success(
+                            Collections.singletonList(user));
+                });
 
         Tenant tenant = tenant(1L, "default-tenant");
-        when(tenantMapper.selectOne(any())).thenReturn(tenant);
+        when(tenantMapper.selectOne(any()))
+                .thenAnswer(invocation -> {
+                    assertTrue(TransactionSynchronizationManager
+                            .isActualTransactionActive());
+                    return tenant;
+                });
 
         TenantMember member = new TenantMember();
         member.setMemberId(11L);
@@ -118,6 +300,8 @@ class TenantServiceImplTest {
         assertDoesNotThrow(() -> service.ensureDefaultMembership(request));
         verify(tenantMemberMapper, never()).insert(any(TenantMember.class));
         verify(tenantMemberMapper, never()).update(any(), any());
+        verify(tenantDomainOutboxMapper, never())
+                .insert(any(TenantDomainOutbox.class));
     }
 
     @Test
@@ -238,9 +422,25 @@ class TenantServiceImplTest {
         user.setRole(2);
         user.setStatus(1);
         when(userRoleClient.getRoleSnapshots(any()))
-                .thenReturn(ApiResponse.success(Collections.singletonList(user)));
-        when(tenantMapper.selectOne(any())).thenReturn(tenant(1L, "default-tenant"));
+                .thenAnswer(invocation -> {
+                    assertFalse(TransactionSynchronizationManager
+                            .isActualTransactionActive());
+                    return ApiResponse.success(
+                            Collections.singletonList(user));
+                });
+        when(tenantMapper.selectOne(any()))
+                .thenAnswer(invocation -> {
+                    assertTrue(TransactionSynchronizationManager
+                            .isActualTransactionActive());
+                    return tenant(1L, "default-tenant");
+                });
         when(tenantMemberMapper.selectOne(any())).thenReturn(null);
+        when(tenantMemberMapper.insert(any(TenantMember.class)))
+                .thenAnswer(invocation -> {
+                    assertTrue(TransactionSynchronizationManager
+                            .isActualTransactionActive());
+                    return 1;
+                });
 
         DefaultTenantMembershipRequest request = new DefaultTenantMembershipRequest();
         request.setEventId("event-2");
@@ -255,6 +455,28 @@ class TenantServiceImplTest {
         verify(tenantMemberMapper).insert(memberCaptor.capture());
         assertFalse(memberCaptor.getValue().getJoinTime().isBefore(before));
         assertFalse(memberCaptor.getValue().getJoinTime().isAfter(after));
+        verify(tenantDomainOutboxMapper, never())
+                .insert(any(TenantDomainOutbox.class));
+    }
+
+    private TenantCreateRequest createRequest(
+            String clientRequestId,
+            String name,
+            String timezone) {
+        TenantCreateRequest request = new TenantCreateRequest();
+        request.setClientRequestId(clientRequestId);
+        request.setTenantCode("tenant-a");
+        request.setName(name);
+        request.setTimezone(timezone);
+        return request;
+    }
+
+    private UserRoleSnapshotVO activePlatformUser() {
+        UserRoleSnapshotVO user = new UserRoleSnapshotVO();
+        user.setUserId("1");
+        user.setRole(0);
+        user.setStatus(1);
+        return user;
     }
 
     private Tenant tenant(Long id, String code) {
@@ -322,5 +544,32 @@ class TenantServiceImplTest {
                 1L,
                 Collections.emptyList(),
                 "request-1234567890");
+    }
+
+    private static final class TestTransactionManager
+            extends AbstractPlatformTransactionManager {
+
+        private static final long serialVersionUID = 1L;
+
+        @Override
+        protected Object doGetTransaction() {
+            return new Object();
+        }
+
+        @Override
+        protected void doBegin(
+                Object transaction,
+                TransactionDefinition definition) {
+        }
+
+        @Override
+        protected void doCommit(
+                DefaultTransactionStatus status) {
+        }
+
+        @Override
+        protected void doRollback(
+                DefaultTransactionStatus status) {
+        }
     }
 }
