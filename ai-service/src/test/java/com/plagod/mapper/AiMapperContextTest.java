@@ -13,6 +13,7 @@ class AiMapperContextTest {
                 AiPolicyMapper.class,
                 AiPolicyVersionMapper.class,
                 AiProviderMapper.class,
+                AiReviewTaskInputMapper.class,
                 AiReviewTaskMapper.class);
     }
 }

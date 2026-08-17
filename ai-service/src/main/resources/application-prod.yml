@@ -1,0 +1,28 @@
+spring:
+  datasource:
+    url: "${MYSQL_URL}"
+    username: "${MYSQL_USERNAME}"
+    password: "${MYSQL_PASSWORD}"
+
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
+
+wifi:
+  internal:
+    token: "${WIFI_INTERNAL_TOKEN}"
+  security:
+    gateway-token: "${WIFI_GATEWAY_TOKEN}"
+    internal-token: "${WIFI_INTERNAL_TOKEN}"
+    internal-token-required: true
+  ai:
+    provider:
+      selected: "${WIFI_AI_PROVIDER_SELECTED}"
+      http:
+        enabled: "${WIFI_AI_HTTP_PROVIDER_ENABLED}"
+        provider-code: "${WIFI_AI_HTTP_PROVIDER_CODE}"
+        endpoint: "${WIFI_AI_HTTP_PROVIDER_ENDPOINT}"
+        model: "${WIFI_AI_HTTP_PROVIDER_MODEL}"
+        api-key: "${WIFI_AI_HTTP_PROVIDER_API_KEY}"
+        no-training-supported: "${WIFI_AI_HTTP_NO_TRAINING_SUPPORTED}"
+        retention-mode: "${WIFI_AI_HTTP_RETENTION_MODE}"
