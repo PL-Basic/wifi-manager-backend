@@ -63,6 +63,7 @@ import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MigrationReplayMySqlIT {
@@ -149,7 +150,7 @@ class MigrationReplayMySqlIT {
             return;
         }
         if ("verify-expand".equals(action)) {
-            verifyReplaySchemas(configuration, "2.9.1");
+            verifyReplaySchemas(configuration, "2.9.2");
             return;
         }
         if ("generated-columns".equals(action)) {
@@ -219,7 +220,7 @@ class MigrationReplayMySqlIT {
                     "select count(*) from flyway_schema_history "
                             + "where version in "
                             + "('2.4.2','2.5','2.5.1','2.6','2.7','2.8',"
-                            + "'2.9','2.9.1','2.10')"));
+                            + "'2.9','2.9.1','2.9.2','2.10')"));
             assertEquals(0L, queryLong(
                     connection,
                     "select count(*) from information_schema.tables "
@@ -233,7 +234,9 @@ class MigrationReplayMySqlIT {
                             + "'t_support_ticket_transition',"
                             + "'t_tenant_creation_receipt',"
                             + "'t_tenant_domain_outbox',"
-                            + "'t_announcement_action_request')"));
+                            + "'t_announcement_action_request',"
+                            + "'t_user_auth_session_revoke_outbox',"
+                            + "'t_entitlement_lease_receipt')"));
         }
     }
 
@@ -296,7 +299,13 @@ class MigrationReplayMySqlIT {
                 false);
         assertEquals(14, latest.migrate());
         latest.validate();
-        assertCandidateLatest(configuration, configuration.emptySchema);
+        assertFlywayLatest(
+                configuration,
+                configuration.emptySchema,
+                "2.9.1");
+        applyC0Candidate(
+                configuration,
+                configuration.emptySchema);
     }
 
     private static void restoreSnapshot(
@@ -324,8 +333,32 @@ class MigrationReplayMySqlIT {
         int migrated = latest.migrate();
         assertEquals(expectedMigrations, migrated);
         latest.validate();
+        assertFlywayLatest(configuration, schema, "2.9.1");
+        assertPreservedCounts(configuration, schema, before);
+        applyC0Candidate(configuration, schema);
+    }
+
+    private static void applyC0Candidate(
+            ReplayConfiguration configuration,
+            String schema) throws Exception {
+        assertOwnership(configuration, schema);
+        assertFlywayLatest(configuration, schema, "2.9.1");
+        insertLegalDefaultMembershipOutboxRow(
+                configuration,
+                schema);
+        List<TableCount> before = readTableCounts(configuration, schema);
+        Flyway candidate = flyway(
+                configuration,
+                schema,
+                "2.9.2",
+                false);
+        assertEquals(1, candidate.migrate());
+        candidate.validate();
         assertCandidateLatest(configuration, schema);
         assertPreservedCounts(configuration, schema, before);
+        assertTransactionOutboxIdempotencyContract(
+                configuration,
+                schema);
     }
 
     private static void applyContract(
@@ -887,7 +920,7 @@ class MigrationReplayMySqlIT {
     private static void assertCandidateLatest(
             ReplayConfiguration configuration,
             String schema) throws SQLException {
-        assertSchemaState(configuration, schema, "2.9.1");
+        assertSchemaState(configuration, schema, "2.9.2");
     }
 
     private static void assertContractLatest(
@@ -902,7 +935,9 @@ class MigrationReplayMySqlIT {
             String expectedVersion) throws SQLException {
         assertFlywayLatest(configuration, schema, expectedVersion);
         try (Connection connection = configuration.openSchema(schema)) {
-            assertEquals(70L, queryLong(
+            long expectedTableCount =
+                    "2.9.1".equals(expectedVersion) ? 70L : 72L;
+            assertEquals(expectedTableCount, queryLong(
                     connection,
                     "select count(*) from information_schema.tables "
                             + "where table_schema = database() "
@@ -911,6 +946,275 @@ class MigrationReplayMySqlIT {
                             + "('__wifi_test_ownership',"
                             + "'flyway_schema_history')"));
         }
+    }
+
+    private static void insertLegalDefaultMembershipOutboxRow(
+            ReplayConfiguration configuration,
+            String schema) throws SQLException {
+        try (Connection connection = configuration.openSchema(schema);
+             PreparedStatement statement = connection.prepareStatement(
+                     "insert into t_default_tenant_membership_outbox "
+                             + "(event_id, idempotency_key, "
+                             + "request_fingerprint, user_id, role, status, "
+                             + "retry_count, next_retry_time) "
+                             + "values (?, ?, ?, ?, 2, 'PENDING', 0, "
+                             + "current_timestamp)")) {
+            String key = "c0-legal-" + configuration.runId;
+            statement.setString(1, key + "-event");
+            statement.setString(2, key);
+            statement.setString(3, repeatHex(configuration.runId));
+            statement.setLong(
+                    4,
+                    9_000_000_000L
+                            + Math.abs((long) schema.hashCode()));
+            assertEquals(1, statement.executeUpdate());
+        }
+    }
+
+    private static void assertTransactionOutboxIdempotencyContract(
+            ReplayConfiguration configuration,
+            String schema) throws SQLException {
+        try (Connection connection = configuration.openSchema(schema)) {
+            String key = "c0-legal-" + configuration.runId;
+            assertEquals(1L, queryLong(
+                    connection,
+                    "select count(*) "
+                            + "from t_default_tenant_membership_outbox "
+                            + "where idempotency_key = '" + key + "' "
+                            + "and status = 'PENDING' "
+                            + "and worker_id is null "
+                            + "and lease_until is null"));
+            assertEquals(2L, queryLong(
+                    connection,
+                    "select count(*) "
+                            + "from information_schema.tables "
+                            + "where table_schema = database() "
+                            + "and table_name in ("
+                            + "'t_user_auth_session_revoke_outbox',"
+                            + "'t_entitlement_lease_receipt')"));
+            assertEquals(2L, queryLong(
+                    connection,
+                    "select count(*) "
+                            + "from information_schema.table_constraints "
+                            + "where table_schema = database() "
+                            + "and table_name = "
+                            + "'t_default_tenant_membership_outbox' "
+                            + "and constraint_name in ("
+                            + "'chk_default_membership_outbox_status',"
+                            + "'chk_default_membership_claim_owner')"));
+
+            assertDefaultMembershipLeaseContract(connection, key);
+            assertAuthRevokeOutboxContract(
+                    connection,
+                    configuration.runId);
+            assertEntitlementLeaseReceiptContract(
+                    connection,
+                    configuration.runId);
+        }
+    }
+
+    private static void assertDefaultMembershipLeaseContract(
+            Connection connection,
+            String key) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "update t_default_tenant_membership_outbox "
+                        + "set status = 'PROCESSING', worker_id = 'worker-c0', "
+                        + "claimed_time = current_timestamp, "
+                        + "lease_until = date_add(current_timestamp, "
+                        + "interval 1 minute) "
+                        + "where idempotency_key = ?")) {
+            statement.setString(1, key);
+            assertEquals(1, statement.executeUpdate());
+        }
+
+        assertThrows(
+                SQLException.class,
+                () -> execute(
+                        connection,
+                        "update t_default_tenant_membership_outbox "
+                                + "set lease_until = date_sub("
+                                + "claimed_time, interval 1 second) "
+                                + "where idempotency_key = '" + key + "'"));
+
+        try (PreparedStatement statement = connection.prepareStatement(
+                "update t_default_tenant_membership_outbox "
+                        + "set status = 'PENDING', worker_id = null, "
+                        + "lease_until = null, claimed_time = null "
+                        + "where idempotency_key = ?")) {
+            statement.setString(1, key);
+            assertEquals(1, statement.executeUpdate());
+        }
+    }
+
+    private static void assertAuthRevokeOutboxContract(
+            Connection connection,
+            String runId) throws SQLException {
+        execute(
+                connection,
+                "insert into t_user_auth_session_revoke_outbox "
+                        + "(event_id, user_id, revoke_reason, status) values "
+                        + "('auth-pending-" + runId
+                        + "', 9100000001, 'PASSWORD_CHANGED', 'PENDING')");
+        execute(
+                connection,
+                "insert into t_user_auth_session_revoke_outbox "
+                        + "(event_id, user_id, revoke_reason, status, "
+                        + "worker_id, claimed_time, lease_until) values "
+                        + "('auth-processing-" + runId
+                        + "', 9100000002, 'PASSWORD_CHANGED', 'PROCESSING', "
+                        + "'worker-c0', current_timestamp, "
+                        + "date_add(current_timestamp, interval 1 minute))");
+        execute(
+                connection,
+                "insert into t_user_auth_session_revoke_outbox "
+                        + "(event_id, user_id, revoke_reason, status, "
+                        + "next_retry_time, completed_time) values "
+                        + "('auth-succeeded-" + runId
+                        + "', 9100000003, 'PASSWORD_CHANGED', 'SUCCEEDED', "
+                        + "null, current_timestamp)");
+
+        assertThrows(
+                SQLException.class,
+                () -> execute(
+                        connection,
+                        "insert into t_user_auth_session_revoke_outbox "
+                                + "(event_id, user_id, revoke_reason, status, "
+                                + "worker_id, claimed_time, lease_until) "
+                                + "values ('auth-bad-lease-" + runId
+                                + "', 9100000004, 'PASSWORD_CHANGED', "
+                                + "'PROCESSING', 'worker-c0', "
+                                + "current_timestamp, "
+                                + "date_sub(current_timestamp, "
+                                + "interval 1 second))"));
+        assertThrows(
+                SQLException.class,
+                () -> execute(
+                        connection,
+                        "insert into t_user_auth_session_revoke_outbox "
+                                + "(event_id, user_id, revoke_reason, status, "
+                                + "next_retry_time) values "
+                                + "('auth-bad-terminal-" + runId
+                                + "', 9100000005, 'PASSWORD_CHANGED', "
+                                + "'DEAD', null)"));
+    }
+
+    private static void assertEntitlementLeaseReceiptContract(
+            Connection connection,
+            String runId) throws SQLException {
+        String fingerprint = repeatHex(runId);
+        execute(
+                connection,
+                "insert into t_entitlement_lease_receipt "
+                        + "(tenant_id, request_id, request_fingerprint, "
+                        + "user_id, session_id, usage_seconds, "
+                        + "requested_ttl_seconds, receipt_status, "
+                        + "result_allowed, result_charged_seconds, "
+                        + "result_reason, completed_time) values "
+                        + "(9200000001, 'lease-denied-" + runId + "', '"
+                        + fingerprint
+                        + "', 9200000002, 9200000003, 0, 20, 'COMPLETED', "
+                        + "0, 0, 'USER_UNAVAILABLE', current_timestamp)");
+        execute(
+                connection,
+                "insert into t_entitlement_lease_receipt "
+                        + "(tenant_id, request_id, request_fingerprint, "
+                        + "entitlement_id, user_id, session_id, "
+                        + "usage_seconds, requested_ttl_seconds, "
+                        + "receipt_status, result_allowed, "
+                        + "result_entitlement_id, result_mode, "
+                        + "result_ttl_seconds, result_charged_seconds, "
+                        + "result_remaining_seconds, result_reason, "
+                        + "completed_time) values "
+                        + "(9200000001, 'lease-allowed-" + runId + "', '"
+                        + fingerprint
+                        + "', 9200000004, 9200000002, 9200000003, 5, 20, "
+                        + "'COMPLETED', 1, 9200000004, 'DURATION', "
+                        + "15, 5, 95, 'DURATION_AVAILABLE', "
+                        + "current_timestamp)");
+
+        assertThrows(
+                SQLException.class,
+                () -> execute(
+                        connection,
+                        "insert into t_entitlement_lease_receipt "
+                                + "(tenant_id, request_id, "
+                                + "request_fingerprint, user_id, session_id, "
+                                + "usage_seconds, requested_ttl_seconds, "
+                                + "receipt_status, result_allowed, "
+                                + "result_charged_seconds, result_reason, "
+                                + "completed_time) values "
+                                + "(9200000001, 'lease-negative-" + runId
+                                + "', '" + fingerprint
+                                + "', 9200000002, 9200000003, 0, 20, "
+                                + "'COMPLETED', 0, -1, 'DENIED', "
+                                + "current_timestamp)"));
+        assertThrows(
+                SQLException.class,
+                () -> execute(
+                        connection,
+                        "insert into t_entitlement_lease_receipt "
+                                + "(tenant_id, request_id, "
+                                + "request_fingerprint, user_id, session_id, "
+                                + "usage_seconds, requested_ttl_seconds, "
+                                + "receipt_status, result_allowed, "
+                                + "result_entitlement_id, result_mode, "
+                                + "result_charged_seconds, "
+                                + "result_remaining_seconds, result_reason, "
+                                + "completed_time) values "
+                                + "(9200000001, 'lease-no-ttl-" + runId
+                                + "', '" + fingerprint
+                                + "', 9200000002, 9200000003, 0, 20, "
+                                + "'COMPLETED', 1, 9200000004, 'DURATION', "
+                                + "0, 100, 'DURATION_AVAILABLE', "
+                                + "current_timestamp)"));
+        assertThrows(
+                SQLException.class,
+                () -> execute(
+                        connection,
+                        "insert into t_entitlement_lease_receipt "
+                                + "(tenant_id, request_id, "
+                                + "request_fingerprint, user_id, session_id, "
+                                + "usage_seconds, requested_ttl_seconds, "
+                                + "receipt_status, result_allowed, "
+                                + "result_ttl_seconds, "
+                                + "result_charged_seconds, result_reason, "
+                                + "completed_time) values "
+                                + "(9200000001, 'lease-denied-ttl-" + runId
+                                + "', '" + fingerprint
+                                + "', 9200000002, 9200000003, 0, 20, "
+                                + "'COMPLETED', 0, 20, 0, 'DENIED', "
+                                + "current_timestamp)"));
+        assertThrows(
+                SQLException.class,
+                () -> execute(
+                        connection,
+                        "insert into t_entitlement_lease_receipt "
+                                + "(tenant_id, request_id, "
+                                + "request_fingerprint, user_id, session_id, "
+                                + "usage_seconds, requested_ttl_seconds, "
+                                + "receipt_status, result_allowed, "
+                                + "result_entitlement_id, result_mode, "
+                                + "result_ttl_seconds, "
+                                + "result_charged_seconds, "
+                                + "result_remaining_seconds, result_reason, "
+                                + "completed_time) values "
+                                + "(9200000001, 'lease-zero-remaining-"
+                                + runId + "', '" + fingerprint
+                                + "', 9200000002, 9200000003, 0, 20, "
+                                + "'COMPLETED', 1, 9200000004, 'DURATION', "
+                                + "20, 0, 0, 'DURATION_AVAILABLE', "
+                                + "current_timestamp)"));
+        assertThrows(
+                SQLException.class,
+                () -> execute(
+                        connection,
+                        "insert into t_entitlement_lease_receipt "
+                                + "(tenant_id, request_id, "
+                                + "request_fingerprint, user_id, session_id, "
+                                + "usage_seconds, requested_ttl_seconds) "
+                                + "values (9200000001, 'lease-denied-" + runId
+                                + "', '" + fingerprint
+                                + "', 9200000002, 9200000003, 0, 20)"));
     }
 
     private static void assertFlywayLatest(

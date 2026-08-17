@@ -9,6 +9,13 @@ import javax.validation.constraints.Size;
 @Data
 public class PortalAuthorizeDTO {
 
+    @NotBlank(message = "clientRequestId 不能为空")
+    @Size(max = 64, message = "clientRequestId 不能超过64个字符")
+    @Pattern(
+            regexp = "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$",
+            message = "clientRequestId 格式不正确")
+    private String clientRequestId;
+
     @NotBlank(message = "设备编码不能为空")
     @Size(max = 64, message = "设备编码长度不能超过 64")
     private String deviceCode;

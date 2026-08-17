@@ -16,7 +16,7 @@ spring:
     out-of-order: false
     clean-disabled: true
     connect-retries: 3
-    target: "${DB_MIGRATION_TARGET:2.9.1}"
+    target: "${DB_MIGRATION_TARGET:2.9.2}"
     placeholders:
       p3cCodeReady: "${DB_MIGRATION_P3C_CODE_READY:false}"
 

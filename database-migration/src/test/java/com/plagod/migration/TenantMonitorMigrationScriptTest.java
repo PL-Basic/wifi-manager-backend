@@ -116,7 +116,7 @@ class TenantMonitorMigrationScriptTest {
         String yaml = resource("application.yml");
 
         assertTrue(yaml.contains(
-                "target: \"${DB_MIGRATION_TARGET:2.9.1}\""));
+                "target: \"${DB_MIGRATION_TARGET:2.9.2}\""));
         assertTrue(yaml.contains(
                 "p3cCodeReady: \"${DB_MIGRATION_P3C_CODE_READY:false}\""));
         assertTrue(CONTRACT.startsWith("db/migration/V2_10__"));

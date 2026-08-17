@@ -68,6 +68,32 @@ Device 的 tenant-scoped Session 查询。Monitor 必须拒绝字段缺失、非
 租户补全。该变更不修改 entitlement lease/snapshot 契约；现有
 `entitlementId + userId` 的租户重新解析路径继续复用。
 
+Demo 1.5 C0 冻结事务、Outbox 与 HTTP 幂等共享载体：
+
+- `t_default_tenant_membership_outbox` 继续由 User 独占，复用既有
+  `idempotency_key/request_fingerprint`、claim 字段和
+  `idx_default_membership_claim`。状态固定为
+  `PENDING/PROCESSING/RETRY/SUCCEEDED/DEAD`；只有 `PROCESSING` 可以持有
+  worker/lease，且 lease 必须晚于 claim 时间。
+- User 私有 `t_user_auth_session_revoke_outbox` 保存账号业务状态同事务产生
+  的撤销事件。Worker 提交 claim 后，在事务外继续调用现有
+  `POST /internal/auth/sessions/users/{userId}/revoke?reason=...`，再以独立
+  事务 finalize。Auth endpoint 不增加 `eventId`，Auth 不新增消费 Receipt；
+  重复调用继续依赖只撤销 ACTIVE Session/Token 的自然幂等性。
+- User 私有 `t_entitlement_lease_receipt` 以
+  `tenant_id + request_id` 唯一，fingerprint 覆盖
+  `entitlementId/userId/sessionId/usageSeconds/requestedTtlSeconds`。
+  Receipt、权益扣减和 usage log 必须同事务；同 key 同 fingerprint 重放首次
+  结果并返回 `duplicate=true`，不同 fingerprint 返回 409
+  `IDEMPOTENCY_KEY_CONFLICT`。Receipt 同时保存允许与拒绝结果，拒绝结果的
+  entitlement、mode、TTL、remaining 和 subscriptionEndTime 可为空。
+- `TenantCreateRequest.clientRequestId` 与
+  `PortalAuthorizeDTO.clientRequestId` 均为必填，最多 64 字符，格式为
+  `^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$`。调用方必须生成并在同一业务输入的
+  网络/人工重试中复用；服务端不得从 `X-Request-Id`、随机值或默认业务值
+  回退。该字段是 additive JSON 字段，旧 payload 仍可反序列化，但因缺少
+  必填字段明确返回 400。
+
 `mqtt-protocol-v1` 的最终规范化 SHA-256 为
 `26ABC67B1DCA9A99173D079359B87C57366F74D9D243728EDFB4AE52A5E8AE87`。
 后端与固件本地副本按 UTF-8、LF 换行规范化后必须得到该值；原始文件换行符
@@ -381,6 +407,11 @@ User 是 `sys_user`、账号命令收据和默认成员 Outbox 的唯一直接�
 `POST /internal/entitlements/lease` 的首次租约只接受可信
 `X-Tenant-Id` 上下文；无 Servlet 请求上下文的后台续租必须携带已持久化的
 `entitlementId`，由 user-service 校验权益与用户并反查租户。请求体不能自行指定租户。
+
+`POST /internal/entitlements/lease` 的请求体 `requestId` 是该租约业务的
+HTTP 幂等键，不等于链路 `X-Request-Id`。首次与重放均由 User 私有 Receipt
+返回稳定业务结果；重放仅把 `duplicate` 置为 `true`，不得再次扣减权益或
+写入 usage log。
 
 这些接口依赖 `WIFI_INTERNAL_TOKEN` 或可信 Gateway 请求机制。禁止在 Gateway 增加 `/internal/**` 路由，也禁止客户端自行构造 `X-User-*`、`X-Gateway-Token` 或内部 Token。
 
