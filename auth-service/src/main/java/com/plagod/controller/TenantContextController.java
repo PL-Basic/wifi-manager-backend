@@ -1,6 +1,8 @@
 package com.plagod.controller;
 
 import com.plagod.audit.Audited;
+import com.plagod.audit.AuditDetail;
+import com.plagod.audit.AuditTargetId;
 import com.plagod.client.TenantContextClient;
 import com.plagod.dto.ApiResponse;
 import com.plagod.dto.auth.AuthResultDTO;
@@ -65,14 +67,16 @@ public class TenantContextController {
     @PostMapping("/platform-context")
     @Audited(
             action = "auth.platform_context",
-            scope = Audited.Scope.PLATFORM,
+            targetType = "CONTEXT",
+            scope = Audited.Scope.CONTEXT,
             tenantIdSource = Audited.TenantIdSource.REQUEST,
             target = "PLATFORM",
-            includeArgs = false,
-            includeResult = false)
+            recordDenied = true,
+            recordFailed = true)
     public ApiResponse<AuthResultDTO> returnPlatform(
             @RequestHeader("X-Session-Id") String sessionId,
             @RequestHeader("X-User-Id") Long userId,
+            @AuditDetail("globalRole")
             @RequestHeader("X-User-Role") Integer role) {
         requireSuperAdmin(role);
         TenantContextVO context = resolve(userId, role, "PLATFORM", null);
@@ -84,14 +88,17 @@ public class TenantContextController {
     @PostMapping("/platform-context/tenants/{tenantId}")
     @Audited(
             action = "auth.platform_tenant_context",
-            scope = Audited.Scope.PLATFORM,
+            targetType = "TENANT",
+            scope = Audited.Scope.CONTEXT,
             tenantIdSource = Audited.TenantIdSource.REQUEST,
-            includeResult = false)
+            recordDenied = true,
+            recordFailed = true)
     public ApiResponse<AuthResultDTO> enterPlatformTenant(
-            @PathVariable String tenantId,
+            @AuditTargetId @PathVariable String tenantId,
             @Valid @RequestBody PlatformTenantContextRequest request,
             @RequestHeader("X-Session-Id") String sessionId,
             @RequestHeader("X-User-Id") Long userId,
+            @AuditDetail("globalRole")
             @RequestHeader("X-User-Role") Integer role) {
         requireSuperAdmin(role);
         if (request.getReason().trim().isEmpty()) {

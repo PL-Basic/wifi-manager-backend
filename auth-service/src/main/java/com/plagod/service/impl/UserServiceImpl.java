@@ -55,10 +55,10 @@ public class UserServiceImpl implements UserService {
     @Override
     @Audited(
             action = "auth.register",
+            targetType = "ACCOUNT",
             scope = Audited.Scope.PLATFORM,
             tenantIdSource = Audited.TenantIdSource.REQUEST,
-            includeArgs = false,
-            includeResult = false)
+            recordFailed = true)
     public RegisterResult register(RegisterDTO registerDTO, String requestId, String verifyIp) {
         String fingerprint = registerFingerprint(registerDTO);
         String idempotencyKey = StringUtils.hasText(requestId) ? sha256("REGISTER_REQUEST|" + requestId.trim()) : sha256("REGISTER|" + fingerprint);
@@ -183,10 +183,10 @@ public class UserServiceImpl implements UserService {
     @Override
     @Audited(
             action = "auth.reset_password",
+            targetType = "ACCOUNT",
             scope = Audited.Scope.PLATFORM,
             tenantIdSource = Audited.TenantIdSource.REQUEST,
-            includeArgs = false,
-            includeResult = false)
+            recordFailed = true)
     public void resetPassword(ResetPasswordDTO resetPasswordDTO, String verifyIp) {
         String idempotencyKey = sha256(
                 "PASSWORD_RESET|"
