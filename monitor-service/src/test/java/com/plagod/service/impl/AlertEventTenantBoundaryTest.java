@@ -15,10 +15,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.LocalDateTime;
 import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -96,6 +99,96 @@ class AlertEventTenantBoundaryTest {
         verifyNoInteractions(alertEventMapper);
     }
 
+    @Test
+    void handleUsesTenantStateAndVersionConditionalUpdate() {
+        AlertEvent entity = alert(ALERT_A, TENANT_A);
+        entity.setVersion(3);
+        when(alertEventMapper.selectByIdAndTenantForUpdate(
+                TENANT_A,
+                ALERT_A)).thenReturn(entity);
+        when(alertEventMapper.handleByTenantAndVersion(
+                eq(TENANT_A),
+                eq(ALERT_A),
+                eq(7L),
+                any(LocalDateTime.class),
+                eq(3))).thenReturn(1);
+
+        service.handle(tenantContext(), ALERT_A);
+
+        verify(alertEventMapper).handleByTenantAndVersion(
+                eq(TENANT_A),
+                eq(ALERT_A),
+                eq(7L),
+                any(LocalDateTime.class),
+                eq(3));
+    }
+
+    @Test
+    void handleRejectsIllegalPersistedState() {
+        AlertEvent entity = alert(ALERT_A, TENANT_A);
+        entity.setStatus(1);
+        entity.setVersion(3);
+        when(alertEventMapper.selectByIdAndTenantForUpdate(
+                TENANT_A,
+                ALERT_A)).thenReturn(entity);
+
+        ApiStatusException exception = assertThrows(
+                ApiStatusException.class,
+                () -> service.handle(tenantContext(), ALERT_A));
+
+        assertEquals(409, exception.getHttpStatus());
+    }
+
+    @Test
+    void handleRejectsConcurrentVersionChange() {
+        AlertEvent locked = alert(ALERT_A, TENANT_A);
+        locked.setVersion(3);
+        AlertEvent current = alert(ALERT_A, TENANT_A);
+        current.setVersion(4);
+        when(alertEventMapper.selectByIdAndTenantForUpdate(
+                TENANT_A,
+                ALERT_A)).thenReturn(locked);
+        when(alertEventMapper.handleByTenantAndVersion(
+                eq(TENANT_A),
+                eq(ALERT_A),
+                eq(7L),
+                any(LocalDateTime.class),
+                eq(3))).thenReturn(0);
+        when(alertEventMapper.selectByIdAndTenant(
+                TENANT_A,
+                ALERT_A)).thenReturn(current);
+
+        ApiStatusException exception = assertThrows(
+                ApiStatusException.class,
+                () -> service.handle(tenantContext(), ALERT_A));
+
+        assertEquals(409, exception.getHttpStatus());
+    }
+
+    @Test
+    void platformTenantHandleKeepsManagedTenantBoundary() {
+        AlertEvent entity = alert(ALERT_A, TENANT_A);
+        entity.setVersion(0);
+        when(alertEventMapper.selectByIdAndTenantForUpdate(
+                TENANT_A,
+                ALERT_A)).thenReturn(entity);
+        when(alertEventMapper.handleByTenantAndVersion(
+                eq(TENANT_A),
+                eq(ALERT_A),
+                eq(1L),
+                any(LocalDateTime.class),
+                eq(0))).thenReturn(1);
+
+        service.handle(platformTenantContext(), ALERT_A);
+
+        verify(alertEventMapper).handleByTenantAndVersion(
+                eq(TENANT_A),
+                eq(ALERT_A),
+                eq(1L),
+                any(LocalDateTime.class),
+                eq(0));
+    }
+
     private AlertEvent alert(Long id, Long tenantId) {
         AlertEvent alert = new AlertEvent();
         alert.setId(id);
@@ -136,5 +229,22 @@ class AlertEventTenantBoundaryTest {
                 null,
                 Collections.singletonList("TENANT_MANAGE"),
                 "request-platform");
+    }
+
+    private TrustedRequestContext platformTenantContext() {
+        return TrustedRequestContext.user(
+                TrustedSource.GATEWAY_USER,
+                1L,
+                0,
+                "session-platform-tenant",
+                "token-platform-tenant",
+                TrustedContextType.PLATFORM_TENANT,
+                String.valueOf(TENANT_A),
+                "tenant-a",
+                null,
+                1L,
+                null,
+                Collections.singletonList("TENANT_MANAGE"),
+                "request-platform-tenant");
     }
 }

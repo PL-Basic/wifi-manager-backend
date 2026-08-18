@@ -46,6 +46,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.same;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -379,6 +380,64 @@ class ClientLocationRegressionTest {
                 null,
                 3);
         assertEquals(Integer.valueOf(4), authorization.getVersion());
+    }
+
+    @Test
+    void grantAuthorizationRejectsIllegalPersistedState() {
+        LocationAuthorization authorization = enabledAuthorization();
+        authorization.setConsentTime(null);
+        when(locationAuthorizationMapper.ensureAuthorizationRowByTenant(
+                TENANT_A,
+                USER_ID)).thenReturn(0);
+        when(locationAuthorizationMapper.selectByUserIdForUpdateAndTenant(
+                TENANT_A,
+                USER_ID)).thenReturn(authorization);
+
+        ApiStatusException exception = assertThrows(
+                ApiStatusException.class,
+                () -> clientLocationService.grantAuthorization(
+                        tenantContext(TENANT_A)));
+
+        assertEquals(409, exception.getHttpStatus());
+        verify(locationAuthorizationMapper, never())
+                .updateByTenantAndVersion(
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any());
+    }
+
+    @Test
+    void grantAuthorizationRejectsOptimisticVersionConflict() {
+        LocationAuthorization authorization = enabledAuthorization();
+        authorization.setEnabled(0);
+        authorization.setConsentTime(null);
+        authorization.setVersion(3);
+        when(locationAuthorizationMapper.ensureAuthorizationRowByTenant(
+                TENANT_A,
+                USER_ID)).thenReturn(0);
+        when(locationAuthorizationMapper.selectByUserIdForUpdateAndTenant(
+                TENANT_A,
+                USER_ID)).thenReturn(authorization);
+        when(locationAuthorizationMapper.updateByTenantAndVersion(
+                eq(TENANT_A),
+                eq(USER_ID),
+                eq(1),
+                any(LocalDateTime.class),
+                isNull(),
+                isNull(),
+                eq(3))).thenReturn(0);
+
+        ApiStatusException exception = assertThrows(
+                ApiStatusException.class,
+                () -> clientLocationService.grantAuthorization(
+                        tenantContext(TENANT_A)));
+
+        assertEquals(409, exception.getHttpStatus());
+        assertEquals(Integer.valueOf(3), authorization.getVersion());
     }
 
     @Test

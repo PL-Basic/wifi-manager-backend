@@ -1,27 +1,41 @@
 package com.plagod.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.plagod.audit.AuditDetail;
+import com.plagod.audit.AuditTargetId;
 import com.plagod.audit.Audited;
 import com.plagod.dto.monitor.AccessRuleCreateDTO;
 import com.plagod.vo.monitor.AccessRulePageResult;
 import com.plagod.dto.monitor.AccessRuleUpdateDTO;
 import com.plagod.vo.monitor.AccessRuleVO;
 import com.plagod.entity.monitor.AccessRule;
+import com.plagod.exception.ApiStatusException;
 import com.plagod.mapper.AccessRuleMapper;
+import com.plagod.security.MonitorTenantScope;
+import com.plagod.security.MonitorTrustedRequestContextProvider;
 import com.plagod.service.AccessRuleCache;
 import com.plagod.service.AccessRuleService;
 import com.plagod.support.PageBounds;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
+import javax.servlet.http.HttpServletRequest;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 
 @Service
 public class AccessRuleServiceImpl implements AccessRuleService {
+
+    private static final Logger log =
+            LoggerFactory.getLogger(AccessRuleServiceImpl.class);
 
     // IPv4
     private static final Pattern IPV4 = Pattern.compile(
@@ -54,12 +68,26 @@ public class AccessRuleServiceImpl implements AccessRuleService {
     @Autowired
     private AccessRuleCache accessRuleCache;
 
+    @Autowired
+    private MonitorTrustedRequestContextProvider contextProvider;
+
+    @Autowired
+    private MonitorTenantScope tenantScope;
+
+    @Autowired
+    private HttpServletRequest request;
+
     @Override
     @Audited(
             action = "rule.create",
-            scope = Audited.Scope.TENANT,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
+            targetType = "ACCESS_RULE",
+            scope = Audited.Scope.CONTEXT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST,
+            recordDenied = true,
+            recordFailed = true)
+    @Transactional(rollbackFor = Exception.class)
     public AccessRuleVO create(AccessRuleCreateDTO createDTO) {
+        Long tenantId = requireCurrentTenantId();
         createDTO.setRuleCode(cleanRequiredText(createDTO.getRuleCode(),"规则编码不能为空"));
         createDTO.setPattern(cleanRequiredText(createDTO.getPattern(),"匹配值不能为空"));
         createDTO.setDescription(cleanOptionalText(createDTO.getDescription()));
@@ -71,35 +99,41 @@ public class AccessRuleServiceImpl implements AccessRuleService {
         validateLevel(createDTO.getLevel());
         validatePattern(createDTO.getPattern(),createDTO.getRuleType());
 
-        QueryWrapper<AccessRule> existsWrapper = new QueryWrapper<>();
-        existsWrapper.eq("rule_code", createDTO.getRuleCode());
-        if (accessRuleMapper.selectCount(existsWrapper) > 0) {
+        if (accessRuleMapper.selectByCodeAndTenant(
+                tenantId,
+                createDTO.getRuleCode()) != null) {
             throw new IllegalArgumentException("规则编码已存在");
         }
 
         AccessRule entity = new AccessRule();
         BeanUtils.copyProperties(createDTO, entity);
+        entity.setTenantId(tenantId);
         if (entity.getLevel() == null) {
             entity.setLevel(2);
         }
         if (entity.getEnabled() == null) {
             entity.setEnabled(1);
         }
-        accessRuleMapper.insert(entity);
-        accessRuleCache.reload();
-        return toVO(accessRuleMapper.selectById(entity.getId()));
+        if (accessRuleMapper.insert(entity) != 1 || entity.getId() == null) {
+            throw new IllegalStateException("规则创建失败");
+        }
+        refreshCacheAfterCommit();
+        return toVO(requireRule(tenantId, entity.getId(), false));
     }
 
     @Override
     @Audited(
             action = "rule.update",
-            scope = Audited.Scope.TENANT,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
-    public AccessRuleVO update(Long id, AccessRuleUpdateDTO updateDTO) {
-        AccessRule entity = accessRuleMapper.selectById(id);
-        if (entity == null) {
-            throw new IllegalArgumentException("规则不存在");
-        }
+            targetType = "ACCESS_RULE",
+            scope = Audited.Scope.CONTEXT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST,
+            recordDenied = true,
+            recordFailed = true)
+    @Transactional(rollbackFor = Exception.class)
+    public AccessRuleVO update(@AuditTargetId Long id,
+                               AccessRuleUpdateDTO updateDTO) {
+        Long tenantId = requireCurrentTenantId();
+        AccessRule entity = requireRule(tenantId, id, true);
 
         Integer finalEnabled = updateDTO.getEnabled() == null ? entity.getEnabled() : updateDTO.getEnabled();
         Integer finalActionType = updateDTO.getActionType() == null ? entity.getActionType() : updateDTO.getActionType();
@@ -119,9 +153,11 @@ public class AccessRuleServiceImpl implements AccessRuleService {
         if (updateDTO.getLevel() != null) entity.setLevel(updateDTO.getLevel());
         if (updateDTO.getEnabled() != null) entity.setEnabled(updateDTO.getEnabled());
         if (updateDTO.getDescription() != null) entity.setDescription(cleanOptionalText(updateDTO.getDescription()));
-        accessRuleMapper.updateById(entity);
-        accessRuleCache.reload();
-        return toVO(accessRuleMapper.selectById(entity.getId()));
+        if (accessRuleMapper.updateById(entity) != 1) {
+            throw ApiStatusException.conflict("规则更新冲突");
+        }
+        refreshCacheAfterCommit();
+        return toVO(requireRule(tenantId, entity.getId(), false));
     }
 
     @Override
@@ -136,32 +172,75 @@ public class AccessRuleServiceImpl implements AccessRuleService {
     @Override
     @Audited(
             action = "rule.delete",
-            scope = Audited.Scope.TENANT,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
-    public void delete(Long id) {
-        int affected = accessRuleMapper.deleteById(id);
-        if (affected == 0) {
-            throw new IllegalArgumentException("规则不存在");
+            targetType = "ACCESS_RULE",
+            scope = Audited.Scope.CONTEXT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST,
+            recordDenied = true,
+            recordFailed = true)
+    @Transactional(rollbackFor = Exception.class)
+    public void delete(@AuditTargetId Long id) {
+        Long tenantId = requireCurrentTenantId();
+        AccessRule entity = requireRule(tenantId, id, true);
+        Integer expectedVersion = requireVersion(entity.getVersion());
+        QueryWrapper<AccessRule> delete = new QueryWrapper<>();
+        delete.eq("tenant_id", tenantId)
+                .eq("id", id)
+                .eq("version", expectedVersion)
+                .eq("del_flag", 0);
+        if (accessRuleMapper.delete(delete) != 1) {
+            AccessRule current = accessRuleMapper.selectByIdAndTenant(
+                    tenantId,
+                    id);
+            if (current == null) {
+                throw ApiStatusException.notFound("规则不存在");
+            }
+            throw ApiStatusException.conflict(
+                    !expectedVersion.equals(current.getVersion())
+                            ? "规则版本冲突"
+                            : "规则并发删除冲突");
         }
-        accessRuleCache.reload();
+        refreshCacheAfterCommit();
     }
 
     @Override
     @Audited(
             action = "rule.toggle",
-            scope = Audited.Scope.TENANT,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
-    public void toggleEnabled(Long id, Integer enabled) {
+            targetType = "ACCESS_RULE",
+            scope = Audited.Scope.CONTEXT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST,
+            recordDenied = true,
+            recordFailed = true)
+    @Transactional(rollbackFor = Exception.class)
+    public void toggleEnabled(@AuditTargetId Long id,
+                              @AuditDetail("enabled") Integer enabled) {
         if (enabled == null || (enabled != 0 && enabled != 1)) {
             throw new IllegalArgumentException("enabled 只能是 0 或 1");
         }
-        AccessRule entity = accessRuleMapper.selectById(id);
-        if (entity == null) {
-            throw new IllegalArgumentException("规则不存在");
+        Long tenantId = requireCurrentTenantId();
+        AccessRule entity = requireRule(tenantId, id, true);
+        int currentEnabled = requireStoredEnabled(entity.getEnabled());
+        if (enabled == currentEnabled) {
+            return;
         }
-        entity.setEnabled(enabled);
-        accessRuleMapper.updateById(entity);
-        accessRuleCache.reload();
+        Integer expectedVersion = requireVersion(entity.getVersion());
+        int affected = accessRuleMapper.updateEnabledByTenantAndVersion(
+                tenantId,
+                id,
+                enabled,
+                expectedVersion);
+        if (affected != 1) {
+            AccessRule current = accessRuleMapper.selectByIdAndTenant(
+                    tenantId,
+                    id);
+            if (current == null) {
+                throw ApiStatusException.notFound("规则不存在");
+            }
+            if (!expectedVersion.equals(current.getVersion())) {
+                throw ApiStatusException.conflict("规则版本冲突");
+            }
+            throw ApiStatusException.conflict("规则并发更新冲突");
+        }
+        refreshCacheAfterCommit();
     }
 
     @Override
@@ -213,6 +292,71 @@ public class AccessRuleServiceImpl implements AccessRuleService {
         AccessRuleVO vo = new AccessRuleVO();
         BeanUtils.copyProperties(entity, vo);
         return vo;
+    }
+
+    private AccessRule requireRule(
+            Long tenantId,
+            Long id,
+            boolean forUpdate) {
+        if (id == null || id <= 0) {
+            throw new IllegalArgumentException("规则ID无效");
+        }
+        AccessRule entity = forUpdate
+                ? accessRuleMapper.selectByIdAndTenantForUpdate(tenantId, id)
+                : accessRuleMapper.selectByIdAndTenant(tenantId, id);
+        if (entity == null || Integer.valueOf(1).equals(entity.getDelFlag())) {
+            throw ApiStatusException.notFound("规则不存在");
+        }
+        return entity;
+    }
+
+    private Long requireCurrentTenantId() {
+        return tenantScope.requireTenantId(
+                contextProvider.resolve(request));
+    }
+
+    private Integer requireVersion(Integer version) {
+        if (version == null || version < 0) {
+            throw ApiStatusException.conflict("规则版本无效");
+        }
+        return version;
+    }
+
+    private int requireStoredEnabled(Integer enabled) {
+        if (!Integer.valueOf(0).equals(enabled)
+                && !Integer.valueOf(1).equals(enabled)) {
+            throw ApiStatusException.conflict("规则启停状态无效");
+        }
+        return enabled;
+    }
+
+    private void refreshCacheAfterCommit() {
+        if (!TransactionSynchronizationManager
+                .isActualTransactionActive()
+                || !TransactionSynchronizationManager
+                .isSynchronizationActive()) {
+            accessRuleCache.reload();
+            return;
+        }
+        try {
+            TransactionSynchronizationManager.registerSynchronization(
+                    new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            reloadCacheAfterCommitSafely();
+                        }
+                    });
+        } catch (RuntimeException exception) {
+            log.warn("访问规则缓存提交后刷新注册失败");
+        }
+    }
+
+    private void reloadCacheAfterCommitSafely() {
+        try {
+            accessRuleCache.reload();
+        } catch (RuntimeException exception) {
+            log.warn("访问规则缓存提交后刷新失败");
+        }
     }
 
 

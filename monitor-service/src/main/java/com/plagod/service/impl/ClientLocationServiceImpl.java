@@ -2,6 +2,7 @@ package com.plagod.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.plagod.audit.AuditTargetId;
 import com.plagod.audit.Audited;
 import com.plagod.dto.ApiResponse;
 import com.plagod.dto.ClientLocationReportDTO;
@@ -62,11 +63,13 @@ public class ClientLocationServiceImpl implements ClientLocationService {
     @Override
     @Audited(
             action = "location.report",
-            scope = Audited.Scope.TENANT,
+            targetType = "LOCATION_SESSION",
+            scope = Audited.Scope.CONTEXT,
             tenantIdSource = Audited.TenantIdSource.REQUEST,
-            includeArgs = false)
+            recordDenied = true,
+            recordFailed = true)
     public Long report(TrustedRequestContext trustedContext,
-                       Long sessionId,
+                       @AuditTargetId Long sessionId,
                        ClientLocationReportDTO dto) {
         Long tenantId = tenantScope.requireTenantId(trustedContext);
         Long userId = trustedContext.getUserId();
@@ -100,9 +103,12 @@ public class ClientLocationServiceImpl implements ClientLocationService {
     @Override
     @Audited(
             action = "location.consent.grant",
-            scope = Audited.Scope.TENANT,
+            targetType = "LOCATION_AUTHORIZATION",
+            target = "self",
+            scope = Audited.Scope.CONTEXT,
             tenantIdSource = Audited.TenantIdSource.REQUEST,
-            includeArgs = false)
+            recordDenied = true,
+            recordFailed = true)
     @Transactional(rollbackFor = Exception.class)
     public LocationAuthorizationVO grantAuthorization(
             TrustedRequestContext context) {
@@ -120,8 +126,9 @@ public class ClientLocationServiceImpl implements ClientLocationService {
         if (authorization == null) {
             throw new IllegalStateException("位置授权记录初始化失败");
         }
+        validateAuthorizationState(authorization);
 
-        if (!Integer.valueOf(1).equals(authorization.getEnabled()) || authorization.getConsentTime() == null) {
+        if (Integer.valueOf(0).equals(authorization.getEnabled())) {
 
             LocalDateTime now = LocalDateTime.now();
 
@@ -142,9 +149,12 @@ public class ClientLocationServiceImpl implements ClientLocationService {
     @Override
     @Audited(
             action = "location.consent.revoke",
-            scope = Audited.Scope.TENANT,
+            targetType = "LOCATION_AUTHORIZATION",
+            target = "self",
+            scope = Audited.Scope.CONTEXT,
             tenantIdSource = Audited.TenantIdSource.REQUEST,
-            includeArgs = false)
+            recordDenied = true,
+            recordFailed = true)
     @Transactional(rollbackFor = Exception.class)
     public LocationAuthorizationVO revokeAuthorization(
             TrustedRequestContext context) {
@@ -162,8 +172,9 @@ public class ClientLocationServiceImpl implements ClientLocationService {
         if (authorization == null) {
             throw new IllegalStateException("位置授权记录初始化失败");
         }
+        validateAuthorizationState(authorization);
 
-        if (!Integer.valueOf(0).equals(authorization.getEnabled()) || authorization.getRevokedTime() == null) {
+        if (Integer.valueOf(1).equals(authorization.getEnabled())) {
             LocalDateTime now = LocalDateTime.now();
             authorization.setEnabled(0);
             authorization.setRevokedTime(now);
@@ -179,9 +190,12 @@ public class ClientLocationServiceImpl implements ClientLocationService {
     @Override
     @Audited(
             action = "location.history.clear",
-            scope = Audited.Scope.TENANT,
+            targetType = "LOCATION_HISTORY",
+            target = "self",
+            scope = Audited.Scope.CONTEXT,
             tenantIdSource = Audited.TenantIdSource.REQUEST,
-            includeArgs = false)
+            recordDenied = true,
+            recordFailed = true)
     @Transactional(rollbackFor = Exception.class)
     public long clearOwnedHistory(TrustedRequestContext context) {
         Long tenantId = tenantScope.requireTenantId(context);
@@ -428,6 +442,20 @@ public class ClientLocationServiceImpl implements ClientLocationService {
             throw ApiStatusException.conflict(failureMessage);
         }
         authorization.setVersion(expectedVersion + 1);
+    }
+
+    private void validateAuthorizationState(
+            LocationAuthorization authorization) {
+        Integer enabled = authorization.getEnabled();
+        boolean granted = Integer.valueOf(1).equals(enabled);
+        boolean revokedOrInitial = Integer.valueOf(0).equals(enabled);
+        if (!granted && !revokedOrInitial) {
+            throw ApiStatusException.conflict("位置授权状态无效");
+        }
+        if (granted && (authorization.getConsentTime() == null
+                || authorization.getRevokedTime() != null)) {
+            throw ApiStatusException.conflict("位置授权状态不一致");
+        }
     }
 
     private void validateLocationPolicyConfiguration() {

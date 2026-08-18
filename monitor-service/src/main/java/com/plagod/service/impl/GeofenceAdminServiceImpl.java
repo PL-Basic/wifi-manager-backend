@@ -2,13 +2,18 @@ package com.plagod.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.plagod.audit.AuditDetail;
+import com.plagod.audit.AuditTargetId;
 import com.plagod.audit.Audited;
 import com.plagod.dto.monitor.GeofenceCreateDTO;
 import com.plagod.dto.monitor.GeofenceUpdateDTO;
 import com.plagod.entity.monitor.Geofence;
+import com.plagod.exception.ApiStatusException;
 import com.plagod.mapper.GeofenceEventMapper;
 import com.plagod.mapper.GeofenceMapper;
 import com.plagod.mapper.GeofenceStateMapper;
+import com.plagod.security.MonitorTenantScope;
+import com.plagod.security.MonitorTrustedRequestContextProvider;
 import com.plagod.service.GeofenceAdminService;
 import com.plagod.support.PageBounds;
 import com.plagod.vo.monitor.*;
@@ -18,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import javax.servlet.http.HttpServletRequest;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
@@ -35,13 +41,24 @@ public class GeofenceAdminServiceImpl implements GeofenceAdminService {
     private GeofenceStateMapper stateMapper;
     @Autowired
     private GeofenceEventMapper eventMapper;
+    @Autowired
+    private MonitorTrustedRequestContextProvider contextProvider;
+    @Autowired
+    private MonitorTenantScope tenantScope;
+    @Autowired
+    private HttpServletRequest request;
 
     @Audited(
             action = "geofence.create",
-            scope = Audited.Scope.TENANT,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
+            targetType = "GEOFENCE",
+            scope = Audited.Scope.CONTEXT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST,
+            recordDenied = true,
+            recordFailed = true)
     public GeofenceVO create(GeofenceCreateDTO dto) {
+        Long tenantId = requireCurrentTenantId();
         Geofence entity = new Geofence();
+        entity.setTenantId(tenantId);
         entity.setName(requireName(dto.getName()));
         entity.setCenterLatitude(normalizeLatitude(dto.getCenterLatitude()));
         entity.setCenterLongitude(normalizeLongitude(dto.getCenterLongitude()));
@@ -54,16 +71,21 @@ public class GeofenceAdminServiceImpl implements GeofenceAdminService {
             throw new IllegalStateException("围栏创建失败");
         }
 
-        return get(entity.getFenceId());
+        return toVO(requireFence(tenantId, entity.getFenceId(), false));
     }
 
     @Audited(
             action = "geofence.update",
-            scope = Audited.Scope.TENANT,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
+            targetType = "GEOFENCE",
+            scope = Audited.Scope.CONTEXT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST,
+            recordDenied = true,
+            recordFailed = true)
     @Transactional(rollbackFor = Exception.class)
-    public GeofenceVO update(Long fenceId, GeofenceUpdateDTO dto) {
-        Geofence entity = requireFence(fenceId);
+    public GeofenceVO update(@AuditTargetId Long fenceId,
+                             GeofenceUpdateDTO dto) {
+        Long tenantId = requireCurrentTenantId();
+        Geofence entity = requireFence(tenantId, fenceId, true);
         boolean boundaryChanged = false;
 
         if (dto.getName() != null) {
@@ -101,46 +123,84 @@ public class GeofenceAdminServiceImpl implements GeofenceAdminService {
 
         // 边界变化后旧内外状态已经失效，下次位置点重新建立基线。
         if (boundaryChanged) {
-            stateMapper.deleteByFenceId(fenceId);
+            stateMapper.deleteByFenceIdAndTenant(tenantId, fenceId);
         }
 
-        return get(fenceId);
+        return toVO(requireFence(tenantId, fenceId, false));
     }
 
     @Audited(
             action = "geofence.toggle",
-            scope = Audited.Scope.TENANT,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
+            targetType = "GEOFENCE",
+            scope = Audited.Scope.CONTEXT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST,
+            recordDenied = true,
+            recordFailed = true)
     @Transactional(rollbackFor = Exception.class)
-    public GeofenceVO toggle(Long fenceId, Integer enabled) {
-        Geofence entity = requireFence(fenceId);
+    public GeofenceVO toggle(@AuditTargetId Long fenceId,
+                             @AuditDetail("enabled") Integer enabled) {
+        Long tenantId = requireCurrentTenantId();
+        Geofence entity = requireFence(tenantId, fenceId, true);
         int target = requireEnabled(enabled);
+        int currentEnabled = requireStoredEnabled(entity.getEnabled());
 
-        if (!Integer.valueOf(target).equals(entity.getEnabled())) {
-            entity.setEnabled(target);
-
-            if (geofenceMapper.updateById(entity) != 1) {
-                throw new IllegalStateException("围栏启停更新失败");
+        if (target != currentEnabled) {
+            Integer expectedVersion = requireVersion(entity.getVersion());
+            int affected = geofenceMapper.updateEnabledByTenantAndVersion(
+                    tenantId,
+                    fenceId,
+                    target,
+                    expectedVersion);
+            if (affected != 1) {
+                Geofence current = geofenceMapper.selectByIdAndTenant(
+                        tenantId,
+                        fenceId);
+                if (current == null) {
+                    throw ApiStatusException.notFound("围栏不存在");
+                }
+                if (!expectedVersion.equals(current.getVersion())) {
+                    throw ApiStatusException.conflict("围栏版本冲突");
+                }
+                throw ApiStatusException.conflict("围栏并发更新冲突");
             }
 
             // 禁用或重新启用后都从新的位置基线开始。
-            stateMapper.deleteByFenceId(fenceId);
+            stateMapper.deleteByFenceIdAndTenant(tenantId, fenceId);
         }
 
-        return get(fenceId);
+        return toVO(requireFence(tenantId, fenceId, false));
     }
 
     @Audited(
             action = "geofence.delete",
-            scope = Audited.Scope.TENANT,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
+            targetType = "GEOFENCE",
+            scope = Audited.Scope.CONTEXT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST,
+            recordDenied = true,
+            recordFailed = true)
     @Transactional(rollbackFor = Exception.class)
-    public void delete(Long fenceId) {
-        requireFence(fenceId);
-        stateMapper.deleteByFenceId(fenceId);
+    public void delete(@AuditTargetId Long fenceId) {
+        Long tenantId = requireCurrentTenantId();
+        Geofence entity = requireFence(tenantId, fenceId, true);
+        Integer expectedVersion = requireVersion(entity.getVersion());
+        stateMapper.deleteByFenceIdAndTenant(tenantId, fenceId);
 
-        if (geofenceMapper.deleteById(fenceId) != 1) {
-            throw new IllegalStateException("围栏删除失败");
+        QueryWrapper<Geofence> delete = new QueryWrapper<>();
+        delete.eq("tenant_id", tenantId)
+                .eq("fence_id", fenceId)
+                .eq("version", expectedVersion)
+                .eq("del_flag", 0);
+        if (geofenceMapper.delete(delete) != 1) {
+            Geofence current = geofenceMapper.selectByIdAndTenant(
+                    tenantId,
+                    fenceId);
+            if (current == null) {
+                throw ApiStatusException.notFound("围栏不存在");
+            }
+            throw ApiStatusException.conflict(
+                    !expectedVersion.equals(current.getVersion())
+                            ? "围栏版本冲突"
+                            : "围栏并发删除冲突");
         }
     }
 
@@ -258,6 +318,44 @@ public class GeofenceAdminServiceImpl implements GeofenceAdminService {
             throw new IllegalArgumentException("围栏不存在");
         }
         return entity;
+    }
+
+    private Geofence requireFence(
+            Long tenantId,
+            Long fenceId,
+            boolean forUpdate) {
+        if (fenceId == null || fenceId <= 0) {
+            throw new IllegalArgumentException("fenceId无效");
+        }
+        Geofence entity = forUpdate
+                ? geofenceMapper.selectByIdAndTenantForUpdate(
+                        tenantId,
+                        fenceId)
+                : geofenceMapper.selectByIdAndTenant(tenantId, fenceId);
+        if (entity == null || Integer.valueOf(1).equals(entity.getDelFlag())) {
+            throw ApiStatusException.notFound("围栏不存在");
+        }
+        return entity;
+    }
+
+    private Long requireCurrentTenantId() {
+        return tenantScope.requireTenantId(
+                contextProvider.resolve(request));
+    }
+
+    private Integer requireVersion(Integer version) {
+        if (version == null || version < 0) {
+            throw ApiStatusException.conflict("围栏版本无效");
+        }
+        return version;
+    }
+
+    private int requireStoredEnabled(Integer enabled) {
+        if (!Integer.valueOf(0).equals(enabled)
+                && !Integer.valueOf(1).equals(enabled)) {
+            throw ApiStatusException.conflict("围栏启停状态无效");
+        }
+        return enabled;
     }
 
     private GeofenceVO toVO(Geofence entity) {
