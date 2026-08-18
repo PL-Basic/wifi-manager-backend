@@ -1,6 +1,8 @@
 package com.plagod.service.impl;
 
 import com.plagod.audit.Audited;
+import com.plagod.audit.AuditTargetId;
+import com.plagod.audit.AuditTenantId;
 import com.plagod.constant.DeviceCommandPurpose;
 import com.plagod.constant.SessionStatus;
 import com.plagod.entity.device.Esp32Node;
@@ -46,12 +48,18 @@ public class SessionRevokeServiceImpl implements SessionRevokeService {
     @Override
     @Audited(
             action = "session.logout",
+            targetType = "SESSION",
             scope = Audited.Scope.TENANT,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
+            tenantIdSource = Audited.TenantIdSource.ARGUMENT,
+            recordDenied = true,
+            recordFailed = true)
     @Transactional(
             propagation = Propagation.NOT_SUPPORTED,
             rollbackFor = Exception.class)
-    public SessionRecordVO logout(Long tenantId, Long sessionId, Long userId) {
+    public SessionRecordVO logout(
+            @AuditTenantId Long tenantId,
+            @AuditTargetId Long sessionId,
+            Long userId) {
         TenantScopeUtils.requireTenantId(tenantId);
         if (userId == null || userId <= 0) {
             throw new IllegalArgumentException("用户身份无效");
@@ -62,12 +70,18 @@ public class SessionRevokeServiceImpl implements SessionRevokeService {
     @Override
     @Audited(
             action = "session.admin-revoke",
+            targetType = "SESSION",
             scope = Audited.Scope.TENANT,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
+            tenantIdSource = Audited.TenantIdSource.ARGUMENT,
+            recordDenied = true,
+            recordFailed = true)
     @Transactional(
             propagation = Propagation.NOT_SUPPORTED,
             rollbackFor = Exception.class)
-    public SessionRecordVO adminRevoke(Long tenantId, Long sessionId, Integer operatorRole) {
+    public SessionRecordVO adminRevoke(
+            @AuditTenantId Long tenantId,
+            @AuditTargetId Long sessionId,
+            Integer operatorRole) {
         TenantScopeUtils.requireTenantId(tenantId);
         if (!Integer.valueOf(SUPER_ADMIN_ROLE).equals(operatorRole) && !Integer.valueOf(ADMIN_ROLE).equals(operatorRole)) {
             throw new IllegalArgumentException("当前用户没有管理员撤销权限");

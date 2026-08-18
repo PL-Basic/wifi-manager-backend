@@ -3,6 +3,9 @@ package com.plagod.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.plagod.audit.AuditDetail;
+import com.plagod.audit.AuditTargetId;
+import com.plagod.audit.AuditTenantId;
 import com.plagod.audit.Audited;
 import com.plagod.constant.DeviceCommandPurpose;
 import com.plagod.constant.DeviceCommandType;
@@ -73,9 +76,14 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     @Override
     @Audited(
             action = "device.restore",
+            targetType = "DEVICE",
             scope = Audited.Scope.TENANT,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
-    public DeviceNodeVO restoreDevice(Long tenantId, Long nodeId) {
+            tenantIdSource = Audited.TenantIdSource.ARGUMENT,
+            recordDenied = true,
+            recordFailed = true)
+    public DeviceNodeVO restoreDevice(
+            @AuditTenantId Long tenantId,
+            @AuditTargetId Long nodeId) {
         TenantScopeUtils.requireTenantId(tenantId);
         if (nodeId == null) {
             throw new IllegalArgumentException("设备号不能为空");
@@ -104,9 +112,14 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     @Override
     @Audited(
             action = "device.create",
+            targetType = "DEVICE",
             scope = Audited.Scope.TENANT,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
-    public DeviceNodeVO createDevice(Long tenantId, DeviceNodeCreateDTO createDTO) {
+            tenantIdSource = Audited.TenantIdSource.ARGUMENT,
+            recordDenied = true,
+            recordFailed = true)
+    public DeviceNodeVO createDevice(
+            @AuditTenantId Long tenantId,
+            DeviceNodeCreateDTO createDTO) {
         TenantScopeUtils.requireTenantId(tenantId);
         //清洗数据
         String cleanDeviceCode = createDTO.getDeviceCode().trim();
@@ -172,9 +185,15 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     @Override
     @Audited(
             action = "device.update",
+            targetType = "DEVICE",
             scope = Audited.Scope.TENANT,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
-    public DeviceNodeVO updateDevice(Long tenantId, Long nodeId, DeviceNodeUpdateDTO updateDTO) {
+            tenantIdSource = Audited.TenantIdSource.ARGUMENT,
+            recordDenied = true,
+            recordFailed = true)
+    public DeviceNodeVO updateDevice(
+            @AuditTenantId Long tenantId,
+            @AuditTargetId Long nodeId,
+            DeviceNodeUpdateDTO updateDTO) {
         TenantScopeUtils.requireTenantId(tenantId);
         Esp32Node oldEsp32Node = esp32NodeMapper.selectByNodeIdAndTenantIncludeDeleted(tenantId, nodeId);
         if (oldEsp32Node == null){
@@ -217,9 +236,14 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     @Override
     @Audited(
             action = "device.delete",
+            targetType = "DEVICE",
             scope = Audited.Scope.TENANT,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
-    public void deleteDevice(Long tenantId, Long nodeId) {
+            tenantIdSource = Audited.TenantIdSource.ARGUMENT,
+            recordDenied = true,
+            recordFailed = true)
+    public void deleteDevice(
+            @AuditTenantId Long tenantId,
+            @AuditTargetId Long nodeId) {
         TenantScopeUtils.requireTenantId(tenantId);
         Esp32Node esp32Node = esp32NodeMapper.selectByNodeIdAndTenantIncludeDeleted(tenantId, nodeId);
         Long openSessionCount = sessionRecordMapper.selectCount(
@@ -265,10 +289,15 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     @Override
     @Audited(
             action = "device.allow",
+            targetType = "DEVICE",
             scope = Audited.Scope.TENANT,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
+            tenantIdSource = Audited.TenantIdSource.ARGUMENT,
+            recordDenied = true,
+            recordFailed = true)
     @Transactional(rollbackFor = Exception.class)
-    public DeviceNodeVO allowDevice(Long tenantId, String deviceCode) {
+    public DeviceNodeVO allowDevice(
+            @AuditTenantId Long tenantId,
+            @AuditTargetId String deviceCode) {
         TenantScopeUtils.requireTenantId(tenantId);
         if (!StringUtils.hasText(deviceCode)) {
             throw new IllegalArgumentException("deviceCode 不能为空");
@@ -318,9 +347,15 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     @Override
     @Audited(
             action = "device.kick",
+            targetType = "DEVICE",
             scope = Audited.Scope.TENANT,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
-    public DeviceCommandResult kickDevice(Long tenantId, String deviceCode, KickDeviceDTO kickDeviceDTO) {
+            tenantIdSource = Audited.TenantIdSource.ARGUMENT,
+            recordDenied = true,
+            recordFailed = true)
+    public DeviceCommandResult kickDevice(
+            @AuditTenantId Long tenantId,
+            @AuditTargetId String deviceCode,
+            KickDeviceDTO kickDeviceDTO) {
         String reason = kickDeviceDTO == null ? null : kickDeviceDTO.getReason();
 
         return managedDeviceCommandService.enqueueKick(
@@ -332,14 +367,17 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     @Override
     @Audited(
             action = "device.allow-client",
+            targetType = "SESSION",
             scope = Audited.Scope.TENANT,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
+            tenantIdSource = Audited.TenantIdSource.REQUEST,
+            recordDenied = true,
+            recordFailed = true)
     public DeviceCommandResult allowClient(
             Long nodeId,
             String deviceCode,
             String mac,
-            Long sessionId,
-            Integer ttlSeconds,
+            @AuditTargetId Long sessionId,
+            @AuditDetail("ttlSeconds") Integer ttlSeconds,
             Long actorUserId,
             String clientRequestId,
             String requestFingerprint) {
@@ -420,9 +458,14 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     @Override
     @Audited(
             action = "blacklist.remove",
+            targetType = "BLACKLIST",
             scope = Audited.Scope.TENANT,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
-    public void removeBlacklist(Long tenantId, String mac) {
+            tenantIdSource = Audited.TenantIdSource.ARGUMENT,
+            recordDenied = true,
+            recordFailed = true)
+    public void removeBlacklist(
+            @AuditTenantId Long tenantId,
+            @AuditTargetId String mac) {
         QueryWrapper<MacBlacklist> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("tenant_id", TenantScopeUtils.requireTenantId(tenantId))
                 .eq("mac", mac);

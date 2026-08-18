@@ -3,6 +3,8 @@ package com.plagod.service.impl;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.plagod.audit.Audited;
+import com.plagod.audit.AuditTargetId;
+import com.plagod.audit.AuditTenantId;
 import com.plagod.constant.*;
 import com.plagod.dto.StageWifiConfigCommand;
 import com.plagod.dto.device.WifiConfigStageDTO;
@@ -49,11 +51,16 @@ public class DeviceWifiConfigServiceImpl implements DeviceWifiConfigService {
     @Override
     @Audited(
             action = "device.wifi.stage",
+            targetType = "DEVICE",
             scope = Audited.Scope.TENANT,
-            tenantIdSource = Audited.TenantIdSource.REQUEST,
-            includeArgs = false)
+            tenantIdSource = Audited.TenantIdSource.ARGUMENT,
+            recordDenied = true,
+            recordFailed = true)
     @Transactional(rollbackFor = Exception.class)
-    public WifiConfigTaskVO stageCandidate(Long tenantId, String deviceCode, WifiConfigStageDTO stageDTO) {
+    public WifiConfigTaskVO stageCandidate(
+            @AuditTenantId Long tenantId,
+            @AuditTargetId String deviceCode,
+            WifiConfigStageDTO stageDTO) {
         TenantScopeUtils.requireTenantId(tenantId);
 
         String cleanDeviceCode = cleanRequired(deviceCode, 64, "deviceCode 不能为空");

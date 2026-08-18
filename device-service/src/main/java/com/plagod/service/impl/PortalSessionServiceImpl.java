@@ -2,6 +2,7 @@ package com.plagod.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.plagod.audit.Audited;
+import com.plagod.audit.AuditTenantId;
 import com.plagod.constant.DeviceCommandPurpose;
 import com.plagod.constant.SessionStatus;
 import com.plagod.dto.ApiResponse;
@@ -84,9 +85,15 @@ public class PortalSessionServiceImpl implements PortalSessionService {
     @Override
     @Audited(
             action = "session.portal-authorize",
+            targetType = "SESSION",
             scope = Audited.Scope.TENANT,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
-    public SessionRecordVO authorize(Long tenantId, PortalAuthorizeDTO dto, Long userId) {
+            tenantIdSource = Audited.TenantIdSource.ARGUMENT,
+            recordDenied = true,
+            recordFailed = true)
+    public SessionRecordVO authorize(
+            @AuditTenantId Long tenantId,
+            PortalAuthorizeDTO dto,
+            Long userId) {
         TenantScopeUtils.requireTenantId(tenantId);
         if (dto == null || userId == null || userId <= 0) {
             throw new IllegalArgumentException("Portal 授权参数或者用户身份无效");

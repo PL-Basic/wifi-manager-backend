@@ -2,6 +2,7 @@ package com.plagod.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.plagod.audit.Audited;
+import com.plagod.audit.AuditTenantId;
 import com.plagod.constant.DeviceCommandPurpose;
 import com.plagod.constant.SessionStatus;
 import com.plagod.dto.device.MacBlacklistCreateDTO;
@@ -55,12 +56,17 @@ public class MacBlacklistServiceImpl implements MacBlacklistService {
     @Override
     @Audited(
             action = "blacklist.add",
+            targetType = "BLACKLIST",
             scope = Audited.Scope.TENANT,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
+            tenantIdSource = Audited.TenantIdSource.ARGUMENT,
+            recordDenied = true,
+            recordFailed = true)
     @Transactional(
             propagation = Propagation.NOT_SUPPORTED,
             rollbackFor = Exception.class)
-    public void addBlacklist(Long tenantId, MacBlacklistCreateDTO createDTO) {
+    public void addBlacklist(
+            @AuditTenantId Long tenantId,
+            MacBlacklistCreateDTO createDTO) {
         TenantScopeUtils.requireTenantId(tenantId);
         if (createDTO == null) {
             throw new IllegalArgumentException("黑名单参数不能为空");
