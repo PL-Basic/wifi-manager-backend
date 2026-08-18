@@ -1,6 +1,7 @@
 package com.plagod.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.plagod.client.UserRoleClient;
 import com.plagod.dto.ApiResponse;
@@ -258,6 +259,75 @@ class TenantServiceImplTest {
 
         assertEquals(409, exception.getHttpStatus());
         verify(tenantMapper, never()).update(any(), any());
+    }
+
+    @Test
+    void invalidTenantStatusIsRejectedBeforePersistence() {
+        when(tenantMapper.selectOne(any()))
+                .thenReturn(tenant(9L, "tenant-a"));
+        TenantStatusRequest request = new TenantStatusRequest();
+        request.setStatus("PAUSED");
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> service.updateStatus(
+                        tenantContext("9", "TENANT_ADMIN"),
+                        "9",
+                        request));
+
+        assertEquals(
+                "租户状态只能是ACTIVE或DISABLED",
+                exception.getMessage());
+        verify(tenantMapper, never()).update(any(), any());
+    }
+
+    @Test
+    void repeatedTenantStatusDoesNotWriteAgain() {
+        when(tenantMapper.selectOne(any()))
+                .thenReturn(tenant(9L, "tenant-a"));
+        when(tenantMemberMapper.selectCount(any())).thenReturn(1L);
+        TenantStatusRequest request = new TenantStatusRequest();
+        request.setStatus("ACTIVE");
+
+        assertEquals(
+                "ACTIVE",
+                service.updateStatus(
+                        tenantContext("9", "TENANT_ADMIN"),
+                        "9",
+                        request).getStatus());
+
+        verify(tenantMapper, never()).update(any(), any());
+    }
+
+    @Test
+    void concurrentStatusChangeUsesLoadedStateAndVersionThenConflicts() {
+        Tenant current = tenant(9L, "tenant-a");
+        current.setVersion(3);
+        when(tenantMapper.selectOne(any())).thenReturn(current);
+        AtomicReference<UpdateWrapper<Tenant>> update =
+                new AtomicReference<>();
+        when(tenantMapper.update(any(), any()))
+                .thenAnswer(invocation -> {
+                    update.set(invocation.getArgument(1));
+                    return 0;
+                });
+        TenantStatusRequest request = new TenantStatusRequest();
+        request.setStatus("DISABLED");
+
+        ApiStatusException exception = assertThrows(
+                ApiStatusException.class,
+                () -> service.updateStatus(
+                        platformTenantContext("9"),
+                        "9",
+                        request));
+
+        assertEquals(409, exception.getHttpStatus());
+        assertTrue(update.get().getSqlSegment().contains("status"));
+        assertTrue(update.get().getSqlSegment().contains("version"));
+        assertTrue(update.get().getParamNameValuePairs()
+                .containsValue("ACTIVE"));
+        assertTrue(update.get().getParamNameValuePairs()
+                .containsValue(3));
     }
 
     @Test

@@ -1,5 +1,6 @@
 package com.plagod.audit;
 
+import com.plagod.security.TrustedRequestContextResolver;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
@@ -8,6 +9,7 @@ import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.util.ClassUtils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -48,6 +50,16 @@ class AuditStarterConsumerBoundaryTest {
         @Bean
         JdbcTemplate jdbcTemplate() {
             return mock(JdbcTemplate.class);
+        }
+
+        @Bean
+        PlatformTransactionManager transactionManager() {
+            return mock(PlatformTransactionManager.class);
+        }
+
+        @Bean
+        TrustedRequestContextResolver trustedRequestContextResolver() {
+            return mock(TrustedRequestContextResolver.class);
         }
     }
 }

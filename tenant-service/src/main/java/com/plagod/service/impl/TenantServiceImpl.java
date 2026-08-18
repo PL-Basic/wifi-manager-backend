@@ -3,8 +3,10 @@ package com.plagod.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.plagod.client.UserRoleClient;
+import com.plagod.audit.AuditDetail;
+import com.plagod.audit.AuditTargetId;
 import com.plagod.audit.Audited;
+import com.plagod.client.UserRoleClient;
 import com.plagod.dto.ApiResponse;
 import com.plagod.dto.tenant.DefaultTenantMembershipRequest;
 import com.plagod.dto.tenant.TenantCreateRequest;
@@ -64,6 +66,7 @@ public class TenantServiceImpl implements TenantService {
 
     private static final String DEFAULT_TENANT_CODE = "default-tenant";
     private static final String ACTIVE = "ACTIVE";
+    private static final String DISABLED = "DISABLED";
     private static final String TENANT_OWNER = "TENANT_OWNER";
     private static final String TENANT_ADMIN = "TENANT_ADMIN";
     private static final String RECEIPT_APPLIED = "APPLIED";
@@ -210,8 +213,11 @@ public class TenantServiceImpl implements TenantService {
     @Override
     @Audited(
             action = "tenant.create",
+            targetType = "TENANT",
             scope = Audited.Scope.PLATFORM,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
+            tenantIdSource = Audited.TenantIdSource.REQUEST,
+            recordDenied = true,
+            recordFailed = true)
     public TenantVO createTenant(
             TenantCreateRequest request,
             TrustedRequestContext context) {
@@ -277,10 +283,15 @@ public class TenantServiceImpl implements TenantService {
     @Transactional
     @Audited(
             action = "tenant.update",
-            scope = Audited.Scope.PLATFORM,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
+            targetType = "TENANT",
+            scope = Audited.Scope.CONTEXT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST,
+            recordDenied = true,
+            recordFailed = true)
     public TenantVO updateTenant(
             TrustedRequestContext context,
+            @AuditTargetId
+            @AuditDetail("tenantId")
             String tenantId,
             TenantUpdateRequest request) {
         Tenant tenant = requiredScopedTenant(context, tenantId, true);
@@ -303,14 +314,20 @@ public class TenantServiceImpl implements TenantService {
     @Transactional
     @Audited(
             action = "tenant.status",
-            scope = Audited.Scope.PLATFORM,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
+            targetType = "TENANT",
+            scope = Audited.Scope.CONTEXT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST,
+            recordDenied = true,
+            recordFailed = true)
     public TenantVO updateStatus(
             TrustedRequestContext context,
+            @AuditTargetId
+            @AuditDetail("tenantId")
             String tenantId,
             TenantStatusRequest request) {
         Tenant tenant = requiredScopedTenant(context, tenantId, true);
-        String targetStatus = request.getStatus();
+        String targetStatus = requireTenantStatus(
+                request == null ? null : request.getStatus());
         if (DEFAULT_TENANT_CODE.equals(tenant.getTenantCode()) && !ACTIVE.equals(targetStatus)) {
             throw ApiStatusException.conflict("默认兼容租户在首版迁移期间不能停用");
         }
@@ -319,6 +336,7 @@ public class TenantServiceImpl implements TenantService {
         }
         int updated = tenantMapper.update(null, new UpdateWrapper<Tenant>()
                 .eq("tenant_id", tenant.getTenantId())
+                .eq("status", tenant.getStatus())
                 .eq("version", tenant.getVersion())
                 .set("status", targetStatus)
                 .setSql("context_version = context_version + 1")
@@ -728,6 +746,14 @@ public class TenantServiceImpl implements TenantService {
             throw new IllegalArgumentException("时区必须是有效的IANA时区");
         }
         return value;
+    }
+
+    private String requireTenantStatus(String status) {
+        if (!ACTIVE.equals(status) && !DISABLED.equals(status)) {
+            throw new IllegalArgumentException(
+                    "租户状态只能是ACTIVE或DISABLED");
+        }
+        return status;
     }
 
 }
