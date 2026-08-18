@@ -1,5 +1,8 @@
 package com.plagod.service.impl;
 
+import com.plagod.audit.AuditDetail;
+import com.plagod.audit.AuditTargetId;
+import com.plagod.audit.AuditTenantId;
 import com.plagod.audit.Audited;
 import com.plagod.constant.EntitlementTradeConstants;
 import com.plagod.dto.entitlement.EntitlementRewardOrderRequest;
@@ -58,12 +61,15 @@ public class EntitlementRewardOrderServiceImpl implements EntitlementRewardOrder
     @Override
     @Audited(
             action = "entitlement.reward-order.create",
+            targetType = "USER_ENTITLEMENT",
             scope = Audited.Scope.TENANT,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
+            tenantIdSource = Audited.TenantIdSource.ARGUMENT,
+            recordDenied = true,
+            recordFailed = true)
     @Transactional(rollbackFor = Exception.class)
-    public EntitlementOrderVO create(Long tenantId,
-                                     Long userId,
-                                     Long operatorId,
+    public EntitlementOrderVO create(@AuditTenantId Long tenantId,
+                                     @AuditTargetId Long userId,
+                                     @AuditDetail("operatorId") Long operatorId,
                                      String operatorName,
                                      EntitlementRewardOrderRequest request) {
 
@@ -293,14 +299,16 @@ public class EntitlementRewardOrderServiceImpl implements EntitlementRewardOrder
         log.setTenantId(order.getTenantId());
         log.setBusinessType(EntitlementTradeConstants.BUSINESS_ORDER);
         log.setBusinessNo(order.getOrderNo());
-        log.setEventKey("REWARD:" + order.getClientRequestId());
+        log.setEventKey(order.getClientRequestId());
         log.setFromStatus(null);
         log.setToStatus(EntitlementTradeConstants.ORDER_FULFILLED);
         log.setOperatorType(EntitlementTradeConstants.OPERATOR_ADMIN);
         log.setOperatorId(operatorId);
         log.setRemark(reason);
         log.setCreateTime(now);
-        statusLogMapper.insertIgnore(log);
+        if (statusLogMapper.insertIgnore(log) != 1) {
+            throw new IllegalStateException("奖励订单状态事件已存在");
+        }
     }
 
     private void validateDuplicate(EntitlementOrder stored, EntitlementOrder candidate) {

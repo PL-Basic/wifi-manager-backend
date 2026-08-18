@@ -1,5 +1,8 @@
 package com.plagod.service.impl;
 
+import com.plagod.audit.AuditDetail;
+import com.plagod.audit.AuditTargetId;
+import com.plagod.audit.AuditTenantId;
 import com.plagod.audit.Audited;
 import com.plagod.constant.EntitlementTradeConstants;
 import com.plagod.dto.entitlement.EntitlementAdjustmentRequest;
@@ -37,10 +40,18 @@ public class EntitlementAdjustmentServiceImpl implements EntitlementAdjustmentSe
     @Override
     @Audited(
             action = "entitlement.adjust",
+            targetType = "USER_ENTITLEMENT",
             scope = Audited.Scope.TENANT,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
+            tenantIdSource = Audited.TenantIdSource.ARGUMENT,
+            recordDenied = true,
+            recordFailed = true)
     @Transactional(rollbackFor = Exception.class)
-    public EntitlementSnapshotVO adjust(Long tenantId, Long userId, Long operatorId, String operatorName, EntitlementAdjustmentRequest request) {
+    public EntitlementSnapshotVO adjust(
+            @AuditTenantId Long tenantId,
+            @AuditTargetId Long userId,
+            @AuditDetail("operatorId") Long operatorId,
+            String operatorName,
+            EntitlementAdjustmentRequest request) {
 
         if (tenantId == null || tenantId <= 0) {
             throw new IllegalArgumentException("租户身份无效");
@@ -84,14 +95,17 @@ public class EntitlementAdjustmentServiceImpl implements EntitlementAdjustmentSe
     @Override
     @Audited(
             action = "entitlement.unlimited.adjust",
+            targetType = "USER_ENTITLEMENT",
             scope = Audited.Scope.TENANT,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
+            tenantIdSource = Audited.TenantIdSource.ARGUMENT,
+            recordDenied = true,
+            recordFailed = true)
     @Transactional(rollbackFor = Exception.class)
-    public EntitlementSnapshotVO adjustUnlimited(Long tenantId,
-                                                 Long userId,
-                                                 Long operatorId,
+    public EntitlementSnapshotVO adjustUnlimited(@AuditTenantId Long tenantId,
+                                                 @AuditTargetId Long userId,
+                                                 @AuditDetail("operatorId") Long operatorId,
                                                  String operatorName,
-                                                 Integer operatorRole,
+                                                 @AuditDetail("operatorRole") Integer operatorRole,
                                                  UnlimitedEntitlementRequest request) {
 
         if (!Integer.valueOf(0).equals(operatorRole)) {

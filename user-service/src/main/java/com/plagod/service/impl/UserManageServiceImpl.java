@@ -3,6 +3,8 @@ package com.plagod.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.plagod.audit.AuditDetail;
+import com.plagod.audit.AuditTargetId;
 import com.plagod.audit.Audited;
 import com.plagod.exception.ApiStatusException;
 import com.plagod.mapper.SocialIdentityMapper;
@@ -112,9 +114,15 @@ public class UserManageServiceImpl implements UserManageService {
     @Transactional
     @Audited(
             action = "user.update",
-            scope = Audited.Scope.PLATFORM,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
-    public UserVO updateUser(Long userId, UserUpdateDTO updateDTO, Integer operatorRole) {
+            targetType = "USER",
+            scope = Audited.Scope.CONTEXT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST,
+            recordDenied = true,
+            recordFailed = true)
+    public UserVO updateUser(
+            @AuditTargetId Long userId,
+            UserUpdateDTO updateDTO,
+            @AuditDetail("operatorRole") Integer operatorRole) {
         User user = getExistingUser(userId);
         boolean roleChanged = false;
 
@@ -173,9 +181,14 @@ public class UserManageServiceImpl implements UserManageService {
     @Transactional
     @Audited(
             action = "user.status",
+            targetType = "USER",
             scope = Audited.Scope.PLATFORM,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
-    public void updateStatus(Long userId, UserStatusDTO statusDTO) {
+            tenantIdSource = Audited.TenantIdSource.REQUEST,
+            recordDenied = true,
+            recordFailed = true)
+    public void updateStatus(
+            @AuditTargetId Long userId,
+            UserStatusDTO statusDTO) {
         User user = getExistingUser(userId);
         if (Integer.valueOf(0).equals(statusDTO.getStatus())
                 && !Integer.valueOf(0).equals(user.getStatus())) {
@@ -191,9 +204,12 @@ public class UserManageServiceImpl implements UserManageService {
     @Transactional
     @Audited(
             action = "user.delete",
+            targetType = "USER",
             scope = Audited.Scope.PLATFORM,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
-    public void deleteUser(Long userId) {
+            tenantIdSource = Audited.TenantIdSource.REQUEST,
+            recordDenied = true,
+            recordFailed = true)
+    public void deleteUser(@AuditTargetId Long userId) {
         requireDeletableUser(getExistingUser(userId));
         appendAuthSessionRevoke(userId, "ACCOUNT_DELETED");
         if (userMapper.deleteById(userId) != 1) {
@@ -205,9 +221,12 @@ public class UserManageServiceImpl implements UserManageService {
     @Transactional
     @Audited(
             action = "user.purge",
+            targetType = "USER",
             scope = Audited.Scope.PLATFORM,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
-    public void purgeUser(Long userId) {
+            tenantIdSource = Audited.TenantIdSource.REQUEST,
+            recordDenied = true,
+            recordFailed = true)
+    public void purgeUser(@AuditTargetId Long userId) {
         if (userId == null || userId <= 0) {
             throw new IllegalArgumentException("用户 ID 无效");
         }

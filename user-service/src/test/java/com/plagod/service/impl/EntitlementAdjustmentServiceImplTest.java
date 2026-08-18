@@ -1,6 +1,7 @@
 package com.plagod.service.impl;
 
 import com.plagod.constant.EntitlementTradeConstants;
+import com.plagod.dto.entitlement.EntitlementAdjustmentRequest;
 import com.plagod.dto.entitlement.UnlimitedEntitlementRequest;
 import com.plagod.entity.entitlement.EntitlementUsageLog;
 import com.plagod.entity.entitlement.NetworkEntitlement;
@@ -83,6 +84,7 @@ class EntitlementAdjustmentServiceImplTest {
         assertEquals(EntitlementTradeConstants.MODE_DURATION,
                 entitlement.getUnlimitedPreviousMode());
         assertEquals(1, entitlement.getUnlimitedPreviousStatus());
+        assertEquals(1, entitlement.getVersion());
 
         EntitlementUsageLog storedLog = new EntitlementUsageLog();
         storedLog.setTenantId(TENANT_ID);
@@ -95,7 +97,48 @@ class EntitlementAdjustmentServiceImplTest {
         service.adjustUnlimited(TENANT_ID, USER_ID, 9L, "root", 0, request);
 
         verify(entitlementMapper).updateById(entitlement);
-        verify(usageLogMapper).insert(any(EntitlementUsageLog.class));
+        ArgumentCaptor<EntitlementUsageLog> logCaptor =
+                ArgumentCaptor.forClass(EntitlementUsageLog.class);
+        verify(usageLogMapper).insert(logCaptor.capture());
+        assertEquals("UNL:req-grant", logCaptor.getValue().getRequestId());
+        assertEquals("UNLIMITED_GRANT", logCaptor.getValue().getReason());
+    }
+
+    @Test
+    void durationAdjustmentIncrementsVersionAndUsesStableUsageEventKey() {
+        NetworkEntitlement entitlement = durationEntitlement();
+        EntitlementAdjustmentRequest request =
+                new EntitlementAdjustmentRequest();
+        request.setRequestId("req-adjust");
+        request.setMode(EntitlementTradeConstants.MODE_DURATION);
+        request.setChangeSeconds(300L);
+        request.setReason("运营审批");
+
+        when(userMapper.selectByIdForUpdate(USER_ID))
+                .thenReturn(availableUser());
+        when(entitlementMapper.selectByUserIdForUpdate(TENANT_ID, USER_ID))
+                .thenReturn(entitlement);
+        when(usageLogMapper.selectByRequestIdForUpdate(
+                TENANT_ID, "ADJ:req-adjust"))
+                .thenReturn(Collections.emptyList());
+        when(entitlementMapper.updateById(entitlement)).thenReturn(1);
+        when(purchaseMapper.insert(any())).thenReturn(1);
+        when(usageLogMapper.insert(any(EntitlementUsageLog.class))).thenReturn(1);
+
+        service.adjust(
+                TENANT_ID,
+                USER_ID,
+                9L,
+                "admin",
+                request);
+
+        assertEquals(1, entitlement.getVersion());
+        assertEquals(3900L, entitlement.getRemainingSeconds());
+        ArgumentCaptor<EntitlementUsageLog> logCaptor =
+                ArgumentCaptor.forClass(EntitlementUsageLog.class);
+        verify(usageLogMapper).insert(logCaptor.capture());
+        assertEquals("ADJ:req-adjust", logCaptor.getValue().getRequestId());
+        assertEquals("ADMIN_ADJUSTMENT", logCaptor.getValue().getReason());
     }
 
     @Test

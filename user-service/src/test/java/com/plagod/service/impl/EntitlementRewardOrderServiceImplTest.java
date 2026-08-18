@@ -5,6 +5,7 @@ import com.plagod.dto.entitlement.EntitlementRewardOrderRequest;
 import com.plagod.entity.entitlement.EntitlementOrder;
 import com.plagod.entity.entitlement.EntitlementUsageLog;
 import com.plagod.entity.entitlement.NetworkEntitlement;
+import com.plagod.entity.entitlement.TradeStatusLog;
 import com.plagod.entity.user.User;
 import com.plagod.mapper.DurationPurchaseMapper;
 import com.plagod.mapper.EntitlementOrderMapper;
@@ -18,12 +19,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.when;
@@ -90,6 +93,7 @@ class EntitlementRewardOrderServiceImplTest {
                 .thenReturn(entitlement);
         when(entitlementMapper.updateById(entitlement)).thenReturn(1);
         when(usageLogMapper.insert(any(EntitlementUsageLog.class))).thenReturn(1);
+        when(statusLogMapper.insertIgnore(any(TradeStatusLog.class))).thenReturn(1);
 
         EntitlementRewardOrderRequest request = new EntitlementRewardOrderRequest();
         request.setRequestId("reward-month");
@@ -104,5 +108,18 @@ class EntitlementRewardOrderServiceImplTest {
         assertEquals(1, result.getGrantMonths());
         assertEquals(LocalDateTime.of(2099, 2, 28, 10, 0),
                 entitlement.getSubscriptionEndTime());
+        assertEquals(EntitlementTradeConstants.ORDER_FULFILLED,
+                inserted.get().getStatus());
+        assertEquals(0, inserted.get().getVersion());
+
+        ArgumentCaptor<TradeStatusLog> statusLog =
+                ArgumentCaptor.forClass(TradeStatusLog.class);
+        org.mockito.Mockito.verify(statusLogMapper)
+                .insertIgnore(statusLog.capture());
+        assertEquals("REWARD:reward-month",
+                statusLog.getValue().getEventKey());
+        assertNull(statusLog.getValue().getFromStatus());
+        assertEquals(EntitlementTradeConstants.ORDER_FULFILLED,
+                statusLog.getValue().getToStatus());
     }
 }
