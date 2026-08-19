@@ -1,0 +1,110 @@
+{
+  "version": "core-use-cases-v1",
+  "auditClosures": [
+    {
+      "findingId": "H-01",
+      "severity": "HIGH",
+      "before": "AUTH_REFRESH combined session and token states",
+      "after": "split into AUTH_REFRESH_SESSION and AUTH_REFRESH_TOKEN",
+      "status": "CLOSED_IN_S0_CANDIDATE"
+    },
+    {
+      "findingId": "H-02",
+      "severity": "HIGH",
+      "before": "ACCOUNT_ENTITLEMENT combined unrelated objects",
+      "after": "split User, request and five entitlement objects",
+      "status": "CLOSED_IN_S0_CANDIDATE"
+    },
+    {
+      "findingId": "H-03",
+      "severity": "HIGH",
+      "before": "deletion request sourced from Entitlement constants",
+      "after": "bound integer request states to V1_4 and UserOperationRequestServiceImpl",
+      "status": "CLOSED_IN_S0_CANDIDATE"
+    },
+    {
+      "findingId": "H-04",
+      "severity": "HIGH",
+      "before": "TENANT_MEMBER_STAFF combined objects",
+      "after": "split Tenant, Member and PlatformStaff status",
+      "status": "CLOSED_IN_S0_CANDIDATE"
+    },
+    {
+      "findingId": "H-05",
+      "severity": "HIGH",
+      "before": "SAAS_QUOTA combined Plan/Version/Subscription/Assignment/Reservation",
+      "after": "split five objects and mark Assignment vocabulary GAP",
+      "status": "CLOSED_IN_S0_CANDIDATE"
+    },
+    {
+      "findingId": "H-06",
+      "severity": "HIGH",
+      "before": "single MARKETPLACE state catalog",
+      "after": "split Product, SKU, Payment, Order and two Fulfillment modes",
+      "status": "CLOSED_IN_S0_CANDIDATE"
+    },
+    {
+      "findingId": "H-07",
+      "severity": "HIGH",
+      "before": "ANNOUNCEMENT_COMMENT omitted independent objects and Outbox",
+      "after": "split Announcement, Comment, restriction and review Outbox",
+      "status": "CLOSED_IN_S0_CANDIDATE"
+    },
+    {
+      "findingId": "H-08",
+      "severity": "HIGH",
+      "before": "single SUPPORT state catalog",
+      "after": "split Submission, Ticket and review Outbox; ACCEPT converges to conversion",
+      "status": "CLOSED_IN_S0_CANDIDATE"
+    },
+    {
+      "findingId": "H-09",
+      "severity": "HIGH",
+      "before": "single DEVICE catalog and stringified numeric states",
+      "after": "split four integer machines and preserve del_flag separation",
+      "status": "CLOSED_IN_S0_CANDIDATE"
+    },
+    {
+      "findingId": "H-10",
+      "severity": "HIGH",
+      "before": "single MONITOR catalog",
+      "after": "split AccessRule, AlertEvent, LocationAuthorization and Geofence objects",
+      "status": "CLOSED_IN_S0_CANDIDATE"
+    },
+    {
+      "findingId": "H-11",
+      "severity": "HIGH",
+      "before": "WIFI_CONFIG used as a command type",
+      "after": "freeze STAGE_WIFI_CONFIG and keep WiFi Config as a business object",
+      "status": "CLOSED_IN_S0_CANDIDATE"
+    },
+    {
+      "findingId": "M-01",
+      "severity": "MEDIUM",
+      "before": "PlatformStaff authority vocabulary treated as frozen",
+      "after": "register explicit 2.2 vocabulary GAP",
+      "status": "CLOSED_IN_S0_CANDIDATE"
+    },
+    {
+      "findingId": "M-02",
+      "severity": "MEDIUM",
+      "before": "GOV-01 operations had two owners",
+      "after": "assign each operation exactly USER or TENANT",
+      "status": "CLOSED_IN_S0_CANDIDATE"
+    },
+    {
+      "findingId": "M-03",
+      "severity": "MEDIUM",
+      "before": "stateless operations borrowed unrelated group states",
+      "after": "use explicit STATELESS with empty refs",
+      "status": "CLOSED_IN_S0_CANDIDATE"
+    },
+    {
+      "findingId": "M-04",
+      "severity": "MEDIUM",
+      "before": "directory/group evidence was not operation-local",
+      "after": "attach concrete file evidence or explicit GAP to every operation",
+      "status": "CLOSED_IN_S0_CANDIDATE"
+    }
+  ]
+}

@@ -1,0 +1,1171 @@
+{
+  "version": "core-use-cases-v1",
+  "domainId": "MARKETPLACE",
+  "workPackages": [
+    "P21-MARKET"
+  ],
+  "stateMachines": [
+    {
+      "stateMachineId": "MARKETPLACE_PRODUCT",
+      "businessObject": "Marketplace Product",
+      "owner": "MARKETPLACE",
+      "field": "t_market_product.status",
+      "machineType": "STRING",
+      "source": [
+        "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql",
+        "marketplace-service/src/main/java/com/plagod/entity/MarketplaceProduct.java"
+      ],
+      "machineValues": [
+        {
+          "machineValue": "DRAFT",
+          "semanticName": "DRAFT",
+          "terminal": false
+        },
+        {
+          "machineValue": "PUBLISHED",
+          "semanticName": "PUBLISHED",
+          "terminal": false
+        },
+        {
+          "machineValue": "UNPUBLISHED",
+          "semanticName": "UNPUBLISHED",
+          "terminal": false
+        }
+      ],
+      "lifecycle": {
+        "status": "GAP",
+        "terminalStates": [],
+        "legalTransitions": [],
+        "gap": {
+          "targetLayer": "2.4",
+          "currentTruth": "Schema freezes Product values, but no production catalog transition service exists.",
+          "evidence": "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql"
+        }
+      }
+    },
+    {
+      "stateMachineId": "MARKETPLACE_SKU",
+      "businessObject": "Marketplace SKU",
+      "owner": "MARKETPLACE",
+      "field": "t_market_sku.status",
+      "machineType": "STRING",
+      "source": [
+        "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql",
+        "marketplace-service/src/main/java/com/plagod/entity/MarketplaceSku.java"
+      ],
+      "machineValues": [
+        {
+          "machineValue": "ACTIVE",
+          "semanticName": "ACTIVE",
+          "terminal": false
+        },
+        {
+          "machineValue": "INACTIVE",
+          "semanticName": "INACTIVE",
+          "terminal": false
+        }
+      ],
+      "lifecycle": {
+        "status": "GAP",
+        "terminalStates": [],
+        "legalTransitions": [],
+        "gap": {
+          "targetLayer": "2.4",
+          "currentTruth": "Schema freezes SKU values, but no production SKU transition service exists.",
+          "evidence": "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql"
+        }
+      }
+    },
+    {
+      "stateMachineId": "MARKETPLACE_PAYMENT",
+      "businessObject": "Marketplace Payment",
+      "owner": "MARKETPLACE",
+      "field": "t_market_order.payment_status",
+      "machineType": "STRING",
+      "source": [
+        "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql",
+        "marketplace-service/src/main/java/com/plagod/entity/MarketplaceOrder.java"
+      ],
+      "machineValues": [
+        {
+          "machineValue": "PENDING",
+          "semanticName": "PENDING",
+          "terminal": false
+        },
+        {
+          "machineValue": "SUCCEEDED",
+          "semanticName": "SUCCEEDED",
+          "terminal": true
+        },
+        {
+          "machineValue": "FAILED",
+          "semanticName": "FAILED",
+          "terminal": true
+        },
+        {
+          "machineValue": "CLOSED",
+          "semanticName": "CLOSED",
+          "terminal": true
+        }
+      ],
+      "lifecycle": {
+        "status": "GAP",
+        "terminalStates": [],
+        "legalTransitions": [],
+        "gap": {
+          "targetLayer": "2.4",
+          "currentTruth": "Schema freezes Marketplace Payment values, but no controlled production transition service exists.",
+          "evidence": "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql"
+        }
+      }
+    },
+    {
+      "stateMachineId": "MARKETPLACE_ORDER",
+      "businessObject": "Marketplace Order",
+      "owner": "MARKETPLACE",
+      "field": "t_market_order.order_status",
+      "machineType": "STRING",
+      "source": [
+        "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql",
+        "marketplace-service/src/main/java/com/plagod/entity/MarketplaceOrder.java"
+      ],
+      "machineValues": [
+        {
+          "machineValue": "PENDING_DEMO_PAYMENT",
+          "semanticName": "PENDING_DEMO_PAYMENT",
+          "terminal": false
+        },
+        {
+          "machineValue": "PAID",
+          "semanticName": "PAID",
+          "terminal": false
+        },
+        {
+          "machineValue": "FULFILLING",
+          "semanticName": "FULFILLING",
+          "terminal": false
+        },
+        {
+          "machineValue": "FULFILLED",
+          "semanticName": "FULFILLED",
+          "terminal": true
+        },
+        {
+          "machineValue": "CANCELLED",
+          "semanticName": "CANCELLED",
+          "terminal": true
+        },
+        {
+          "machineValue": "CLOSED",
+          "semanticName": "CLOSED",
+          "terminal": true
+        },
+        {
+          "machineValue": "FULFILLMENT_FAILED",
+          "semanticName": "FULFILLMENT_FAILED",
+          "terminal": true
+        }
+      ],
+      "lifecycle": {
+        "status": "GAP",
+        "terminalStates": [],
+        "legalTransitions": [],
+        "gap": {
+          "targetLayer": "2.4",
+          "currentTruth": "Schema freezes Marketplace Order values and invariants, but the complete production advancement loop is absent.",
+          "evidence": "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql"
+        }
+      }
+    },
+    {
+      "stateMachineId": "MARKETPLACE_TARGET_FULFILLMENT",
+      "businessObject": "TARGET_DOMAIN Fulfillment",
+      "owner": "MARKETPLACE",
+      "field": "t_market_fulfillment.status where fulfillment_mode=TARGET_DOMAIN",
+      "machineType": "STRING",
+      "source": [
+        "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql",
+        "marketplace-service/src/main/java/com/plagod/service/MarketplaceFulfillmentWorker.java",
+        "marketplace-service/src/main/java/com/plagod/entity/MarketplaceFulfillment.java"
+      ],
+      "machineValues": [
+        {
+          "machineValue": "PENDING",
+          "semanticName": "PENDING",
+          "terminal": false
+        },
+        {
+          "machineValue": "PROCESSING",
+          "semanticName": "PROCESSING",
+          "terminal": false
+        },
+        {
+          "machineValue": "SUCCEEDED",
+          "semanticName": "SUCCEEDED",
+          "terminal": true
+        },
+        {
+          "machineValue": "FAILED",
+          "semanticName": "FAILED",
+          "terminal": true
+        }
+      ],
+      "lifecycle": {
+        "status": "FROZEN",
+        "terminalStates": [
+          "SUCCEEDED",
+          "FAILED"
+        ],
+        "legalTransitions": [
+          "NONE->PENDING",
+          "PENDING->PROCESSING",
+          "PROCESSING->PROCESSING",
+          "PROCESSING->SUCCEEDED",
+          "PROCESSING->PENDING",
+          "PROCESSING->FAILED"
+        ]
+      }
+    },
+    {
+      "stateMachineId": "MARKETPLACE_TRACK_ONLY_FULFILLMENT",
+      "businessObject": "TRACK_ONLY Fulfillment",
+      "owner": "MARKETPLACE",
+      "field": "t_market_fulfillment.status where fulfillment_mode=TRACK_ONLY",
+      "machineType": "STRING",
+      "source": [
+        "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql",
+        "marketplace-service/src/main/java/com/plagod/entity/MarketplaceFulfillment.java"
+      ],
+      "machineValues": [
+        {
+          "machineValue": "PENDING",
+          "semanticName": "PENDING",
+          "terminal": false
+        },
+        {
+          "machineValue": "DEMO_DELIVERY_PENDING",
+          "semanticName": "DEMO_DELIVERY_PENDING",
+          "terminal": false
+        },
+        {
+          "machineValue": "DEMO_DELIVERED",
+          "semanticName": "DEMO_DELIVERED",
+          "terminal": true
+        },
+        {
+          "machineValue": "CANCELLED",
+          "semanticName": "CANCELLED",
+          "terminal": true
+        }
+      ],
+      "lifecycle": {
+        "status": "GAP",
+        "terminalStates": [],
+        "legalTransitions": [],
+        "gap": {
+          "targetLayer": "2.4",
+          "currentTruth": "TRACK_ONLY values are schema-frozen, but production transitions are absent.",
+          "evidence": "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql"
+        }
+      }
+    }
+  ],
+  "groups": [
+    {
+      "groupId": "MARKET-01",
+      "title": "商品与 SKU 生命周期",
+      "workPackages": [
+        "P21-MARKET"
+      ],
+      "operations": [
+        {
+          "operationId": "MARKET-01.QUERY.LIST_PRODUCTS",
+          "kind": "QUERY",
+          "owner": "MARKETPLACE",
+          "actor": [
+            "PLATFORM_STAFF"
+          ],
+          "context": [
+            "PLATFORM"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "MARKETPLACE_PRODUCT"
+          ],
+          "input": "LIST_PRODUCTS: product, SKU, target reference and expected version",
+          "result": "LIST_PRODUCTS: validated catalog state",
+          "errorKeys": [
+            "TARGET_UNFULFILLABLE",
+            "ILLEGAL_STATE"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [
+            {
+              "id": "C-MARKET-STATE",
+              "source": "historical cross-domain marketplace aliases",
+              "currentTruth": "Marketplace Order and TARGET_DOMAIN/TRACK_ONLY Fulfillment use separate schema-constrained vocabularies; TARGET_DOMAIN PROCESSING is legal.",
+              "resolution": "Reject PENDING_PAYMENT, COMPLETED, ATTENTION_REQUIRED, RETRY_WAIT and MANUAL_REQUIRED only in Marketplace domains; retain PROCESSING in TARGET_DOMAIN Fulfillment.",
+              "targetLayer": "2.4",
+              "evidence": "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql"
+            }
+          ],
+          "evidence": [
+            "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql",
+            "GAP: MARKET-01.QUERY.LIST_PRODUCTS is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [],
+          "scope": "MARKETPLACE owner scope under PLATFORM trusted context",
+          "resultLimit": 100,
+          "readOnly": true
+        },
+        {
+          "operationId": "MARKET-01.COMMAND.CREATE_PRODUCT",
+          "kind": "COMMAND",
+          "owner": "MARKETPLACE",
+          "actor": [
+            "PLATFORM_STAFF"
+          ],
+          "context": [
+            "PLATFORM"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "MARKETPLACE_PRODUCT"
+          ],
+          "input": "CREATE_PRODUCT: product, SKU, target reference and expected version",
+          "result": "CREATE_PRODUCT: validated catalog state",
+          "errorKeys": [
+            "TARGET_UNFULFILLABLE",
+            "ILLEGAL_STATE"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [
+            {
+              "id": "C-MARKET-STATE",
+              "source": "historical cross-domain marketplace aliases",
+              "currentTruth": "Marketplace Order and TARGET_DOMAIN/TRACK_ONLY Fulfillment use separate schema-constrained vocabularies; TARGET_DOMAIN PROCESSING is legal.",
+              "resolution": "Reject PENDING_PAYMENT, COMPLETED, ATTENTION_REQUIRED, RETRY_WAIT and MANUAL_REQUIRED only in Marketplace domains; retain PROCESSING in TARGET_DOMAIN Fulfillment.",
+              "targetLayer": "2.4",
+              "evidence": "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql"
+            }
+          ],
+          "evidence": [
+            "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql",
+            "GAP: MARKET-01.COMMAND.CREATE_PRODUCT is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [],
+          "idempotencyKey": "MARKET-01.COMMAND.CREATE_PRODUCT: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all CREATE_PRODUCT inputs that determine the MARKETPLACE business result",
+          "transactionBoundary": "MARKETPLACE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "NONE"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "GAP: MARKETPLACE_PRODUCT values are source-frozen but legal production transitions are not implemented"
+          ]
+        },
+        {
+          "operationId": "MARKET-01.COMMAND.UPDATE_PRODUCT",
+          "kind": "COMMAND",
+          "owner": "MARKETPLACE",
+          "actor": [
+            "PLATFORM_STAFF"
+          ],
+          "context": [
+            "PLATFORM"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "MARKETPLACE_PRODUCT"
+          ],
+          "input": "UPDATE_PRODUCT: product, SKU, target reference and expected version",
+          "result": "UPDATE_PRODUCT: validated catalog state",
+          "errorKeys": [
+            "TARGET_UNFULFILLABLE",
+            "ILLEGAL_STATE"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [
+            {
+              "id": "C-MARKET-STATE",
+              "source": "historical cross-domain marketplace aliases",
+              "currentTruth": "Marketplace Order and TARGET_DOMAIN/TRACK_ONLY Fulfillment use separate schema-constrained vocabularies; TARGET_DOMAIN PROCESSING is legal.",
+              "resolution": "Reject PENDING_PAYMENT, COMPLETED, ATTENTION_REQUIRED, RETRY_WAIT and MANUAL_REQUIRED only in Marketplace domains; retain PROCESSING in TARGET_DOMAIN Fulfillment.",
+              "targetLayer": "2.4",
+              "evidence": "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql"
+            }
+          ],
+          "evidence": [
+            "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql",
+            "GAP: MARKET-01.COMMAND.UPDATE_PRODUCT is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [],
+          "idempotencyKey": "MARKET-01.COMMAND.UPDATE_PRODUCT: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all UPDATE_PRODUCT inputs that determine the MARKETPLACE business result",
+          "transactionBoundary": "MARKETPLACE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "NONE"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "GAP: MARKETPLACE_PRODUCT values are source-frozen but legal production transitions are not implemented"
+          ]
+        },
+        {
+          "operationId": "MARKET-01.COMMAND.PUBLISH_PRODUCT",
+          "kind": "COMMAND",
+          "owner": "MARKETPLACE",
+          "actor": [
+            "PLATFORM_STAFF"
+          ],
+          "context": [
+            "PLATFORM"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "MARKETPLACE_PRODUCT"
+          ],
+          "input": "PUBLISH_PRODUCT: product, SKU, target reference and expected version",
+          "result": "PUBLISH_PRODUCT: validated catalog state",
+          "errorKeys": [
+            "TARGET_UNFULFILLABLE",
+            "ILLEGAL_STATE"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [
+            {
+              "id": "C-MARKET-STATE",
+              "source": "historical cross-domain marketplace aliases",
+              "currentTruth": "Marketplace Order and TARGET_DOMAIN/TRACK_ONLY Fulfillment use separate schema-constrained vocabularies; TARGET_DOMAIN PROCESSING is legal.",
+              "resolution": "Reject PENDING_PAYMENT, COMPLETED, ATTENTION_REQUIRED, RETRY_WAIT and MANUAL_REQUIRED only in Marketplace domains; retain PROCESSING in TARGET_DOMAIN Fulfillment.",
+              "targetLayer": "2.4",
+              "evidence": "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql"
+            }
+          ],
+          "evidence": [
+            "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql",
+            "GAP: MARKET-01.COMMAND.PUBLISH_PRODUCT is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [],
+          "idempotencyKey": "MARKET-01.COMMAND.PUBLISH_PRODUCT: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all PUBLISH_PRODUCT inputs that determine the MARKETPLACE business result",
+          "transactionBoundary": "MARKETPLACE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "NONE"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "GAP: MARKETPLACE_PRODUCT values are source-frozen but legal production transitions are not implemented"
+          ]
+        },
+        {
+          "operationId": "MARKET-01.COMMAND.UNPUBLISH_PRODUCT",
+          "kind": "COMMAND",
+          "owner": "MARKETPLACE",
+          "actor": [
+            "PLATFORM_STAFF"
+          ],
+          "context": [
+            "PLATFORM"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "MARKETPLACE_PRODUCT"
+          ],
+          "input": "UNPUBLISH_PRODUCT: product, SKU, target reference and expected version",
+          "result": "UNPUBLISH_PRODUCT: validated catalog state",
+          "errorKeys": [
+            "TARGET_UNFULFILLABLE",
+            "ILLEGAL_STATE"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [
+            {
+              "id": "C-MARKET-STATE",
+              "source": "historical cross-domain marketplace aliases",
+              "currentTruth": "Marketplace Order and TARGET_DOMAIN/TRACK_ONLY Fulfillment use separate schema-constrained vocabularies; TARGET_DOMAIN PROCESSING is legal.",
+              "resolution": "Reject PENDING_PAYMENT, COMPLETED, ATTENTION_REQUIRED, RETRY_WAIT and MANUAL_REQUIRED only in Marketplace domains; retain PROCESSING in TARGET_DOMAIN Fulfillment.",
+              "targetLayer": "2.4",
+              "evidence": "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql"
+            }
+          ],
+          "evidence": [
+            "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql",
+            "GAP: MARKET-01.COMMAND.UNPUBLISH_PRODUCT is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [],
+          "idempotencyKey": "MARKET-01.COMMAND.UNPUBLISH_PRODUCT: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all UNPUBLISH_PRODUCT inputs that determine the MARKETPLACE business result",
+          "transactionBoundary": "MARKETPLACE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "NONE"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "GAP: MARKETPLACE_PRODUCT values are source-frozen but legal production transitions are not implemented"
+          ]
+        },
+        {
+          "operationId": "MARKET-01.COMMAND.CHANGE_SKU_STATUS",
+          "kind": "COMMAND",
+          "owner": "MARKETPLACE",
+          "actor": [
+            "PLATFORM_STAFF"
+          ],
+          "context": [
+            "PLATFORM"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "MARKETPLACE_SKU"
+          ],
+          "input": "CHANGE_SKU_STATUS: product, SKU, target reference and expected version",
+          "result": "CHANGE_SKU_STATUS: validated catalog state",
+          "errorKeys": [
+            "TARGET_UNFULFILLABLE",
+            "ILLEGAL_STATE"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [
+            {
+              "id": "C-MARKET-STATE",
+              "source": "historical cross-domain marketplace aliases",
+              "currentTruth": "Marketplace Order and TARGET_DOMAIN/TRACK_ONLY Fulfillment use separate schema-constrained vocabularies; TARGET_DOMAIN PROCESSING is legal.",
+              "resolution": "Reject PENDING_PAYMENT, COMPLETED, ATTENTION_REQUIRED, RETRY_WAIT and MANUAL_REQUIRED only in Marketplace domains; retain PROCESSING in TARGET_DOMAIN Fulfillment.",
+              "targetLayer": "2.4",
+              "evidence": "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql"
+            }
+          ],
+          "evidence": [
+            "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql",
+            "GAP: MARKET-01.COMMAND.CHANGE_SKU_STATUS is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [],
+          "idempotencyKey": "MARKET-01.COMMAND.CHANGE_SKU_STATUS: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all CHANGE_SKU_STATUS inputs that determine the MARKETPLACE business result",
+          "transactionBoundary": "MARKETPLACE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "NONE"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "GAP: MARKETPLACE_SKU values are source-frozen but legal production transitions are not implemented"
+          ]
+        }
+      ]
+    },
+    {
+      "groupId": "MARKET-02",
+      "title": "公开目录查询",
+      "workPackages": [
+        "P21-MARKET"
+      ],
+      "operations": [
+        {
+          "operationId": "MARKET-02.QUERY.LIST_CATALOG",
+          "kind": "QUERY",
+          "owner": "MARKETPLACE",
+          "actor": [
+            "TENANT_MEMBER"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "MARKETPLACE_PRODUCT",
+            "MARKETPLACE_SKU"
+          ],
+          "input": "LIST_CATALOG: tenant and bounded published catalog filters",
+          "result": "LIST_CATALOG: published product and active SKU projection",
+          "errorKeys": [
+            "CATALOG_ITEM_NOT_FOUND"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [
+            {
+              "id": "C-MARKET-STATE",
+              "source": "historical cross-domain marketplace aliases",
+              "currentTruth": "Marketplace Order and TARGET_DOMAIN/TRACK_ONLY Fulfillment use separate schema-constrained vocabularies; TARGET_DOMAIN PROCESSING is legal.",
+              "resolution": "Reject PENDING_PAYMENT, COMPLETED, ATTENTION_REQUIRED, RETRY_WAIT and MANUAL_REQUIRED only in Marketplace domains; retain PROCESSING in TARGET_DOMAIN Fulfillment.",
+              "targetLayer": "2.4",
+              "evidence": "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql"
+            }
+          ],
+          "evidence": [
+            "marketplace-service/src/main/java/com/plagod/mapper/MarketplaceProductMapper.java",
+            "GAP: MARKET-02.QUERY.LIST_CATALOG is not a complete production business loop; target 2.5"
+          ],
+          "targetLayer": "2.5",
+          "events": [],
+          "scope": "MARKETPLACE owner scope under TENANT trusted context",
+          "resultLimit": 100,
+          "readOnly": true
+        },
+        {
+          "operationId": "MARKET-02.QUERY.GET_CATALOG_ITEM",
+          "kind": "QUERY",
+          "owner": "MARKETPLACE",
+          "actor": [
+            "TENANT_MEMBER"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "MARKETPLACE_PRODUCT",
+            "MARKETPLACE_SKU"
+          ],
+          "input": "GET_CATALOG_ITEM: tenant and bounded published catalog filters",
+          "result": "GET_CATALOG_ITEM: published product and active SKU projection",
+          "errorKeys": [
+            "CATALOG_ITEM_NOT_FOUND"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [
+            {
+              "id": "C-MARKET-STATE",
+              "source": "historical cross-domain marketplace aliases",
+              "currentTruth": "Marketplace Order and TARGET_DOMAIN/TRACK_ONLY Fulfillment use separate schema-constrained vocabularies; TARGET_DOMAIN PROCESSING is legal.",
+              "resolution": "Reject PENDING_PAYMENT, COMPLETED, ATTENTION_REQUIRED, RETRY_WAIT and MANUAL_REQUIRED only in Marketplace domains; retain PROCESSING in TARGET_DOMAIN Fulfillment.",
+              "targetLayer": "2.4",
+              "evidence": "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql"
+            }
+          ],
+          "evidence": [
+            "marketplace-service/src/main/java/com/plagod/mapper/MarketplaceProductMapper.java",
+            "GAP: MARKET-02.QUERY.GET_CATALOG_ITEM is not a complete production business loop; target 2.5"
+          ],
+          "targetLayer": "2.5",
+          "events": [],
+          "scope": "MARKETPLACE owner scope under TENANT trusted context",
+          "resultLimit": 100,
+          "readOnly": true
+        }
+      ]
+    },
+    {
+      "groupId": "MARKET-03",
+      "title": "创建 Demo 订单",
+      "workPackages": [
+        "P21-MARKET"
+      ],
+      "operations": [
+        {
+          "operationId": "MARKET-03.COMMAND.CREATE_ORDER",
+          "kind": "COMMAND",
+          "owner": "MARKETPLACE",
+          "actor": [
+            "TENANT_MEMBER"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "MARKETPLACE_ORDER",
+            "MARKETPLACE_PAYMENT"
+          ],
+          "input": "CREATE_ORDER: single SKU, subject, user and clientRequestId",
+          "result": "CREATE_ORDER: server-priced order and item snapshot",
+          "errorKeys": [
+            "SKU_UNAVAILABLE",
+            "IDEMPOTENCY_KEY_CONFLICT"
+          ],
+          "implementationStatus": "PARTIAL",
+          "conflicts": [
+            {
+              "id": "C-MARKET-STATE",
+              "source": "historical cross-domain marketplace aliases",
+              "currentTruth": "Marketplace Order and TARGET_DOMAIN/TRACK_ONLY Fulfillment use separate schema-constrained vocabularies; TARGET_DOMAIN PROCESSING is legal.",
+              "resolution": "Reject PENDING_PAYMENT, COMPLETED, ATTENTION_REQUIRED, RETRY_WAIT and MANUAL_REQUIRED only in Marketplace domains; retain PROCESSING in TARGET_DOMAIN Fulfillment.",
+              "targetLayer": "2.4",
+              "evidence": "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql"
+            }
+          ],
+          "evidence": [
+            "marketplace-service/src/main/java/com/plagod/service/MarketplaceOrderIdempotencyService.java",
+            "GAP: MARKET-03.COMMAND.CREATE_ORDER is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [],
+          "idempotencyKey": "MARKET-03.COMMAND.CREATE_ORDER: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all CREATE_ORDER inputs that determine the MARKETPLACE business result",
+          "transactionBoundary": "MARKETPLACE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "NONE"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "GAP: MARKETPLACE_ORDER values are source-frozen but legal production transitions are not implemented",
+            "GAP: MARKETPLACE_PAYMENT values are source-frozen but legal production transitions are not implemented"
+          ]
+        }
+      ]
+    },
+    {
+      "groupId": "MARKET-04",
+      "title": "Demo 付款取消与过期",
+      "workPackages": [
+        "P21-MARKET"
+      ],
+      "operations": [
+        {
+          "operationId": "MARKET-04.COMMAND.PAY_ORDER",
+          "kind": "COMMAND",
+          "owner": "MARKETPLACE",
+          "actor": [
+            "TENANT_MEMBER",
+            "SCHEDULED_SERVICE"
+          ],
+          "context": [
+            "TENANT",
+            "SCHEDULED"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "MARKETPLACE_ORDER",
+            "MARKETPLACE_PAYMENT"
+          ],
+          "input": "PAY_ORDER: order, LOCAL_DEMO or MANUAL_DEMO payment and due time",
+          "result": "PAY_ORDER: paid, cancelled or closed order",
+          "errorKeys": [
+            "PAYMENT_DUE_PASSED",
+            "ORDER_STATE_INVALID"
+          ],
+          "implementationStatus": "PARTIAL",
+          "conflicts": [
+            {
+              "id": "C-MARKET-STATE",
+              "source": "historical cross-domain marketplace aliases",
+              "currentTruth": "Marketplace Order and TARGET_DOMAIN/TRACK_ONLY Fulfillment use separate schema-constrained vocabularies; TARGET_DOMAIN PROCESSING is legal.",
+              "resolution": "Reject PENDING_PAYMENT, COMPLETED, ATTENTION_REQUIRED, RETRY_WAIT and MANUAL_REQUIRED only in Marketplace domains; retain PROCESSING in TARGET_DOMAIN Fulfillment.",
+              "targetLayer": "2.4",
+              "evidence": "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql"
+            }
+          ],
+          "evidence": [
+            "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql",
+            "GAP: MARKET-04.COMMAND.PAY_ORDER is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [
+            "MARKETPLACE_FULFILLMENT_REQUESTED"
+          ],
+          "idempotencyKey": "MARKET-04.COMMAND.PAY_ORDER: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all PAY_ORDER inputs that determine the MARKETPLACE business result",
+          "transactionBoundary": "MARKETPLACE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event MARKETPLACE_FULFILLMENT_REQUESTED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "GAP: MARKETPLACE_ORDER values are source-frozen but legal production transitions are not implemented",
+            "GAP: MARKETPLACE_PAYMENT values are source-frozen but legal production transitions are not implemented"
+          ]
+        },
+        {
+          "operationId": "MARKET-04.COMMAND.CANCEL_ORDER",
+          "kind": "COMMAND",
+          "owner": "MARKETPLACE",
+          "actor": [
+            "TENANT_MEMBER",
+            "SCHEDULED_SERVICE"
+          ],
+          "context": [
+            "TENANT",
+            "SCHEDULED"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "MARKETPLACE_ORDER",
+            "MARKETPLACE_PAYMENT"
+          ],
+          "input": "CANCEL_ORDER: order, LOCAL_DEMO or MANUAL_DEMO payment and due time",
+          "result": "CANCEL_ORDER: paid, cancelled or closed order",
+          "errorKeys": [
+            "PAYMENT_DUE_PASSED",
+            "ORDER_STATE_INVALID"
+          ],
+          "implementationStatus": "PARTIAL",
+          "conflicts": [
+            {
+              "id": "C-MARKET-STATE",
+              "source": "historical cross-domain marketplace aliases",
+              "currentTruth": "Marketplace Order and TARGET_DOMAIN/TRACK_ONLY Fulfillment use separate schema-constrained vocabularies; TARGET_DOMAIN PROCESSING is legal.",
+              "resolution": "Reject PENDING_PAYMENT, COMPLETED, ATTENTION_REQUIRED, RETRY_WAIT and MANUAL_REQUIRED only in Marketplace domains; retain PROCESSING in TARGET_DOMAIN Fulfillment.",
+              "targetLayer": "2.4",
+              "evidence": "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql"
+            }
+          ],
+          "evidence": [
+            "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql",
+            "GAP: MARKET-04.COMMAND.CANCEL_ORDER is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [
+            "MARKETPLACE_FULFILLMENT_REQUESTED"
+          ],
+          "idempotencyKey": "MARKET-04.COMMAND.CANCEL_ORDER: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all CANCEL_ORDER inputs that determine the MARKETPLACE business result",
+          "transactionBoundary": "MARKETPLACE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event MARKETPLACE_FULFILLMENT_REQUESTED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "GAP: MARKETPLACE_ORDER values are source-frozen but legal production transitions are not implemented",
+            "GAP: MARKETPLACE_PAYMENT values are source-frozen but legal production transitions are not implemented"
+          ]
+        },
+        {
+          "operationId": "MARKET-04.COMMAND.EXPIRE_ORDER",
+          "kind": "COMMAND",
+          "owner": "MARKETPLACE",
+          "actor": [
+            "TENANT_MEMBER",
+            "SCHEDULED_SERVICE"
+          ],
+          "context": [
+            "TENANT",
+            "SCHEDULED"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "MARKETPLACE_ORDER",
+            "MARKETPLACE_PAYMENT"
+          ],
+          "input": "EXPIRE_ORDER: order, LOCAL_DEMO or MANUAL_DEMO payment and due time",
+          "result": "EXPIRE_ORDER: paid, cancelled or closed order",
+          "errorKeys": [
+            "PAYMENT_DUE_PASSED",
+            "ORDER_STATE_INVALID"
+          ],
+          "implementationStatus": "PARTIAL",
+          "conflicts": [
+            {
+              "id": "C-MARKET-STATE",
+              "source": "historical cross-domain marketplace aliases",
+              "currentTruth": "Marketplace Order and TARGET_DOMAIN/TRACK_ONLY Fulfillment use separate schema-constrained vocabularies; TARGET_DOMAIN PROCESSING is legal.",
+              "resolution": "Reject PENDING_PAYMENT, COMPLETED, ATTENTION_REQUIRED, RETRY_WAIT and MANUAL_REQUIRED only in Marketplace domains; retain PROCESSING in TARGET_DOMAIN Fulfillment.",
+              "targetLayer": "2.4",
+              "evidence": "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql"
+            }
+          ],
+          "evidence": [
+            "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql",
+            "GAP: MARKET-04.COMMAND.EXPIRE_ORDER is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [
+            "MARKETPLACE_FULFILLMENT_REQUESTED"
+          ],
+          "idempotencyKey": "MARKET-04.COMMAND.EXPIRE_ORDER: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all EXPIRE_ORDER inputs that determine the MARKETPLACE business result",
+          "transactionBoundary": "MARKETPLACE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event MARKETPLACE_FULFILLMENT_REQUESTED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "GAP: MARKETPLACE_ORDER values are source-frozen but legal production transitions are not implemented",
+            "GAP: MARKETPLACE_PAYMENT values are source-frozen but legal production transitions are not implemented"
+          ]
+        }
+      ]
+    },
+    {
+      "groupId": "MARKET-05",
+      "title": "跨域履约",
+      "workPackages": [
+        "P21-MARKET"
+      ],
+      "operations": [
+        {
+          "operationId": "MARKET-05.COMMAND.DISPATCH_FULFILLMENT",
+          "kind": "COMMAND",
+          "owner": "MARKETPLACE",
+          "actor": [
+            "INTERNAL_SERVICE",
+            "SCHEDULED_SERVICE"
+          ],
+          "context": [
+            "INTERNAL",
+            "SCHEDULED"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "MARKETPLACE_ORDER",
+            "MARKETPLACE_TARGET_FULFILLMENT",
+            "MARKETPLACE_TRACK_ONLY_FULFILLMENT"
+          ],
+          "input": "DISPATCH_FULFILLMENT: paid order event and stable target reference",
+          "result": "DISPATCH_FULFILLMENT: single target result or tracked demo delivery",
+          "errorKeys": [
+            "FULFILLMENT_FAILED",
+            "RESULT_REFERENCE_CONFLICT"
+          ],
+          "implementationStatus": "PARTIAL",
+          "conflicts": [
+            {
+              "id": "C-MARKET-STATE",
+              "source": "historical cross-domain marketplace aliases",
+              "currentTruth": "Marketplace Order and TARGET_DOMAIN/TRACK_ONLY Fulfillment use separate schema-constrained vocabularies; TARGET_DOMAIN PROCESSING is legal.",
+              "resolution": "Reject PENDING_PAYMENT, COMPLETED, ATTENTION_REQUIRED, RETRY_WAIT and MANUAL_REQUIRED only in Marketplace domains; retain PROCESSING in TARGET_DOMAIN Fulfillment.",
+              "targetLayer": "2.4",
+              "evidence": "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql"
+            }
+          ],
+          "evidence": [
+            "marketplace-service/src/main/java/com/plagod/service/MarketplaceFulfillmentWorker.java",
+            "GAP: MARKET-05.COMMAND.DISPATCH_FULFILLMENT is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [
+            "MARKETPLACE_FULFILLMENT_REQUESTED",
+            "SAAS_FULFILLMENT_COMPLETED"
+          ],
+          "idempotencyKey": "MARKET-05.COMMAND.DISPATCH_FULFILLMENT: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all DISPATCH_FULFILLMENT inputs that determine the MARKETPLACE business result",
+          "transactionBoundary": "MARKETPLACE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event MARKETPLACE_FULFILLMENT_REQUESTED",
+            "after-commit event SAAS_FULFILLMENT_COMPLETED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->PENDING",
+            "PENDING->PROCESSING",
+            "PROCESSING->PROCESSING",
+            "PROCESSING->SUCCEEDED",
+            "PROCESSING->PENDING",
+            "PROCESSING->FAILED"
+          ]
+        },
+        {
+          "operationId": "MARKET-05.COMMAND.APPLY_FULFILLMENT_RESULT",
+          "kind": "COMMAND",
+          "owner": "MARKETPLACE",
+          "actor": [
+            "INTERNAL_SERVICE",
+            "SCHEDULED_SERVICE"
+          ],
+          "context": [
+            "INTERNAL",
+            "SCHEDULED"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "MARKETPLACE_ORDER",
+            "MARKETPLACE_TARGET_FULFILLMENT",
+            "MARKETPLACE_TRACK_ONLY_FULFILLMENT"
+          ],
+          "input": "APPLY_FULFILLMENT_RESULT: paid order event and stable target reference",
+          "result": "APPLY_FULFILLMENT_RESULT: single target result or tracked demo delivery",
+          "errorKeys": [
+            "FULFILLMENT_FAILED",
+            "RESULT_REFERENCE_CONFLICT"
+          ],
+          "implementationStatus": "PARTIAL",
+          "conflicts": [
+            {
+              "id": "C-MARKET-STATE",
+              "source": "historical cross-domain marketplace aliases",
+              "currentTruth": "Marketplace Order and TARGET_DOMAIN/TRACK_ONLY Fulfillment use separate schema-constrained vocabularies; TARGET_DOMAIN PROCESSING is legal.",
+              "resolution": "Reject PENDING_PAYMENT, COMPLETED, ATTENTION_REQUIRED, RETRY_WAIT and MANUAL_REQUIRED only in Marketplace domains; retain PROCESSING in TARGET_DOMAIN Fulfillment.",
+              "targetLayer": "2.4",
+              "evidence": "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql"
+            }
+          ],
+          "evidence": [
+            "marketplace-service/src/main/java/com/plagod/service/MarketplaceFulfillmentWorker.java",
+            "GAP: MARKET-05.COMMAND.APPLY_FULFILLMENT_RESULT is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [
+            "MARKETPLACE_FULFILLMENT_REQUESTED",
+            "SAAS_FULFILLMENT_COMPLETED"
+          ],
+          "idempotencyKey": "MARKET-05.COMMAND.APPLY_FULFILLMENT_RESULT: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all APPLY_FULFILLMENT_RESULT inputs that determine the MARKETPLACE business result",
+          "transactionBoundary": "MARKETPLACE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event MARKETPLACE_FULFILLMENT_REQUESTED",
+            "after-commit event SAAS_FULFILLMENT_COMPLETED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->PENDING",
+            "PENDING->PROCESSING",
+            "PROCESSING->PROCESSING",
+            "PROCESSING->SUCCEEDED",
+            "PROCESSING->PENDING",
+            "PROCESSING->FAILED"
+          ]
+        },
+        {
+          "operationId": "MARKET-05.COMMAND.RECOVER_FULFILLMENT",
+          "kind": "COMMAND",
+          "owner": "MARKETPLACE",
+          "actor": [
+            "INTERNAL_SERVICE",
+            "SCHEDULED_SERVICE"
+          ],
+          "context": [
+            "INTERNAL",
+            "SCHEDULED"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "MARKETPLACE_ORDER",
+            "MARKETPLACE_TARGET_FULFILLMENT",
+            "MARKETPLACE_TRACK_ONLY_FULFILLMENT"
+          ],
+          "input": "RECOVER_FULFILLMENT: paid order event and stable target reference",
+          "result": "RECOVER_FULFILLMENT: single target result or tracked demo delivery",
+          "errorKeys": [
+            "FULFILLMENT_FAILED",
+            "RESULT_REFERENCE_CONFLICT"
+          ],
+          "implementationStatus": "PARTIAL",
+          "conflicts": [
+            {
+              "id": "C-MARKET-STATE",
+              "source": "historical cross-domain marketplace aliases",
+              "currentTruth": "Marketplace Order and TARGET_DOMAIN/TRACK_ONLY Fulfillment use separate schema-constrained vocabularies; TARGET_DOMAIN PROCESSING is legal.",
+              "resolution": "Reject PENDING_PAYMENT, COMPLETED, ATTENTION_REQUIRED, RETRY_WAIT and MANUAL_REQUIRED only in Marketplace domains; retain PROCESSING in TARGET_DOMAIN Fulfillment.",
+              "targetLayer": "2.4",
+              "evidence": "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql"
+            }
+          ],
+          "evidence": [
+            "marketplace-service/src/main/java/com/plagod/service/MarketplaceFulfillmentWorker.java",
+            "GAP: MARKET-05.COMMAND.RECOVER_FULFILLMENT is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [
+            "MARKETPLACE_FULFILLMENT_REQUESTED",
+            "SAAS_FULFILLMENT_COMPLETED"
+          ],
+          "idempotencyKey": "MARKET-05.COMMAND.RECOVER_FULFILLMENT: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all RECOVER_FULFILLMENT inputs that determine the MARKETPLACE business result",
+          "transactionBoundary": "MARKETPLACE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event MARKETPLACE_FULFILLMENT_REQUESTED",
+            "after-commit event SAAS_FULFILLMENT_COMPLETED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->PENDING",
+            "PENDING->PROCESSING",
+            "PROCESSING->PROCESSING",
+            "PROCESSING->SUCCEEDED",
+            "PROCESSING->PENDING",
+            "PROCESSING->FAILED"
+          ]
+        }
+      ]
+    },
+    {
+      "groupId": "MARKET-06",
+      "title": "本人和平台订单查询",
+      "workPackages": [
+        "P21-MARKET"
+      ],
+      "operations": [
+        {
+          "operationId": "MARKET-06.QUERY.LIST_MY_ORDERS",
+          "kind": "QUERY",
+          "owner": "MARKETPLACE",
+          "actor": [
+            "TENANT_MEMBER",
+            "PLATFORM_STAFF"
+          ],
+          "context": [
+            "TENANT",
+            "PLATFORM"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "MARKETPLACE_ORDER"
+          ],
+          "input": "LIST_MY_ORDERS: trusted subject or platform scope and bounded filters",
+          "result": "LIST_MY_ORDERS: safe Demo order projection",
+          "errorKeys": [
+            "ORDER_NOT_FOUND"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [
+            {
+              "id": "C-MARKET-STATE",
+              "source": "historical cross-domain marketplace aliases",
+              "currentTruth": "Marketplace Order and TARGET_DOMAIN/TRACK_ONLY Fulfillment use separate schema-constrained vocabularies; TARGET_DOMAIN PROCESSING is legal.",
+              "resolution": "Reject PENDING_PAYMENT, COMPLETED, ATTENTION_REQUIRED, RETRY_WAIT and MANUAL_REQUIRED only in Marketplace domains; retain PROCESSING in TARGET_DOMAIN Fulfillment.",
+              "targetLayer": "2.4",
+              "evidence": "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql"
+            }
+          ],
+          "evidence": [
+            "marketplace-service/src/main/java/com/plagod/mapper/MarketplaceOrderMapper.java",
+            "GAP: MARKET-06.QUERY.LIST_MY_ORDERS is not a complete production business loop; target 2.5"
+          ],
+          "targetLayer": "2.5",
+          "events": [],
+          "scope": "MARKETPLACE owner scope under TENANT|PLATFORM trusted context",
+          "resultLimit": 100,
+          "readOnly": true
+        },
+        {
+          "operationId": "MARKET-06.QUERY.LIST_PLATFORM_ORDERS",
+          "kind": "QUERY",
+          "owner": "MARKETPLACE",
+          "actor": [
+            "TENANT_MEMBER",
+            "PLATFORM_STAFF"
+          ],
+          "context": [
+            "TENANT",
+            "PLATFORM"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "MARKETPLACE_ORDER"
+          ],
+          "input": "LIST_PLATFORM_ORDERS: trusted subject or platform scope and bounded filters",
+          "result": "LIST_PLATFORM_ORDERS: safe Demo order projection",
+          "errorKeys": [
+            "ORDER_NOT_FOUND"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [
+            {
+              "id": "C-MARKET-STATE",
+              "source": "historical cross-domain marketplace aliases",
+              "currentTruth": "Marketplace Order and TARGET_DOMAIN/TRACK_ONLY Fulfillment use separate schema-constrained vocabularies; TARGET_DOMAIN PROCESSING is legal.",
+              "resolution": "Reject PENDING_PAYMENT, COMPLETED, ATTENTION_REQUIRED, RETRY_WAIT and MANUAL_REQUIRED only in Marketplace domains; retain PROCESSING in TARGET_DOMAIN Fulfillment.",
+              "targetLayer": "2.4",
+              "evidence": "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql"
+            }
+          ],
+          "evidence": [
+            "marketplace-service/src/main/java/com/plagod/mapper/MarketplaceOrderMapper.java",
+            "GAP: MARKET-06.QUERY.LIST_PLATFORM_ORDERS is not a complete production business loop; target 2.5"
+          ],
+          "targetLayer": "2.5",
+          "events": [],
+          "scope": "MARKETPLACE owner scope under TENANT|PLATFORM trusted context",
+          "resultLimit": 100,
+          "readOnly": true
+        }
+      ]
+    }
+  ]
+}

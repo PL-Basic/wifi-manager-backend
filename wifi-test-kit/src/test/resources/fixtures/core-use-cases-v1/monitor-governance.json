@@ -1,0 +1,1645 @@
+{
+  "version": "core-use-cases-v1",
+  "domainId": "MONITOR_GOVERNANCE",
+  "workPackages": [
+    "P21-MONITOR",
+    "P21-USER",
+    "P21-TENANT"
+  ],
+  "stateMachines": [
+    {
+      "stateMachineId": "ACCESS_RULE",
+      "businessObject": "AccessRule",
+      "owner": "MONITOR",
+      "field": "t_access_rule.enabled",
+      "machineType": "INTEGER",
+      "source": [
+        "database-migration/src/main/resources/db/migration/V1_6__monitor_schema.sql",
+        "monitor-service/src/main/java/com/plagod/entity/monitor/AccessRule.java"
+      ],
+      "machineValues": [
+        {
+          "machineValue": 0,
+          "semanticName": "DISABLED",
+          "terminal": false
+        },
+        {
+          "machineValue": 1,
+          "semanticName": "ENABLED",
+          "terminal": false
+        }
+      ],
+      "lifecycle": {
+        "status": "FROZEN",
+        "terminalStates": [],
+        "legalTransitions": [
+          "NONE->1(ENABLED)",
+          "1(ENABLED)->0(DISABLED)",
+          "0(DISABLED)->1(ENABLED)"
+        ]
+      }
+    },
+    {
+      "stateMachineId": "ALERT_EVENT",
+      "businessObject": "AlertEvent",
+      "owner": "MONITOR",
+      "field": "t_alert_event.status",
+      "machineType": "INTEGER",
+      "source": [
+        "database-migration/src/main/resources/db/migration/V1_6__monitor_schema.sql",
+        "monitor-service/src/main/java/com/plagod/entity/monitor/AlertEvent.java",
+        "wifi-common-api/src/main/java/com/plagod/vo/monitor/AlertEventVO.java",
+        "monitor-service/src/main/java/com/plagod/service/impl/AlertEventServiceImpl.java",
+        "monitor-service/src/main/resources/com/plagod/mapper/xml/AlertEventMapper.xml"
+      ],
+      "machineValues": [
+        {
+          "machineValue": 0,
+          "semanticName": "UNHANDLED",
+          "terminal": false
+        },
+        {
+          "machineValue": 1,
+          "semanticName": "HANDLED",
+          "terminal": true
+        }
+      ],
+      "lifecycle": {
+        "status": "FROZEN",
+        "terminalStates": [
+          "HANDLED"
+        ],
+        "legalTransitions": [
+          "NONE->0(UNHANDLED)",
+          "0(UNHANDLED)->1(HANDLED)"
+        ]
+      }
+    },
+    {
+      "stateMachineId": "LOCATION_AUTHORIZATION",
+      "businessObject": "LocationAuthorization",
+      "owner": "MONITOR",
+      "field": "t_location_authorization.enabled",
+      "machineType": "INTEGER",
+      "source": [
+        "database-migration/src/main/resources/db/migration/V1_6__monitor_schema.sql",
+        "monitor-service/src/main/java/com/plagod/entity/monitor/LocationAuthorization.java"
+      ],
+      "machineValues": [
+        {
+          "machineValue": 0,
+          "semanticName": "NOT_AUTHORIZED",
+          "terminal": false
+        },
+        {
+          "machineValue": 1,
+          "semanticName": "AUTHORIZED",
+          "terminal": false
+        }
+      ],
+      "lifecycle": {
+        "status": "FROZEN",
+        "terminalStates": [],
+        "legalTransitions": [
+          "NONE->0(NOT_AUTHORIZED)",
+          "0(NOT_AUTHORIZED)->1(AUTHORIZED)",
+          "1(AUTHORIZED)->0(NOT_AUTHORIZED)"
+        ]
+      }
+    },
+    {
+      "stateMachineId": "GEOFENCE",
+      "businessObject": "Geofence",
+      "owner": "MONITOR",
+      "field": "t_geofence.enabled",
+      "machineType": "INTEGER",
+      "source": [
+        "database-migration/src/main/resources/db/migration/V1_6__monitor_schema.sql",
+        "monitor-service/src/main/java/com/plagod/entity/monitor/Geofence.java"
+      ],
+      "machineValues": [
+        {
+          "machineValue": 0,
+          "semanticName": "DISABLED",
+          "terminal": false
+        },
+        {
+          "machineValue": 1,
+          "semanticName": "ENABLED",
+          "terminal": false
+        }
+      ],
+      "lifecycle": {
+        "status": "FROZEN",
+        "terminalStates": [],
+        "legalTransitions": [
+          "NONE->1(ENABLED)",
+          "1(ENABLED)->0(DISABLED)",
+          "0(DISABLED)->1(ENABLED)"
+        ]
+      }
+    },
+    {
+      "stateMachineId": "GEOFENCE_PRESENCE",
+      "businessObject": "Geofence Presence",
+      "owner": "MONITOR",
+      "field": "t_geofence_state.inside_state",
+      "machineType": "INTEGER",
+      "source": [
+        "database-migration/src/main/resources/db/migration/V1_6__monitor_schema.sql",
+        "monitor-service/src/main/java/com/plagod/entity/monitor/GeofenceState.java"
+      ],
+      "machineValues": [
+        {
+          "machineValue": 0,
+          "semanticName": "OUTSIDE",
+          "terminal": false
+        },
+        {
+          "machineValue": 1,
+          "semanticName": "INSIDE",
+          "terminal": false
+        }
+      ],
+      "lifecycle": {
+        "status": "FROZEN",
+        "terminalStates": [],
+        "legalTransitions": [
+          "NONE->0(OUTSIDE)",
+          "0(OUTSIDE)->1(INSIDE)",
+          "1(INSIDE)->0(OUTSIDE)"
+        ]
+      }
+    },
+    {
+      "stateMachineId": "GEOFENCE_EVENT",
+      "businessObject": "Geofence Event",
+      "owner": "MONITOR",
+      "field": "t_geofence_event.event_type",
+      "machineType": "STRING",
+      "source": [
+        "database-migration/src/main/resources/db/migration/V1_6__monitor_schema.sql",
+        "monitor-service/src/main/java/com/plagod/entity/monitor/GeofenceEvent.java"
+      ],
+      "machineValues": [
+        {
+          "machineValue": "ENTER",
+          "semanticName": "ENTER",
+          "terminal": true
+        },
+        {
+          "machineValue": "EXIT",
+          "semanticName": "EXIT",
+          "terminal": true
+        }
+      ],
+      "lifecycle": {
+        "status": "FROZEN",
+        "terminalStates": [
+          "ENTER",
+          "EXIT"
+        ],
+        "legalTransitions": [
+          "OUTSIDE->ENTER",
+          "INSIDE->EXIT"
+        ]
+      }
+    }
+  ],
+  "groups": [
+    {
+      "groupId": "RULE-01",
+      "title": "规则生命周期",
+      "workPackages": [
+        "P21-MONITOR"
+      ],
+      "operations": [
+        {
+          "operationId": "RULE-01.QUERY.LIST",
+          "kind": "QUERY",
+          "owner": "MONITOR",
+          "actor": [
+            "TENANT_ADMIN"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "ACCESS_RULE"
+          ],
+          "input": "LIST: tenant rule, controlled type/action/level and expected version",
+          "result": "LIST: tenant-owned rule",
+          "errorKeys": [
+            "RULE_PATTERN_INVALID",
+            "RULE_NOT_FOUND"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "monitor-service/src/main/java/com/plagod/service/impl/AccessRuleServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [],
+          "scope": "MONITOR owner scope under TENANT trusted context",
+          "resultLimit": 100,
+          "readOnly": true
+        },
+        {
+          "operationId": "RULE-01.QUERY.GET",
+          "kind": "QUERY",
+          "owner": "MONITOR",
+          "actor": [
+            "TENANT_ADMIN"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "ACCESS_RULE"
+          ],
+          "input": "GET: tenant rule, controlled type/action/level and expected version",
+          "result": "GET: tenant-owned rule",
+          "errorKeys": [
+            "RULE_PATTERN_INVALID",
+            "RULE_NOT_FOUND"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "monitor-service/src/main/java/com/plagod/service/impl/AccessRuleServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [],
+          "scope": "MONITOR owner scope under TENANT trusted context",
+          "resultLimit": 1,
+          "readOnly": true
+        },
+        {
+          "operationId": "RULE-01.COMMAND.CREATE",
+          "kind": "COMMAND",
+          "owner": "MONITOR",
+          "actor": [
+            "TENANT_ADMIN"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "ACCESS_RULE"
+          ],
+          "input": "CREATE: tenant rule, controlled type/action/level and expected version",
+          "result": "CREATE: tenant-owned rule",
+          "errorKeys": [
+            "RULE_PATTERN_INVALID",
+            "RULE_NOT_FOUND"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "monitor-service/src/main/java/com/plagod/service/impl/AccessRuleServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [],
+          "idempotencyKey": "RULE-01.COMMAND.CREATE: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all CREATE inputs that determine the MONITOR business result",
+          "transactionBoundary": "MONITOR owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "NONE"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->1(ENABLED)",
+            "1(ENABLED)->0(DISABLED)",
+            "0(DISABLED)->1(ENABLED)"
+          ]
+        },
+        {
+          "operationId": "RULE-01.COMMAND.UPDATE",
+          "kind": "COMMAND",
+          "owner": "MONITOR",
+          "actor": [
+            "TENANT_ADMIN"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "ACCESS_RULE"
+          ],
+          "input": "UPDATE: tenant rule, controlled type/action/level and expected version",
+          "result": "UPDATE: tenant-owned rule",
+          "errorKeys": [
+            "RULE_PATTERN_INVALID",
+            "RULE_NOT_FOUND"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "monitor-service/src/main/java/com/plagod/service/impl/AccessRuleServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [],
+          "idempotencyKey": "RULE-01.COMMAND.UPDATE: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all UPDATE inputs that determine the MONITOR business result",
+          "transactionBoundary": "MONITOR owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "NONE"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->1(ENABLED)",
+            "1(ENABLED)->0(DISABLED)",
+            "0(DISABLED)->1(ENABLED)"
+          ]
+        },
+        {
+          "operationId": "RULE-01.COMMAND.CHANGE_ENABLED",
+          "kind": "COMMAND",
+          "owner": "MONITOR",
+          "actor": [
+            "TENANT_ADMIN"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "ACCESS_RULE"
+          ],
+          "input": "CHANGE_ENABLED: tenant rule, controlled type/action/level and expected version",
+          "result": "CHANGE_ENABLED: tenant-owned rule",
+          "errorKeys": [
+            "RULE_PATTERN_INVALID",
+            "RULE_NOT_FOUND"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "monitor-service/src/main/java/com/plagod/service/impl/AccessRuleServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [],
+          "idempotencyKey": "RULE-01.COMMAND.CHANGE_ENABLED: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all CHANGE_ENABLED inputs that determine the MONITOR business result",
+          "transactionBoundary": "MONITOR owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "NONE"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->1(ENABLED)",
+            "1(ENABLED)->0(DISABLED)",
+            "0(DISABLED)->1(ENABLED)"
+          ]
+        },
+        {
+          "operationId": "RULE-01.COMMAND.DELETE",
+          "kind": "COMMAND",
+          "owner": "MONITOR",
+          "actor": [
+            "TENANT_ADMIN"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "ACCESS_RULE"
+          ],
+          "input": "DELETE: tenant rule, controlled type/action/level and expected version",
+          "result": "DELETE: tenant-owned rule",
+          "errorKeys": [
+            "RULE_PATTERN_INVALID",
+            "RULE_NOT_FOUND"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "monitor-service/src/main/java/com/plagod/service/impl/AccessRuleServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [],
+          "idempotencyKey": "RULE-01.COMMAND.DELETE: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all DELETE inputs that determine the MONITOR business result",
+          "transactionBoundary": "MONITOR owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "NONE"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->1(ENABLED)",
+            "1(ENABLED)->0(DISABLED)",
+            "0(DISABLED)->1(ENABLED)"
+          ]
+        }
+      ]
+    },
+    {
+      "groupId": "RULE-02",
+      "title": "规则评估与动作",
+      "workPackages": [
+        "P21-MONITOR"
+      ],
+      "operations": [
+        {
+          "operationId": "RULE-02.COMMAND.EVALUATE_TRAFFIC",
+          "kind": "COMMAND",
+          "owner": "MONITOR",
+          "actor": [
+            "INTERNAL_SERVICE"
+          ],
+          "context": [
+            "INTERNAL"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "ACCESS_RULE"
+          ],
+          "input": "EVALUATE_TRAFFIC: tenant traffic event and enabled rules",
+          "result": "EVALUATE_TRAFFIC: rule hit, alert or device command event",
+          "errorKeys": [
+            "RULE_EVALUATION_FAILED"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "monitor-service/src/main/java/com/plagod/service/impl/TrafficEvaluationServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [
+            "RULE_ACTION_REQUESTED"
+          ],
+          "idempotencyKey": "RULE-02.COMMAND.EVALUATE_TRAFFIC: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all EVALUATE_TRAFFIC inputs that determine the MONITOR business result",
+          "transactionBoundary": "MONITOR owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event RULE_ACTION_REQUESTED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->1(ENABLED)",
+            "1(ENABLED)->0(DISABLED)",
+            "0(DISABLED)->1(ENABLED)"
+          ]
+        },
+        {
+          "operationId": "RULE-02.COMMAND.APPLY_ACTION_RESULT",
+          "kind": "COMMAND",
+          "owner": "MONITOR",
+          "actor": [
+            "INTERNAL_SERVICE"
+          ],
+          "context": [
+            "INTERNAL"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "ACCESS_RULE"
+          ],
+          "input": "APPLY_ACTION_RESULT: tenant traffic event and enabled rules",
+          "result": "APPLY_ACTION_RESULT: rule hit, alert or device command event",
+          "errorKeys": [
+            "RULE_EVALUATION_FAILED"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "monitor-service/src/main/java/com/plagod/service/impl/TrafficEvaluationServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [
+            "RULE_ACTION_REQUESTED"
+          ],
+          "idempotencyKey": "RULE-02.COMMAND.APPLY_ACTION_RESULT: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all APPLY_ACTION_RESULT inputs that determine the MONITOR business result",
+          "transactionBoundary": "MONITOR owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event RULE_ACTION_REQUESTED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->1(ENABLED)",
+            "1(ENABLED)->0(DISABLED)",
+            "0(DISABLED)->1(ENABLED)"
+          ]
+        }
+      ]
+    },
+    {
+      "groupId": "ALERT-01",
+      "title": "告警与 WebSocket",
+      "workPackages": [
+        "P21-MONITOR"
+      ],
+      "operations": [
+        {
+          "operationId": "ALERT-01.QUERY.LIST",
+          "kind": "QUERY",
+          "owner": "MONITOR",
+          "actor": [
+            "TENANT_ADMIN",
+            "INTERNAL_SERVICE"
+          ],
+          "context": [
+            "TENANT",
+            "INTERNAL"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "ALERT_EVENT"
+          ],
+          "input": "LIST: tenant alert, bounded filters or trusted subscription",
+          "result": "LIST: tenant alert and scoped stream",
+          "errorKeys": [
+            "ALERT_SCOPE_DENIED",
+            "ALERT_NOT_FOUND"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "monitor-service/src/main/java/com/plagod/service/impl/AlertEventServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [],
+          "scope": "MONITOR owner scope under TENANT|INTERNAL trusted context",
+          "resultLimit": 100,
+          "readOnly": true
+        },
+        {
+          "operationId": "ALERT-01.QUERY.SUBSCRIBE",
+          "kind": "QUERY",
+          "owner": "MONITOR",
+          "actor": [
+            "TENANT_ADMIN",
+            "INTERNAL_SERVICE"
+          ],
+          "context": [
+            "TENANT",
+            "INTERNAL"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "ALERT_EVENT"
+          ],
+          "input": "SUBSCRIBE: tenant alert, bounded filters or trusted subscription",
+          "result": "SUBSCRIBE: tenant alert and scoped stream",
+          "errorKeys": [
+            "ALERT_SCOPE_DENIED",
+            "ALERT_NOT_FOUND"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "monitor-service/src/main/java/com/plagod/service/impl/AlertEventServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [],
+          "scope": "MONITOR owner scope under TENANT|INTERNAL trusted context",
+          "resultLimit": 100,
+          "readOnly": true
+        },
+        {
+          "operationId": "ALERT-01.COMMAND.CREATE",
+          "kind": "COMMAND",
+          "owner": "MONITOR",
+          "actor": [
+            "TENANT_ADMIN",
+            "INTERNAL_SERVICE"
+          ],
+          "context": [
+            "TENANT",
+            "INTERNAL"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "ALERT_EVENT"
+          ],
+          "input": "CREATE: tenant alert, bounded filters or trusted subscription",
+          "result": "CREATE: tenant alert and scoped stream",
+          "errorKeys": [
+            "ALERT_SCOPE_DENIED",
+            "ALERT_NOT_FOUND"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "monitor-service/src/main/java/com/plagod/service/impl/AlertEventServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [],
+          "idempotencyKey": "ALERT-01.COMMAND.CREATE: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all CREATE inputs that determine the MONITOR business result",
+          "transactionBoundary": "MONITOR owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "NONE"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->0(UNHANDLED)",
+            "0(UNHANDLED)->1(HANDLED)"
+          ]
+        },
+        {
+          "operationId": "ALERT-01.COMMAND.HANDLE",
+          "kind": "COMMAND",
+          "owner": "MONITOR",
+          "actor": [
+            "TENANT_ADMIN",
+            "INTERNAL_SERVICE"
+          ],
+          "context": [
+            "TENANT",
+            "INTERNAL"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "ALERT_EVENT"
+          ],
+          "input": "HANDLE: tenant alert, bounded filters or trusted subscription",
+          "result": "HANDLE: tenant alert and scoped stream",
+          "errorKeys": [
+            "ALERT_SCOPE_DENIED",
+            "ALERT_NOT_FOUND"
+          ],
+          "implementationStatus": "PARTIAL",
+          "conflicts": [
+            {
+              "id": "C-ALERT-HANDLE",
+              "source": "desired replay-safe duplicate alert handling",
+              "currentTruth": "AlertEventServiceImpl rejects an already handled event with conflict.",
+              "resolution": "ALERT-01.COMMAND.HANDLE remains PARTIAL and is uniquely assigned to 2.4.",
+              "targetLayer": "2.4",
+              "evidence": "monitor-service/src/main/java/com/plagod/service/impl/AlertEventServiceImpl.java"
+            }
+          ],
+          "evidence": [
+            "monitor-service/src/main/java/com/plagod/service/impl/AlertEventServiceImpl.java",
+            "GAP: ALERT-01.COMMAND.HANDLE is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [],
+          "idempotencyKey": "ALERT-01.COMMAND.HANDLE: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all HANDLE inputs that determine the MONITOR business result",
+          "transactionBoundary": "MONITOR owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "NONE"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "0(UNHANDLED)->1(HANDLED)"
+          ]
+        }
+      ]
+    },
+    {
+      "groupId": "AUDIT-01",
+      "title": "安全审计",
+      "workPackages": [
+        "P21-MONITOR"
+      ],
+      "operations": [
+        {
+          "operationId": "AUDIT-01.QUERY.LIST",
+          "kind": "QUERY",
+          "owner": "MONITOR",
+          "actor": [
+            "TENANT_ADMIN",
+            "PLATFORM_STAFF",
+            "INTERNAL_SERVICE"
+          ],
+          "context": [
+            "TENANT",
+            "PLATFORM",
+            "INTERNAL"
+          ],
+          "stateModel": "STATELESS",
+          "stateMachineRefs": [],
+          "input": "LIST: trusted scope or allowlisted audit outcome",
+          "result": "LIST: scoped audit records",
+          "errorKeys": [
+            "AUDIT_SCOPE_DENIED"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "wifi-audit-spring-boot-starter/src/main/java/com/plagod/audit/Audited.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [],
+          "scope": "MONITOR owner scope under TENANT|PLATFORM|INTERNAL trusted context",
+          "resultLimit": 100,
+          "readOnly": true
+        },
+        {
+          "operationId": "AUDIT-01.COMMAND.APPEND_OUTCOME",
+          "kind": "COMMAND",
+          "owner": "MONITOR",
+          "actor": [
+            "TENANT_ADMIN",
+            "PLATFORM_STAFF",
+            "INTERNAL_SERVICE"
+          ],
+          "context": [
+            "TENANT",
+            "PLATFORM",
+            "INTERNAL"
+          ],
+          "stateModel": "STATELESS",
+          "stateMachineRefs": [],
+          "input": "APPEND_OUTCOME: trusted scope or allowlisted audit outcome",
+          "result": "APPEND_OUTCOME: scoped audit records",
+          "errorKeys": [
+            "AUDIT_SCOPE_DENIED"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "wifi-audit-spring-boot-starter/src/main/java/com/plagod/audit/Audited.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [],
+          "idempotencyKey": "AUDIT-01.COMMAND.APPEND_OUTCOME: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all APPEND_OUTCOME inputs that determine the MONITOR business result",
+          "transactionBoundary": "MONITOR owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "NONE"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "STATELESS"
+          ]
+        }
+      ]
+    },
+    {
+      "groupId": "LOCATION-01",
+      "title": "定位授权和上报",
+      "workPackages": [
+        "P21-MONITOR"
+      ],
+      "operations": [
+        {
+          "operationId": "LOCATION-01.QUERY.LIST_HISTORY",
+          "kind": "QUERY",
+          "owner": "MONITOR",
+          "actor": [
+            "TENANT_MEMBER"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATELESS",
+          "stateMachineRefs": [],
+          "input": "LIST_HISTORY: tenant user, active session/node/MAC and consent",
+          "result": "LIST_HISTORY: consent or tenant-owned location history",
+          "errorKeys": [
+            "LOCATION_CONSENT_REQUIRED",
+            "SESSION_SCOPE_INVALID"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "monitor-service/src/main/java/com/plagod/service/impl/ClientLocationServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [],
+          "scope": "MONITOR owner scope under TENANT trusted context",
+          "resultLimit": 100,
+          "readOnly": true
+        },
+        {
+          "operationId": "LOCATION-01.COMMAND.AUTHORIZE",
+          "kind": "COMMAND",
+          "owner": "MONITOR",
+          "actor": [
+            "TENANT_MEMBER"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "LOCATION_AUTHORIZATION"
+          ],
+          "input": "AUTHORIZE: tenant user, active session/node/MAC and consent",
+          "result": "AUTHORIZE: consent or tenant-owned location history",
+          "errorKeys": [
+            "LOCATION_CONSENT_REQUIRED",
+            "SESSION_SCOPE_INVALID"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "monitor-service/src/main/java/com/plagod/service/impl/ClientLocationServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [],
+          "idempotencyKey": "LOCATION-01.COMMAND.AUTHORIZE: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all AUTHORIZE inputs that determine the MONITOR business result",
+          "transactionBoundary": "MONITOR owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "NONE"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->0(NOT_AUTHORIZED)",
+            "0(NOT_AUTHORIZED)->1(AUTHORIZED)",
+            "1(AUTHORIZED)->0(NOT_AUTHORIZED)"
+          ]
+        },
+        {
+          "operationId": "LOCATION-01.COMMAND.REVOKE",
+          "kind": "COMMAND",
+          "owner": "MONITOR",
+          "actor": [
+            "TENANT_MEMBER"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "LOCATION_AUTHORIZATION"
+          ],
+          "input": "REVOKE: tenant user, active session/node/MAC and consent",
+          "result": "REVOKE: consent or tenant-owned location history",
+          "errorKeys": [
+            "LOCATION_CONSENT_REQUIRED",
+            "SESSION_SCOPE_INVALID"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "monitor-service/src/main/java/com/plagod/service/impl/ClientLocationServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [],
+          "idempotencyKey": "LOCATION-01.COMMAND.REVOKE: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all REVOKE inputs that determine the MONITOR business result",
+          "transactionBoundary": "MONITOR owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "NONE"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->0(NOT_AUTHORIZED)",
+            "0(NOT_AUTHORIZED)->1(AUTHORIZED)",
+            "1(AUTHORIZED)->0(NOT_AUTHORIZED)"
+          ]
+        },
+        {
+          "operationId": "LOCATION-01.COMMAND.REPORT",
+          "kind": "COMMAND",
+          "owner": "MONITOR",
+          "actor": [
+            "TENANT_MEMBER"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATELESS",
+          "stateMachineRefs": [],
+          "input": "REPORT: tenant user, active session/node/MAC and consent",
+          "result": "REPORT: consent or tenant-owned location history",
+          "errorKeys": [
+            "LOCATION_CONSENT_REQUIRED",
+            "SESSION_SCOPE_INVALID"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "monitor-service/src/main/java/com/plagod/service/impl/ClientLocationServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [],
+          "idempotencyKey": "LOCATION-01.COMMAND.REPORT: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all REPORT inputs that determine the MONITOR business result",
+          "transactionBoundary": "MONITOR owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "NONE"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "STATELESS"
+          ]
+        },
+        {
+          "operationId": "LOCATION-01.COMMAND.DELETE_HISTORY",
+          "kind": "COMMAND",
+          "owner": "MONITOR",
+          "actor": [
+            "TENANT_MEMBER"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATELESS",
+          "stateMachineRefs": [],
+          "input": "DELETE_HISTORY: tenant user, active session/node/MAC and consent",
+          "result": "DELETE_HISTORY: consent or tenant-owned location history",
+          "errorKeys": [
+            "LOCATION_CONSENT_REQUIRED",
+            "SESSION_SCOPE_INVALID"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "monitor-service/src/main/java/com/plagod/service/impl/ClientLocationServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [],
+          "idempotencyKey": "LOCATION-01.COMMAND.DELETE_HISTORY: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all DELETE_HISTORY inputs that determine the MONITOR business result",
+          "transactionBoundary": "MONITOR owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "NONE"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "STATELESS"
+          ]
+        }
+      ]
+    },
+    {
+      "groupId": "GEOFENCE-01",
+      "title": "围栏",
+      "workPackages": [
+        "P21-MONITOR"
+      ],
+      "operations": [
+        {
+          "operationId": "GEOFENCE-01.QUERY.LIST",
+          "kind": "QUERY",
+          "owner": "MONITOR",
+          "actor": [
+            "TENANT_ADMIN",
+            "INTERNAL_SERVICE"
+          ],
+          "context": [
+            "TENANT",
+            "INTERNAL"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "GEOFENCE"
+          ],
+          "input": "LIST: tenant fence, location and eventType",
+          "result": "LIST: tenant fence or idempotent ENTER/EXIT event",
+          "errorKeys": [
+            "GEOFENCE_INVALID",
+            "LOCATION_SCOPE_INVALID"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "monitor-service/src/main/java/com/plagod/service/impl/GeofenceAdminServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [],
+          "scope": "MONITOR owner scope under TENANT|INTERNAL trusted context",
+          "resultLimit": 100,
+          "readOnly": true
+        },
+        {
+          "operationId": "GEOFENCE-01.QUERY.LIST_EVENTS",
+          "kind": "QUERY",
+          "owner": "MONITOR",
+          "actor": [
+            "TENANT_ADMIN",
+            "INTERNAL_SERVICE"
+          ],
+          "context": [
+            "TENANT",
+            "INTERNAL"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "GEOFENCE_EVENT"
+          ],
+          "input": "LIST_EVENTS: tenant fence, location and eventType",
+          "result": "LIST_EVENTS: tenant fence or idempotent ENTER/EXIT event",
+          "errorKeys": [
+            "GEOFENCE_INVALID",
+            "LOCATION_SCOPE_INVALID"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "monitor-service/src/main/java/com/plagod/service/impl/GeofenceAdminServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [],
+          "scope": "MONITOR owner scope under TENANT|INTERNAL trusted context",
+          "resultLimit": 100,
+          "readOnly": true
+        },
+        {
+          "operationId": "GEOFENCE-01.COMMAND.CREATE",
+          "kind": "COMMAND",
+          "owner": "MONITOR",
+          "actor": [
+            "TENANT_ADMIN",
+            "INTERNAL_SERVICE"
+          ],
+          "context": [
+            "TENANT",
+            "INTERNAL"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "GEOFENCE"
+          ],
+          "input": "CREATE: tenant fence, location and eventType",
+          "result": "CREATE: tenant fence or idempotent ENTER/EXIT event",
+          "errorKeys": [
+            "GEOFENCE_INVALID",
+            "LOCATION_SCOPE_INVALID"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "monitor-service/src/main/java/com/plagod/service/impl/GeofenceAdminServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [],
+          "idempotencyKey": "GEOFENCE-01.COMMAND.CREATE: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all CREATE inputs that determine the MONITOR business result",
+          "transactionBoundary": "MONITOR owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "NONE"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->1(ENABLED)",
+            "1(ENABLED)->0(DISABLED)",
+            "0(DISABLED)->1(ENABLED)"
+          ]
+        },
+        {
+          "operationId": "GEOFENCE-01.COMMAND.UPDATE",
+          "kind": "COMMAND",
+          "owner": "MONITOR",
+          "actor": [
+            "TENANT_ADMIN",
+            "INTERNAL_SERVICE"
+          ],
+          "context": [
+            "TENANT",
+            "INTERNAL"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "GEOFENCE"
+          ],
+          "input": "UPDATE: tenant fence, location and eventType",
+          "result": "UPDATE: tenant fence or idempotent ENTER/EXIT event",
+          "errorKeys": [
+            "GEOFENCE_INVALID",
+            "LOCATION_SCOPE_INVALID"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "monitor-service/src/main/java/com/plagod/service/impl/GeofenceAdminServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [],
+          "idempotencyKey": "GEOFENCE-01.COMMAND.UPDATE: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all UPDATE inputs that determine the MONITOR business result",
+          "transactionBoundary": "MONITOR owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "NONE"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->1(ENABLED)",
+            "1(ENABLED)->0(DISABLED)",
+            "0(DISABLED)->1(ENABLED)"
+          ]
+        },
+        {
+          "operationId": "GEOFENCE-01.COMMAND.CHANGE_ENABLED",
+          "kind": "COMMAND",
+          "owner": "MONITOR",
+          "actor": [
+            "TENANT_ADMIN",
+            "INTERNAL_SERVICE"
+          ],
+          "context": [
+            "TENANT",
+            "INTERNAL"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "GEOFENCE"
+          ],
+          "input": "CHANGE_ENABLED: tenant fence, location and eventType",
+          "result": "CHANGE_ENABLED: tenant fence or idempotent ENTER/EXIT event",
+          "errorKeys": [
+            "GEOFENCE_INVALID",
+            "LOCATION_SCOPE_INVALID"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "monitor-service/src/main/java/com/plagod/service/impl/GeofenceAdminServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [],
+          "idempotencyKey": "GEOFENCE-01.COMMAND.CHANGE_ENABLED: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all CHANGE_ENABLED inputs that determine the MONITOR business result",
+          "transactionBoundary": "MONITOR owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "NONE"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->1(ENABLED)",
+            "1(ENABLED)->0(DISABLED)",
+            "0(DISABLED)->1(ENABLED)"
+          ]
+        },
+        {
+          "operationId": "GEOFENCE-01.COMMAND.DELETE",
+          "kind": "COMMAND",
+          "owner": "MONITOR",
+          "actor": [
+            "TENANT_ADMIN",
+            "INTERNAL_SERVICE"
+          ],
+          "context": [
+            "TENANT",
+            "INTERNAL"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "GEOFENCE"
+          ],
+          "input": "DELETE: tenant fence, location and eventType",
+          "result": "DELETE: tenant fence or idempotent ENTER/EXIT event",
+          "errorKeys": [
+            "GEOFENCE_INVALID",
+            "LOCATION_SCOPE_INVALID"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "monitor-service/src/main/java/com/plagod/service/impl/GeofenceAdminServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [],
+          "idempotencyKey": "GEOFENCE-01.COMMAND.DELETE: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all DELETE inputs that determine the MONITOR business result",
+          "transactionBoundary": "MONITOR owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "NONE"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->1(ENABLED)",
+            "1(ENABLED)->0(DISABLED)",
+            "0(DISABLED)->1(ENABLED)"
+          ]
+        },
+        {
+          "operationId": "GEOFENCE-01.COMMAND.EVALUATE",
+          "kind": "COMMAND",
+          "owner": "MONITOR",
+          "actor": [
+            "TENANT_ADMIN",
+            "INTERNAL_SERVICE"
+          ],
+          "context": [
+            "TENANT",
+            "INTERNAL"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "GEOFENCE",
+            "GEOFENCE_PRESENCE",
+            "GEOFENCE_EVENT"
+          ],
+          "input": "EVALUATE: tenant fence, location and eventType",
+          "result": "EVALUATE: tenant fence or idempotent ENTER/EXIT event",
+          "errorKeys": [
+            "GEOFENCE_INVALID",
+            "LOCATION_SCOPE_INVALID"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "monitor-service/src/main/java/com/plagod/service/impl/GeofenceAdminServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [],
+          "idempotencyKey": "GEOFENCE-01.COMMAND.EVALUATE: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all EVALUATE inputs that determine the MONITOR business result",
+          "transactionBoundary": "MONITOR owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "NONE"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->1(ENABLED)",
+            "1(ENABLED)->0(DISABLED)",
+            "0(DISABLED)->1(ENABLED)",
+            "NONE->0(OUTSIDE)",
+            "0(OUTSIDE)->1(INSIDE)",
+            "1(INSIDE)->0(OUTSIDE)",
+            "OUTSIDE->ENTER",
+            "INSIDE->EXIT"
+          ]
+        }
+      ]
+    },
+    {
+      "groupId": "ANALYTICS-01",
+      "title": "核心分析",
+      "workPackages": [
+        "P21-MONITOR"
+      ],
+      "operations": [
+        {
+          "operationId": "ANALYTICS-01.QUERY.QUERY_TRAFFIC",
+          "kind": "QUERY",
+          "owner": "MONITOR",
+          "actor": [
+            "TENANT_ADMIN"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATELESS",
+          "stateMachineRefs": [],
+          "input": "QUERY_TRAFFIC: tenant, bounded time range and controlled metric",
+          "result": "QUERY_TRAFFIC: traffic, signal, rule-alert or GIS analysis",
+          "errorKeys": [
+            "ANALYTICS_RANGE_INVALID"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "monitor-service/src/main/java/com/plagod/controller/InternalAdminTrafficAnalyticsController.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [],
+          "scope": "MONITOR owner scope under TENANT trusted context",
+          "resultLimit": 100,
+          "readOnly": true
+        },
+        {
+          "operationId": "ANALYTICS-01.QUERY.QUERY_SIGNAL",
+          "kind": "QUERY",
+          "owner": "MONITOR",
+          "actor": [
+            "TENANT_ADMIN"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATELESS",
+          "stateMachineRefs": [],
+          "input": "QUERY_SIGNAL: tenant, bounded time range and controlled metric",
+          "result": "QUERY_SIGNAL: traffic, signal, rule-alert or GIS analysis",
+          "errorKeys": [
+            "ANALYTICS_RANGE_INVALID"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "monitor-service/src/main/java/com/plagod/controller/InternalAdminTrafficAnalyticsController.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [],
+          "scope": "MONITOR owner scope under TENANT trusted context",
+          "resultLimit": 100,
+          "readOnly": true
+        },
+        {
+          "operationId": "ANALYTICS-01.QUERY.QUERY_RULE_ALERT",
+          "kind": "QUERY",
+          "owner": "MONITOR",
+          "actor": [
+            "TENANT_ADMIN"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATELESS",
+          "stateMachineRefs": [],
+          "input": "QUERY_RULE_ALERT: tenant, bounded time range and controlled metric",
+          "result": "QUERY_RULE_ALERT: traffic, signal, rule-alert or GIS analysis",
+          "errorKeys": [
+            "ANALYTICS_RANGE_INVALID"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "monitor-service/src/main/java/com/plagod/controller/InternalAdminTrafficAnalyticsController.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [],
+          "scope": "MONITOR owner scope under TENANT trusted context",
+          "resultLimit": 100,
+          "readOnly": true
+        },
+        {
+          "operationId": "ANALYTICS-01.QUERY.QUERY_GIS",
+          "kind": "QUERY",
+          "owner": "MONITOR",
+          "actor": [
+            "TENANT_ADMIN"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATELESS",
+          "stateMachineRefs": [],
+          "input": "QUERY_GIS: tenant, bounded time range and controlled metric",
+          "result": "QUERY_GIS: traffic, signal, rule-alert or GIS analysis",
+          "errorKeys": [
+            "ANALYTICS_RANGE_INVALID"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "monitor-service/src/main/java/com/plagod/controller/InternalAdminTrafficAnalyticsController.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [],
+          "scope": "MONITOR owner scope under TENANT trusted context",
+          "resultLimit": 100,
+          "readOnly": true
+        }
+      ]
+    },
+    {
+      "groupId": "GOV-01",
+      "title": "平台账号授权与敏感操作治理",
+      "workPackages": [
+        "P21-USER",
+        "P21-TENANT"
+      ],
+      "operations": [
+        {
+          "operationId": "GOV-01.QUERY.LIST_ACCOUNTS",
+          "kind": "QUERY",
+          "owner": "USER",
+          "actor": [
+            "PLATFORM_STAFF"
+          ],
+          "context": [
+            "PLATFORM"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "USER_ACCOUNT"
+          ],
+          "input": "LIST_ACCOUNTS: platform authority, account/staff target, expected version and receipt",
+          "result": "LIST_ACCOUNTS: safe account projection or protected authority change",
+          "errorKeys": [
+            "LAST_SUPER_ADMIN_REQUIRED",
+            "AUTHORITY_HANDOFF_REQUIRED",
+            "PROTECTED_PLATFORM_ACCOUNT"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [],
+          "evidence": [
+            "user-service/src/main/java/com/plagod/controller/InternalAdminUserController.java",
+            "GAP: GOV-01.QUERY.LIST_ACCOUNTS is not a complete production business loop; target 2.2"
+          ],
+          "targetLayer": "2.2",
+          "events": [
+            "AUTHORITY_HANDOFF_COMPLETED",
+            "ACCOUNT_SESSION_REVOKE_REQUESTED"
+          ],
+          "scope": "USER owner scope under PLATFORM trusted context",
+          "resultLimit": 100,
+          "readOnly": true
+        },
+        {
+          "operationId": "GOV-01.QUERY.LIST_PLATFORM_STAFF",
+          "kind": "QUERY",
+          "owner": "TENANT",
+          "actor": [
+            "PLATFORM_STAFF"
+          ],
+          "context": [
+            "PLATFORM"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "PLATFORM_STAFF_STATUS"
+          ],
+          "input": "LIST_PLATFORM_STAFF: platform authority, account/staff target, expected version and receipt",
+          "result": "LIST_PLATFORM_STAFF: safe account projection or protected authority change",
+          "errorKeys": [
+            "LAST_SUPER_ADMIN_REQUIRED",
+            "AUTHORITY_HANDOFF_REQUIRED",
+            "PROTECTED_PLATFORM_ACCOUNT"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [],
+          "evidence": [
+            "tenant-service/src/main/java/com/plagod/entity/PlatformStaff.java",
+            "GAP: GOV-01.QUERY.LIST_PLATFORM_STAFF is not a complete production business loop; target 2.2"
+          ],
+          "targetLayer": "2.2",
+          "events": [
+            "AUTHORITY_HANDOFF_COMPLETED",
+            "ACCOUNT_SESSION_REVOKE_REQUESTED"
+          ],
+          "scope": "TENANT owner scope under PLATFORM trusted context",
+          "resultLimit": 100,
+          "readOnly": true
+        },
+        {
+          "operationId": "GOV-01.COMMAND.CHANGE_ACCOUNT_STATUS",
+          "kind": "COMMAND",
+          "owner": "USER",
+          "actor": [
+            "PLATFORM_STAFF"
+          ],
+          "context": [
+            "PLATFORM"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "USER_ACCOUNT"
+          ],
+          "input": "CHANGE_ACCOUNT_STATUS: platform authority, account/staff target, expected version and receipt",
+          "result": "CHANGE_ACCOUNT_STATUS: safe account projection or protected authority change",
+          "errorKeys": [
+            "LAST_SUPER_ADMIN_REQUIRED",
+            "AUTHORITY_HANDOFF_REQUIRED",
+            "PROTECTED_PLATFORM_ACCOUNT"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [],
+          "evidence": [
+            "user-service/src/main/java/com/plagod/controller/InternalAdminUserController.java",
+            "GAP: GOV-01.COMMAND.CHANGE_ACCOUNT_STATUS is not a complete production business loop; target 2.2"
+          ],
+          "targetLayer": "2.2",
+          "events": [
+            "AUTHORITY_HANDOFF_COMPLETED",
+            "ACCOUNT_SESSION_REVOKE_REQUESTED"
+          ],
+          "idempotencyKey": "GOV-01.COMMAND.CHANGE_ACCOUNT_STATUS: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all CHANGE_ACCOUNT_STATUS inputs that determine the USER business result",
+          "transactionBoundary": "USER owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event AUTHORITY_HANDOFF_COMPLETED",
+            "after-commit event ACCOUNT_SESSION_REVOKE_REQUESTED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->1(ENABLED)",
+            "1(ENABLED)->0(DISABLED)",
+            "0(DISABLED)->1(ENABLED)"
+          ]
+        },
+        {
+          "operationId": "GOV-01.COMMAND.REVIEW_ACCOUNT_DELETION",
+          "kind": "COMMAND",
+          "owner": "USER",
+          "actor": [
+            "PLATFORM_STAFF"
+          ],
+          "context": [
+            "PLATFORM"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "USER_OPERATION_REQUEST"
+          ],
+          "input": "REVIEW_ACCOUNT_DELETION: platform authority, account/staff target, expected version and receipt",
+          "result": "REVIEW_ACCOUNT_DELETION: safe account projection or protected authority change",
+          "errorKeys": [
+            "LAST_SUPER_ADMIN_REQUIRED",
+            "AUTHORITY_HANDOFF_REQUIRED",
+            "PROTECTED_PLATFORM_ACCOUNT"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [],
+          "evidence": [
+            "user-service/src/main/java/com/plagod/controller/InternalAdminUserController.java",
+            "GAP: GOV-01.COMMAND.REVIEW_ACCOUNT_DELETION is not a complete production business loop; target 2.2"
+          ],
+          "targetLayer": "2.2",
+          "events": [
+            "AUTHORITY_HANDOFF_COMPLETED",
+            "ACCOUNT_SESSION_REVOKE_REQUESTED"
+          ],
+          "idempotencyKey": "GOV-01.COMMAND.REVIEW_ACCOUNT_DELETION: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all REVIEW_ACCOUNT_DELETION inputs that determine the USER business result",
+          "transactionBoundary": "USER owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event AUTHORITY_HANDOFF_COMPLETED",
+            "after-commit event ACCOUNT_SESSION_REVOKE_REQUESTED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->0(PENDING)",
+            "0(PENDING)->1(APPROVED)",
+            "0(PENDING)->2(REJECTED)"
+          ]
+        },
+        {
+          "operationId": "GOV-01.COMMAND.GRANT_PLATFORM_AUTHORITY",
+          "kind": "COMMAND",
+          "owner": "TENANT",
+          "actor": [
+            "PLATFORM_STAFF"
+          ],
+          "context": [
+            "PLATFORM"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "PLATFORM_STAFF_STATUS"
+          ],
+          "input": "GRANT_PLATFORM_AUTHORITY: platform authority, account/staff target, expected version and receipt",
+          "result": "GRANT_PLATFORM_AUTHORITY: safe account projection or protected authority change",
+          "errorKeys": [
+            "LAST_SUPER_ADMIN_REQUIRED",
+            "AUTHORITY_HANDOFF_REQUIRED",
+            "PROTECTED_PLATFORM_ACCOUNT"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [],
+          "evidence": [
+            "tenant-service/src/main/java/com/plagod/entity/PlatformStaff.java",
+            "GAP: GOV-01.COMMAND.GRANT_PLATFORM_AUTHORITY is not a complete production business loop; target 2.2"
+          ],
+          "targetLayer": "2.2",
+          "events": [
+            "AUTHORITY_HANDOFF_COMPLETED",
+            "ACCOUNT_SESSION_REVOKE_REQUESTED"
+          ],
+          "idempotencyKey": "GOV-01.COMMAND.GRANT_PLATFORM_AUTHORITY: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all GRANT_PLATFORM_AUTHORITY inputs that determine the TENANT business result",
+          "transactionBoundary": "TENANT owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event AUTHORITY_HANDOFF_COMPLETED",
+            "after-commit event ACCOUNT_SESSION_REVOKE_REQUESTED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->ACTIVE",
+            "GAP: PlatformStaff authority vocabulary is not source-frozen"
+          ]
+        },
+        {
+          "operationId": "GOV-01.COMMAND.DISABLE_PLATFORM_AUTHORITY",
+          "kind": "COMMAND",
+          "owner": "TENANT",
+          "actor": [
+            "PLATFORM_STAFF"
+          ],
+          "context": [
+            "PLATFORM"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "PLATFORM_STAFF_STATUS"
+          ],
+          "input": "DISABLE_PLATFORM_AUTHORITY: platform authority, account/staff target, expected version and receipt",
+          "result": "DISABLE_PLATFORM_AUTHORITY: safe account projection or protected authority change",
+          "errorKeys": [
+            "LAST_SUPER_ADMIN_REQUIRED",
+            "AUTHORITY_HANDOFF_REQUIRED",
+            "PROTECTED_PLATFORM_ACCOUNT"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [],
+          "evidence": [
+            "tenant-service/src/main/java/com/plagod/entity/PlatformStaff.java",
+            "GAP: GOV-01.COMMAND.DISABLE_PLATFORM_AUTHORITY is not a complete production business loop; target 2.2"
+          ],
+          "targetLayer": "2.2",
+          "events": [
+            "AUTHORITY_HANDOFF_COMPLETED",
+            "ACCOUNT_SESSION_REVOKE_REQUESTED"
+          ],
+          "idempotencyKey": "GOV-01.COMMAND.DISABLE_PLATFORM_AUTHORITY: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all DISABLE_PLATFORM_AUTHORITY inputs that determine the TENANT business result",
+          "transactionBoundary": "TENANT owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event AUTHORITY_HANDOFF_COMPLETED",
+            "after-commit event ACCOUNT_SESSION_REVOKE_REQUESTED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "GAP: PLATFORM_STAFF_STATUS values are source-frozen but legal production transitions are not implemented"
+          ]
+        }
+      ]
+    }
+  ]
+}

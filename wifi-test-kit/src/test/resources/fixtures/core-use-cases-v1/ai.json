@@ -1,0 +1,415 @@
+{
+  "version": "core-use-cases-v1",
+  "domainId": "AI",
+  "workPackages": [
+    "P21-AI"
+  ],
+  "stateMachines": [
+    {
+      "stateMachineId": "AI_REVIEW_TASK",
+      "businessObject": "AI Review Task",
+      "owner": "AI",
+      "field": "t_ai_review_task.task_status",
+      "machineType": "STRING",
+      "source": [
+        "database-migration/src/main/resources/db/migration/V2_7__ai_review_schema.sql",
+        "ai-service/src/main/java/com/plagod/entity/AiReviewTask.java",
+        "ai-service/src/main/java/com/plagod/ai/task/AiReviewTaskWorker.java"
+      ],
+      "machineValues": [
+        {
+          "machineValue": "QUEUED",
+          "semanticName": "QUEUED",
+          "terminal": false
+        },
+        {
+          "machineValue": "RUNNING",
+          "semanticName": "RUNNING",
+          "terminal": false
+        },
+        {
+          "machineValue": "SUCCEEDED",
+          "semanticName": "SUCCEEDED",
+          "terminal": true
+        },
+        {
+          "machineValue": "FAILED",
+          "semanticName": "FAILED",
+          "terminal": false
+        },
+        {
+          "machineValue": "MANUAL_REQUIRED",
+          "semanticName": "MANUAL_REQUIRED",
+          "terminal": true
+        },
+        {
+          "machineValue": "STALE",
+          "semanticName": "STALE",
+          "terminal": true
+        }
+      ],
+      "lifecycle": {
+        "status": "PARTIAL",
+        "terminalStates": [
+          "SUCCEEDED",
+          "MANUAL_REQUIRED",
+          "STALE"
+        ],
+        "legalTransitions": [
+          "NONE->QUEUED",
+          "QUEUED->RUNNING",
+          "RUNNING->SUCCEEDED",
+          "RUNNING->MANUAL_REQUIRED",
+          "FAILED->QUEUED"
+        ],
+        "gap": {
+          "targetLayer": "2.4",
+          "currentTruth": "FAILED and STALE are schema-valid, but no production path currently writes them.",
+          "evidence": "ai-service/src/main/java/com/plagod/mapper/AiReviewTaskMapper.java"
+        }
+      }
+    }
+  ],
+  "groups": [
+    {
+      "groupId": "AI-01",
+      "title": "创建幂等审核任务",
+      "workPackages": [
+        "P21-AI"
+      ],
+      "operations": [
+        {
+          "operationId": "AI-01.COMMAND.CREATE_REVIEW_TASK",
+          "kind": "COMMAND",
+          "owner": "AI",
+          "actor": [
+            "INTERNAL_SERVICE"
+          ],
+          "context": [
+            "INTERNAL"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "AI_REVIEW_TASK"
+          ],
+          "input": "CREATE_REVIEW_TASK: reviewRequestId, scene, business version and content hash",
+          "result": "CREATE_REVIEW_TASK: single review task and input carrier",
+          "errorKeys": [
+            "REVIEW_FINGERPRINT_CONFLICT",
+            "SCENE_INVALID"
+          ],
+          "implementationStatus": "PARTIAL",
+          "conflicts": [
+            {
+              "id": "C-AI-STATE",
+              "source": "historical AI PENDING/PROCESSING/RETRY_WAIT/CANCELLED aliases",
+              "currentTruth": "AI task uses QUEUED/RUNNING/SUCCEEDED/FAILED/MANUAL_REQUIRED/STALE.",
+              "resolution": "Keep aliases scoped out of AI without banning legal PROCESSING elsewhere.",
+              "targetLayer": "2.4",
+              "evidence": "database-migration/src/main/resources/db/migration/V2_7__ai_review_schema.sql"
+            }
+          ],
+          "evidence": [
+            "ai-service/src/main/java/com/plagod/ai/task/AiReviewTaskEntryService.java",
+            "GAP: AI-01.COMMAND.CREATE_REVIEW_TASK is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [
+            "CONTENT_REVIEW_REQUESTED"
+          ],
+          "idempotencyKey": "AI-01.COMMAND.CREATE_REVIEW_TASK: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all CREATE_REVIEW_TASK inputs that determine the AI business result",
+          "transactionBoundary": "AI owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event CONTENT_REVIEW_REQUESTED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->QUEUED",
+            "QUEUED->RUNNING",
+            "RUNNING->SUCCEEDED",
+            "RUNNING->MANUAL_REQUIRED",
+            "FAILED->QUEUED"
+          ]
+        }
+      ]
+    },
+    {
+      "groupId": "AI-02",
+      "title": "Provider 执行",
+      "workPackages": [
+        "P21-AI"
+      ],
+      "operations": [
+        {
+          "operationId": "AI-02.COMMAND.CLAIM_TASK",
+          "kind": "COMMAND",
+          "owner": "AI",
+          "actor": [
+            "SCHEDULED_SERVICE"
+          ],
+          "context": [
+            "SCHEDULED"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "AI_REVIEW_TASK"
+          ],
+          "input": "CLAIM_TASK: claimed task, provider policy and fixed schema",
+          "result": "CLAIM_TASK: provider result or manual-required outcome",
+          "errorKeys": [
+            "PROVIDER_UNAVAILABLE",
+            "PROVIDER_RESULT_INVALID"
+          ],
+          "implementationStatus": "PARTIAL",
+          "conflicts": [
+            {
+              "id": "C-AI-STATE",
+              "source": "historical AI PENDING/PROCESSING/RETRY_WAIT/CANCELLED aliases",
+              "currentTruth": "AI task uses QUEUED/RUNNING/SUCCEEDED/FAILED/MANUAL_REQUIRED/STALE.",
+              "resolution": "Keep aliases scoped out of AI without banning legal PROCESSING elsewhere.",
+              "targetLayer": "2.4",
+              "evidence": "database-migration/src/main/resources/db/migration/V2_7__ai_review_schema.sql"
+            }
+          ],
+          "evidence": [
+            "ai-service/src/main/java/com/plagod/ai/task/AiReviewTaskWorker.java",
+            "GAP: AI-02.COMMAND.CLAIM_TASK is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [
+            "CONTENT_REVIEW_COMPLETED"
+          ],
+          "idempotencyKey": "AI-02.COMMAND.CLAIM_TASK: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all CLAIM_TASK inputs that determine the AI business result",
+          "transactionBoundary": "AI owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event CONTENT_REVIEW_COMPLETED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->QUEUED",
+            "QUEUED->RUNNING",
+            "RUNNING->SUCCEEDED",
+            "RUNNING->MANUAL_REQUIRED",
+            "FAILED->QUEUED"
+          ]
+        },
+        {
+          "operationId": "AI-02.COMMAND.EXECUTE_PROVIDER",
+          "kind": "COMMAND",
+          "owner": "AI",
+          "actor": [
+            "SCHEDULED_SERVICE"
+          ],
+          "context": [
+            "SCHEDULED"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "AI_REVIEW_TASK"
+          ],
+          "input": "EXECUTE_PROVIDER: claimed task, provider policy and fixed schema",
+          "result": "EXECUTE_PROVIDER: provider result or manual-required outcome",
+          "errorKeys": [
+            "PROVIDER_UNAVAILABLE",
+            "PROVIDER_RESULT_INVALID"
+          ],
+          "implementationStatus": "PARTIAL",
+          "conflicts": [
+            {
+              "id": "C-AI-STATE",
+              "source": "historical AI PENDING/PROCESSING/RETRY_WAIT/CANCELLED aliases",
+              "currentTruth": "AI task uses QUEUED/RUNNING/SUCCEEDED/FAILED/MANUAL_REQUIRED/STALE.",
+              "resolution": "Keep aliases scoped out of AI without banning legal PROCESSING elsewhere.",
+              "targetLayer": "2.4",
+              "evidence": "database-migration/src/main/resources/db/migration/V2_7__ai_review_schema.sql"
+            }
+          ],
+          "evidence": [
+            "ai-service/src/main/java/com/plagod/ai/task/AiReviewTaskWorker.java",
+            "GAP: AI-02.COMMAND.EXECUTE_PROVIDER is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [
+            "CONTENT_REVIEW_COMPLETED"
+          ],
+          "idempotencyKey": "AI-02.COMMAND.EXECUTE_PROVIDER: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all EXECUTE_PROVIDER inputs that determine the AI business result",
+          "transactionBoundary": "AI owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event CONTENT_REVIEW_COMPLETED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->QUEUED",
+            "QUEUED->RUNNING",
+            "RUNNING->SUCCEEDED",
+            "RUNNING->MANUAL_REQUIRED",
+            "FAILED->QUEUED"
+          ]
+        },
+        {
+          "operationId": "AI-02.COMMAND.FINALIZE_PROVIDER_RESULT",
+          "kind": "COMMAND",
+          "owner": "AI",
+          "actor": [
+            "SCHEDULED_SERVICE"
+          ],
+          "context": [
+            "SCHEDULED"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "AI_REVIEW_TASK"
+          ],
+          "input": "FINALIZE_PROVIDER_RESULT: claimed task, provider policy and fixed schema",
+          "result": "FINALIZE_PROVIDER_RESULT: provider result or manual-required outcome",
+          "errorKeys": [
+            "PROVIDER_UNAVAILABLE",
+            "PROVIDER_RESULT_INVALID"
+          ],
+          "implementationStatus": "PARTIAL",
+          "conflicts": [
+            {
+              "id": "C-AI-STATE",
+              "source": "historical AI PENDING/PROCESSING/RETRY_WAIT/CANCELLED aliases",
+              "currentTruth": "AI task uses QUEUED/RUNNING/SUCCEEDED/FAILED/MANUAL_REQUIRED/STALE.",
+              "resolution": "Keep aliases scoped out of AI without banning legal PROCESSING elsewhere.",
+              "targetLayer": "2.4",
+              "evidence": "database-migration/src/main/resources/db/migration/V2_7__ai_review_schema.sql"
+            }
+          ],
+          "evidence": [
+            "ai-service/src/main/java/com/plagod/ai/task/AiReviewTaskWorker.java",
+            "GAP: AI-02.COMMAND.FINALIZE_PROVIDER_RESULT is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [
+            "CONTENT_REVIEW_COMPLETED"
+          ],
+          "idempotencyKey": "AI-02.COMMAND.FINALIZE_PROVIDER_RESULT: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all FINALIZE_PROVIDER_RESULT inputs that determine the AI business result",
+          "transactionBoundary": "AI owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event CONTENT_REVIEW_COMPLETED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->QUEUED",
+            "QUEUED->RUNNING",
+            "RUNNING->SUCCEEDED",
+            "RUNNING->MANUAL_REQUIRED",
+            "FAILED->QUEUED"
+          ]
+        }
+      ]
+    },
+    {
+      "groupId": "AI-03",
+      "title": "人工复核",
+      "workPackages": [
+        "P21-AI"
+      ],
+      "operations": [
+        {
+          "operationId": "AI-03.QUERY.LIST_MANUAL_QUEUE",
+          "kind": "QUERY",
+          "owner": "AI",
+          "actor": [
+            "PLATFORM_STAFF"
+          ],
+          "context": [
+            "PLATFORM"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "AI_REVIEW_TASK"
+          ],
+          "input": "LIST_MANUAL_QUEUE: bounded manual queue filter or independent manual decision",
+          "result": "LIST_MANUAL_QUEUE: manual review record and business result event",
+          "errorKeys": [
+            "MANUAL_TASK_NOT_FOUND",
+            "MANUAL_RESULT_CONFLICT"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [
+            {
+              "id": "C-AI-STATE",
+              "source": "historical AI PENDING/PROCESSING/RETRY_WAIT/CANCELLED aliases",
+              "currentTruth": "AI task uses QUEUED/RUNNING/SUCCEEDED/FAILED/MANUAL_REQUIRED/STALE.",
+              "resolution": "Keep aliases scoped out of AI without banning legal PROCESSING elsewhere.",
+              "targetLayer": "2.4",
+              "evidence": "database-migration/src/main/resources/db/migration/V2_7__ai_review_schema.sql"
+            }
+          ],
+          "evidence": [
+            "database-migration/src/main/resources/db/migration/V2_7__ai_review_schema.sql",
+            "GAP: AI-03.QUERY.LIST_MANUAL_QUEUE is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [
+            "CONTENT_REVIEW_COMPLETED"
+          ],
+          "scope": "AI owner scope under PLATFORM trusted context",
+          "resultLimit": 100,
+          "readOnly": true
+        },
+        {
+          "operationId": "AI-03.COMMAND.SUBMIT_MANUAL_REVIEW",
+          "kind": "COMMAND",
+          "owner": "AI",
+          "actor": [
+            "PLATFORM_STAFF"
+          ],
+          "context": [
+            "PLATFORM"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "AI_REVIEW_TASK"
+          ],
+          "input": "SUBMIT_MANUAL_REVIEW: bounded manual queue filter or independent manual decision",
+          "result": "SUBMIT_MANUAL_REVIEW: manual review record and business result event",
+          "errorKeys": [
+            "MANUAL_TASK_NOT_FOUND",
+            "MANUAL_RESULT_CONFLICT"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [
+            {
+              "id": "C-AI-STATE",
+              "source": "historical AI PENDING/PROCESSING/RETRY_WAIT/CANCELLED aliases",
+              "currentTruth": "AI task uses QUEUED/RUNNING/SUCCEEDED/FAILED/MANUAL_REQUIRED/STALE.",
+              "resolution": "Keep aliases scoped out of AI without banning legal PROCESSING elsewhere.",
+              "targetLayer": "2.4",
+              "evidence": "database-migration/src/main/resources/db/migration/V2_7__ai_review_schema.sql"
+            }
+          ],
+          "evidence": [
+            "database-migration/src/main/resources/db/migration/V2_7__ai_review_schema.sql",
+            "GAP: AI-03.COMMAND.SUBMIT_MANUAL_REVIEW is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [
+            "CONTENT_REVIEW_COMPLETED"
+          ],
+          "idempotencyKey": "AI-03.COMMAND.SUBMIT_MANUAL_REVIEW: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all SUBMIT_MANUAL_REVIEW inputs that determine the AI business result",
+          "transactionBoundary": "AI owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event CONTENT_REVIEW_COMPLETED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->QUEUED",
+            "QUEUED->RUNNING",
+            "RUNNING->SUCCEEDED",
+            "RUNNING->MANUAL_REQUIRED",
+            "FAILED->QUEUED"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1295 @@
+{
+  "version": "core-use-cases-v1",
+  "domainId": "TENANT_SAAS",
+  "workPackages": [
+    "P21-TENANT"
+  ],
+  "stateMachines": [
+    {
+      "stateMachineId": "TENANT_ACCOUNT",
+      "businessObject": "Tenant",
+      "owner": "TENANT",
+      "field": "t_tenant.status",
+      "machineType": "STRING",
+      "source": [
+        "database-migration/src/main/resources/db/migration/V2_1__tenant_foundation.sql",
+        "tenant-service/src/main/java/com/plagod/entity/Tenant.java"
+      ],
+      "machineValues": [
+        {
+          "machineValue": "ACTIVE",
+          "semanticName": "ACTIVE",
+          "terminal": false
+        },
+        {
+          "machineValue": "DISABLED",
+          "semanticName": "DISABLED",
+          "terminal": false
+        }
+      ],
+      "lifecycle": {
+        "status": "FROZEN",
+        "terminalStates": [],
+        "legalTransitions": [
+          "NONE->ACTIVE",
+          "ACTIVE->DISABLED",
+          "DISABLED->ACTIVE"
+        ]
+      }
+    },
+    {
+      "stateMachineId": "TENANT_MEMBER",
+      "businessObject": "Member",
+      "owner": "TENANT",
+      "field": "t_tenant_member.status",
+      "machineType": "STRING",
+      "source": [
+        "database-migration/src/main/resources/db/migration/V2_1__tenant_foundation.sql",
+        "tenant-service/src/main/java/com/plagod/entity/TenantMember.java"
+      ],
+      "machineValues": [
+        {
+          "machineValue": "ACTIVE",
+          "semanticName": "ACTIVE",
+          "terminal": false
+        },
+        {
+          "machineValue": "REMOVED",
+          "semanticName": "REMOVED",
+          "terminal": true
+        }
+      ],
+      "lifecycle": {
+        "status": "GAP",
+        "terminalStates": [
+          "REMOVED"
+        ],
+        "legalTransitions": [
+          "NONE->ACTIVE"
+        ],
+        "gap": {
+          "targetLayer": "2.2",
+          "currentTruth": "ACTIVE and REMOVED are schema values, but the production removal transition is missing.",
+          "evidence": "database-migration/src/main/resources/db/migration/V2_1__tenant_foundation.sql"
+        }
+      }
+    },
+    {
+      "stateMachineId": "PLATFORM_STAFF_STATUS",
+      "businessObject": "PlatformStaff",
+      "owner": "TENANT",
+      "field": "t_platform_staff.status",
+      "machineType": "STRING",
+      "source": [
+        "database-migration/src/main/resources/db/migration/V2_1__tenant_foundation.sql",
+        "tenant-service/src/main/java/com/plagod/entity/PlatformStaff.java"
+      ],
+      "machineValues": [
+        {
+          "machineValue": "ACTIVE",
+          "semanticName": "ACTIVE",
+          "terminal": false
+        },
+        {
+          "machineValue": "DISABLED",
+          "semanticName": "DISABLED",
+          "terminal": false
+        }
+      ],
+      "lifecycle": {
+        "status": "GAP",
+        "terminalStates": [],
+        "legalTransitions": [],
+        "gap": {
+          "targetLayer": "2.2",
+          "currentTruth": "The status vocabulary exists, but no production PlatformStaff lifecycle service freezes legal transitions.",
+          "evidence": "database-migration/src/main/resources/db/migration/V2_1__tenant_foundation.sql"
+        }
+      }
+    },
+    {
+      "stateMachineId": "SAAS_PLAN",
+      "businessObject": "Plan",
+      "owner": "TENANT",
+      "field": "t_saas_plan.status",
+      "machineType": "STRING",
+      "source": [
+        "database-migration/src/main/resources/db/migration/V2_1__tenant_foundation.sql",
+        "tenant-service/src/main/java/com/plagod/entity/SaasPlan.java"
+      ],
+      "machineValues": [
+        {
+          "machineValue": "DRAFT",
+          "semanticName": "DRAFT",
+          "terminal": false
+        },
+        {
+          "machineValue": "ACTIVE",
+          "semanticName": "ACTIVE",
+          "terminal": false
+        },
+        {
+          "machineValue": "DISABLED",
+          "semanticName": "DISABLED",
+          "terminal": false
+        }
+      ],
+      "lifecycle": {
+        "status": "GAP",
+        "terminalStates": [],
+        "legalTransitions": [],
+        "gap": {
+          "targetLayer": "2.4",
+          "currentTruth": "Schema and Entity freeze values only; production Plan transitions are absent.",
+          "evidence": "database-migration/src/main/resources/db/migration/V2_1__tenant_foundation.sql"
+        }
+      }
+    },
+    {
+      "stateMachineId": "SAAS_PLAN_VERSION",
+      "businessObject": "PlanVersion",
+      "owner": "TENANT",
+      "field": "t_saas_plan_version.status",
+      "machineType": "STRING",
+      "source": [
+        "database-migration/src/main/resources/db/migration/V2_1__tenant_foundation.sql",
+        "tenant-service/src/main/java/com/plagod/entity/SaasPlanVersion.java"
+      ],
+      "machineValues": [
+        {
+          "machineValue": "DRAFT",
+          "semanticName": "DRAFT",
+          "terminal": false
+        },
+        {
+          "machineValue": "PUBLISHED",
+          "semanticName": "PUBLISHED",
+          "terminal": false
+        },
+        {
+          "machineValue": "RETIRED",
+          "semanticName": "RETIRED",
+          "terminal": true
+        }
+      ],
+      "lifecycle": {
+        "status": "GAP",
+        "terminalStates": [],
+        "legalTransitions": [],
+        "gap": {
+          "targetLayer": "2.4",
+          "currentTruth": "Schema and Entity freeze values only; publish/retire transitions are absent.",
+          "evidence": "database-migration/src/main/resources/db/migration/V2_1__tenant_foundation.sql"
+        }
+      }
+    },
+    {
+      "stateMachineId": "TENANT_SUBSCRIPTION",
+      "businessObject": "Subscription",
+      "owner": "TENANT",
+      "field": "t_tenant_subscription.status",
+      "machineType": "STRING",
+      "source": [
+        "database-migration/src/main/resources/db/migration/V2_1__tenant_foundation.sql",
+        "tenant-service/src/main/java/com/plagod/entity/TenantSubscription.java"
+      ],
+      "machineValues": [
+        {
+          "machineValue": "TRIAL",
+          "semanticName": "TRIAL",
+          "terminal": false
+        },
+        {
+          "machineValue": "ACTIVE",
+          "semanticName": "ACTIVE",
+          "terminal": false
+        },
+        {
+          "machineValue": "EXPIRED",
+          "semanticName": "EXPIRED",
+          "terminal": true
+        },
+        {
+          "machineValue": "CANCELLED",
+          "semanticName": "CANCELLED",
+          "terminal": true
+        }
+      ],
+      "lifecycle": {
+        "status": "GAP",
+        "terminalStates": [],
+        "legalTransitions": [],
+        "gap": {
+          "targetLayer": "2.4",
+          "currentTruth": "Schema and Entity freeze values only; the complete Subscription transition service is absent.",
+          "evidence": "database-migration/src/main/resources/db/migration/V2_1__tenant_foundation.sql"
+        }
+      }
+    },
+    {
+      "stateMachineId": "TENANT_PLAN_ASSIGNMENT",
+      "businessObject": "Assignment",
+      "owner": "TENANT",
+      "field": "t_tenant_plan_assignment.status",
+      "machineType": "STRING",
+      "source": [
+        "database-migration/src/main/resources/db/migration/V2_5__saas_quota_and_assignment_schema.sql",
+        "tenant-service/src/main/java/com/plagod/entity/TenantPlanAssignment.java"
+      ],
+      "machineValues": [
+        {
+          "machineValue": "PENDING",
+          "semanticName": "PENDING",
+          "terminal": false
+        }
+      ],
+      "lifecycle": {
+        "status": "GAP",
+        "terminalStates": [],
+        "legalTransitions": [
+          "NONE->PENDING"
+        ],
+        "gap": {
+          "targetLayer": "2.4",
+          "currentTruth": "Only default PENDING is source-backed; no CHECK, constant, or complete transition vocabulary exists.",
+          "evidence": "database-migration/src/main/resources/db/migration/V2_5__saas_quota_and_assignment_schema.sql"
+        }
+      }
+    },
+    {
+      "stateMachineId": "TENANT_QUOTA_RESERVATION",
+      "businessObject": "Reservation",
+      "owner": "TENANT",
+      "field": "t_tenant_quota_reservation.status",
+      "machineType": "STRING",
+      "source": [
+        "database-migration/src/main/resources/db/migration/V2_5__saas_quota_and_assignment_schema.sql",
+        "tenant-service/src/main/java/com/plagod/entity/TenantQuotaReservation.java"
+      ],
+      "machineValues": [
+        {
+          "machineValue": "RESERVED",
+          "semanticName": "RESERVED",
+          "terminal": false
+        },
+        {
+          "machineValue": "CONFIRMED",
+          "semanticName": "CONFIRMED",
+          "terminal": true
+        },
+        {
+          "machineValue": "RELEASED",
+          "semanticName": "RELEASED",
+          "terminal": true
+        },
+        {
+          "machineValue": "EXPIRED",
+          "semanticName": "EXPIRED",
+          "terminal": true
+        }
+      ],
+      "lifecycle": {
+        "status": "GAP",
+        "terminalStates": [],
+        "legalTransitions": [],
+        "gap": {
+          "targetLayer": "2.4",
+          "currentTruth": "Schema freezes Reservation values, but the production transition service is absent.",
+          "evidence": "database-migration/src/main/resources/db/migration/V2_5__saas_quota_and_assignment_schema.sql"
+        }
+      }
+    }
+  ],
+  "groups": [
+    {
+      "groupId": "TENANT-01",
+      "title": "平台创建租户",
+      "workPackages": [
+        "P21-TENANT"
+      ],
+      "operations": [
+        {
+          "operationId": "TENANT-01.COMMAND.CREATE",
+          "kind": "COMMAND",
+          "owner": "TENANT",
+          "actor": [
+            "PLATFORM_STAFF"
+          ],
+          "context": [
+            "PLATFORM"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "TENANT_ACCOUNT"
+          ],
+          "input": "CREATE: tenant profile, explicit ownerUserId and clientRequestId",
+          "result": "CREATE: tenant, owner membership and pending assignment",
+          "errorKeys": [
+            "OWNER_INVALID",
+            "IDEMPOTENCY_KEY_CONFLICT"
+          ],
+          "implementationStatus": "PARTIAL",
+          "conflicts": [],
+          "evidence": [
+            "tenant-service/src/main/java/com/plagod/service/impl/TenantServiceImpl.java",
+            "GAP: TENANT-01.COMMAND.CREATE is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [
+            "TENANT_CREATED"
+          ],
+          "idempotencyKey": "TENANT-01.COMMAND.CREATE: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all CREATE inputs that determine the TENANT business result",
+          "transactionBoundary": "TENANT owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event TENANT_CREATED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->ACTIVE",
+            "ACTIVE->DISABLED",
+            "DISABLED->ACTIVE"
+          ]
+        }
+      ]
+    },
+    {
+      "groupId": "TENANT-02",
+      "title": "租户资料与启停",
+      "workPackages": [
+        "P21-TENANT"
+      ],
+      "operations": [
+        {
+          "operationId": "TENANT-02.QUERY.GET",
+          "kind": "QUERY",
+          "owner": "TENANT",
+          "actor": [
+            "PLATFORM_STAFF"
+          ],
+          "context": [
+            "PLATFORM",
+            "PLATFORM_TENANT"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "TENANT_ACCOUNT"
+          ],
+          "input": "GET: tenant identity, expected version and profile/status change",
+          "result": "GET: updated tenant and convergence event",
+          "errorKeys": [
+            "TENANT_NOT_FOUND",
+            "RESOURCE_VERSION_CONFLICT"
+          ],
+          "implementationStatus": "PARTIAL",
+          "conflicts": [],
+          "evidence": [
+            "tenant-service/src/main/java/com/plagod/controller/TenantController.java",
+            "GAP: TENANT-02.QUERY.GET is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [
+            "TENANT_ACCESS_CHANGED"
+          ],
+          "scope": "TENANT owner scope under PLATFORM|PLATFORM_TENANT trusted context",
+          "resultLimit": 1,
+          "readOnly": true
+        },
+        {
+          "operationId": "TENANT-02.COMMAND.UPDATE_PROFILE",
+          "kind": "COMMAND",
+          "owner": "TENANT",
+          "actor": [
+            "PLATFORM_STAFF"
+          ],
+          "context": [
+            "PLATFORM",
+            "PLATFORM_TENANT"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "TENANT_ACCOUNT"
+          ],
+          "input": "UPDATE_PROFILE: tenant identity, expected version and profile/status change",
+          "result": "UPDATE_PROFILE: updated tenant and convergence event",
+          "errorKeys": [
+            "TENANT_NOT_FOUND",
+            "RESOURCE_VERSION_CONFLICT"
+          ],
+          "implementationStatus": "PARTIAL",
+          "conflicts": [],
+          "evidence": [
+            "tenant-service/src/main/java/com/plagod/controller/TenantController.java",
+            "GAP: TENANT-02.COMMAND.UPDATE_PROFILE is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [
+            "TENANT_ACCESS_CHANGED"
+          ],
+          "idempotencyKey": "TENANT-02.COMMAND.UPDATE_PROFILE: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all UPDATE_PROFILE inputs that determine the TENANT business result",
+          "transactionBoundary": "TENANT owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event TENANT_ACCESS_CHANGED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->ACTIVE",
+            "ACTIVE->DISABLED",
+            "DISABLED->ACTIVE"
+          ]
+        },
+        {
+          "operationId": "TENANT-02.COMMAND.CHANGE_STATUS",
+          "kind": "COMMAND",
+          "owner": "TENANT",
+          "actor": [
+            "PLATFORM_STAFF"
+          ],
+          "context": [
+            "PLATFORM",
+            "PLATFORM_TENANT"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "TENANT_ACCOUNT"
+          ],
+          "input": "CHANGE_STATUS: tenant identity, expected version and profile/status change",
+          "result": "CHANGE_STATUS: updated tenant and convergence event",
+          "errorKeys": [
+            "TENANT_NOT_FOUND",
+            "RESOURCE_VERSION_CONFLICT"
+          ],
+          "implementationStatus": "PARTIAL",
+          "conflicts": [],
+          "evidence": [
+            "tenant-service/src/main/java/com/plagod/controller/TenantController.java",
+            "GAP: TENANT-02.COMMAND.CHANGE_STATUS is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [
+            "TENANT_ACCESS_CHANGED"
+          ],
+          "idempotencyKey": "TENANT-02.COMMAND.CHANGE_STATUS: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all CHANGE_STATUS inputs that determine the TENANT business result",
+          "transactionBoundary": "TENANT owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event TENANT_ACCESS_CHANGED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->ACTIVE",
+            "ACTIVE->DISABLED",
+            "DISABLED->ACTIVE"
+          ]
+        }
+      ]
+    },
+    {
+      "groupId": "TENANT-03",
+      "title": "成员生命周期",
+      "workPackages": [
+        "P21-TENANT"
+      ],
+      "operations": [
+        {
+          "operationId": "TENANT-03.QUERY.LIST_MEMBERS",
+          "kind": "QUERY",
+          "owner": "TENANT",
+          "actor": [
+            "TENANT_ADMIN"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "TENANT_MEMBER"
+          ],
+          "input": "LIST_MEMBERS: tenant, member, role, expected version and clientRequestId",
+          "result": "LIST_MEMBERS: member state and owner invariant",
+          "errorKeys": [
+            "LAST_OWNER_REQUIRED",
+            "MEMBER_NOT_FOUND"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [],
+          "evidence": [
+            "database-migration/src/main/resources/db/migration/V2_1__tenant_foundation.sql",
+            "GAP: TENANT-03.QUERY.LIST_MEMBERS is not a complete production business loop; target 2.2"
+          ],
+          "targetLayer": "2.2",
+          "events": [
+            "TENANT_ACCESS_CHANGED"
+          ],
+          "scope": "TENANT owner scope under TENANT trusted context",
+          "resultLimit": 100,
+          "readOnly": true
+        },
+        {
+          "operationId": "TENANT-03.COMMAND.ADD_MEMBER",
+          "kind": "COMMAND",
+          "owner": "TENANT",
+          "actor": [
+            "TENANT_ADMIN"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "TENANT_MEMBER"
+          ],
+          "input": "ADD_MEMBER: tenant, member, role, expected version and clientRequestId",
+          "result": "ADD_MEMBER: member state and owner invariant",
+          "errorKeys": [
+            "LAST_OWNER_REQUIRED",
+            "MEMBER_NOT_FOUND"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [],
+          "evidence": [
+            "database-migration/src/main/resources/db/migration/V2_1__tenant_foundation.sql",
+            "GAP: TENANT-03.COMMAND.ADD_MEMBER is not a complete production business loop; target 2.2"
+          ],
+          "targetLayer": "2.2",
+          "events": [
+            "TENANT_ACCESS_CHANGED"
+          ],
+          "idempotencyKey": "TENANT-03.COMMAND.ADD_MEMBER: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all ADD_MEMBER inputs that determine the TENANT business result",
+          "transactionBoundary": "TENANT owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event TENANT_ACCESS_CHANGED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->ACTIVE"
+          ]
+        },
+        {
+          "operationId": "TENANT-03.COMMAND.CHANGE_MEMBER_ROLE",
+          "kind": "COMMAND",
+          "owner": "TENANT",
+          "actor": [
+            "TENANT_ADMIN"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "TENANT_MEMBER"
+          ],
+          "input": "CHANGE_MEMBER_ROLE: tenant, member, role, expected version and clientRequestId",
+          "result": "CHANGE_MEMBER_ROLE: member state and owner invariant",
+          "errorKeys": [
+            "LAST_OWNER_REQUIRED",
+            "MEMBER_NOT_FOUND"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [],
+          "evidence": [
+            "database-migration/src/main/resources/db/migration/V2_1__tenant_foundation.sql",
+            "GAP: TENANT-03.COMMAND.CHANGE_MEMBER_ROLE is not a complete production business loop; target 2.2"
+          ],
+          "targetLayer": "2.2",
+          "events": [
+            "TENANT_ACCESS_CHANGED"
+          ],
+          "idempotencyKey": "TENANT-03.COMMAND.CHANGE_MEMBER_ROLE: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all CHANGE_MEMBER_ROLE inputs that determine the TENANT business result",
+          "transactionBoundary": "TENANT owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event TENANT_ACCESS_CHANGED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->ACTIVE"
+          ]
+        },
+        {
+          "operationId": "TENANT-03.COMMAND.REMOVE_MEMBER",
+          "kind": "COMMAND",
+          "owner": "TENANT",
+          "actor": [
+            "TENANT_ADMIN"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "TENANT_MEMBER"
+          ],
+          "input": "REMOVE_MEMBER: tenant, member, role, expected version and clientRequestId",
+          "result": "REMOVE_MEMBER: member state and owner invariant",
+          "errorKeys": [
+            "LAST_OWNER_REQUIRED",
+            "MEMBER_NOT_FOUND"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [],
+          "evidence": [
+            "database-migration/src/main/resources/db/migration/V2_1__tenant_foundation.sql",
+            "GAP: TENANT-03.COMMAND.REMOVE_MEMBER is not a complete production business loop; target 2.2"
+          ],
+          "targetLayer": "2.2",
+          "events": [
+            "TENANT_ACCESS_CHANGED"
+          ],
+          "idempotencyKey": "TENANT-03.COMMAND.REMOVE_MEMBER: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all REMOVE_MEMBER inputs that determine the TENANT business result",
+          "transactionBoundary": "TENANT owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event TENANT_ACCESS_CHANGED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->ACTIVE"
+          ]
+        },
+        {
+          "operationId": "TENANT-03.COMMAND.TRANSFER_OWNER",
+          "kind": "COMMAND",
+          "owner": "TENANT",
+          "actor": [
+            "TENANT_ADMIN"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "TENANT_MEMBER"
+          ],
+          "input": "TRANSFER_OWNER: tenant, member, role, expected version and clientRequestId",
+          "result": "TRANSFER_OWNER: member state and owner invariant",
+          "errorKeys": [
+            "LAST_OWNER_REQUIRED",
+            "MEMBER_NOT_FOUND"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [],
+          "evidence": [
+            "database-migration/src/main/resources/db/migration/V2_1__tenant_foundation.sql",
+            "GAP: TENANT-03.COMMAND.TRANSFER_OWNER is not a complete production business loop; target 2.2"
+          ],
+          "targetLayer": "2.2",
+          "events": [
+            "TENANT_ACCESS_CHANGED"
+          ],
+          "idempotencyKey": "TENANT-03.COMMAND.TRANSFER_OWNER: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all TRANSFER_OWNER inputs that determine the TENANT business result",
+          "transactionBoundary": "TENANT owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event TENANT_ACCESS_CHANGED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->ACTIVE"
+          ]
+        }
+      ]
+    },
+    {
+      "groupId": "SAAS-01",
+      "title": "套餐和版本生命周期",
+      "workPackages": [
+        "P21-TENANT"
+      ],
+      "operations": [
+        {
+          "operationId": "SAAS-01.QUERY.LIST_PLANS",
+          "kind": "QUERY",
+          "owner": "TENANT",
+          "actor": [
+            "PLATFORM_STAFF"
+          ],
+          "context": [
+            "PLATFORM"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "SAAS_PLAN"
+          ],
+          "input": "LIST_PLANS: plan/version definition and expected version",
+          "result": "LIST_PLANS: immutable published plan version",
+          "errorKeys": [
+            "PLAN_VERSION_REFERENCED",
+            "ILLEGAL_STATE"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [],
+          "evidence": [
+            "database-migration/src/main/resources/db/migration/V2_1__tenant_foundation.sql",
+            "GAP: SAAS-01.QUERY.LIST_PLANS is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [],
+          "scope": "TENANT owner scope under PLATFORM trusted context",
+          "resultLimit": 100,
+          "readOnly": true
+        },
+        {
+          "operationId": "SAAS-01.COMMAND.CREATE_PLAN",
+          "kind": "COMMAND",
+          "owner": "TENANT",
+          "actor": [
+            "PLATFORM_STAFF"
+          ],
+          "context": [
+            "PLATFORM"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "SAAS_PLAN"
+          ],
+          "input": "CREATE_PLAN: plan/version definition and expected version",
+          "result": "CREATE_PLAN: immutable published plan version",
+          "errorKeys": [
+            "PLAN_VERSION_REFERENCED",
+            "ILLEGAL_STATE"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [],
+          "evidence": [
+            "database-migration/src/main/resources/db/migration/V2_1__tenant_foundation.sql",
+            "GAP: SAAS-01.COMMAND.CREATE_PLAN is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [],
+          "idempotencyKey": "SAAS-01.COMMAND.CREATE_PLAN: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all CREATE_PLAN inputs that determine the TENANT business result",
+          "transactionBoundary": "TENANT owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "NONE"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "GAP: SAAS_PLAN values are source-frozen but legal production transitions are not implemented"
+          ]
+        },
+        {
+          "operationId": "SAAS-01.COMMAND.UPDATE_PLAN",
+          "kind": "COMMAND",
+          "owner": "TENANT",
+          "actor": [
+            "PLATFORM_STAFF"
+          ],
+          "context": [
+            "PLATFORM"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "SAAS_PLAN"
+          ],
+          "input": "UPDATE_PLAN: plan/version definition and expected version",
+          "result": "UPDATE_PLAN: immutable published plan version",
+          "errorKeys": [
+            "PLAN_VERSION_REFERENCED",
+            "ILLEGAL_STATE"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [],
+          "evidence": [
+            "database-migration/src/main/resources/db/migration/V2_1__tenant_foundation.sql",
+            "GAP: SAAS-01.COMMAND.UPDATE_PLAN is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [],
+          "idempotencyKey": "SAAS-01.COMMAND.UPDATE_PLAN: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all UPDATE_PLAN inputs that determine the TENANT business result",
+          "transactionBoundary": "TENANT owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "NONE"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "GAP: SAAS_PLAN values are source-frozen but legal production transitions are not implemented"
+          ]
+        },
+        {
+          "operationId": "SAAS-01.COMMAND.PUBLISH_PLAN_VERSION",
+          "kind": "COMMAND",
+          "owner": "TENANT",
+          "actor": [
+            "PLATFORM_STAFF"
+          ],
+          "context": [
+            "PLATFORM"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "SAAS_PLAN",
+            "SAAS_PLAN_VERSION"
+          ],
+          "input": "PUBLISH_PLAN_VERSION: plan/version definition and expected version",
+          "result": "PUBLISH_PLAN_VERSION: immutable published plan version",
+          "errorKeys": [
+            "PLAN_VERSION_REFERENCED",
+            "ILLEGAL_STATE"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [],
+          "evidence": [
+            "database-migration/src/main/resources/db/migration/V2_1__tenant_foundation.sql",
+            "GAP: SAAS-01.COMMAND.PUBLISH_PLAN_VERSION is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [],
+          "idempotencyKey": "SAAS-01.COMMAND.PUBLISH_PLAN_VERSION: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all PUBLISH_PLAN_VERSION inputs that determine the TENANT business result",
+          "transactionBoundary": "TENANT owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "NONE"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "GAP: SAAS_PLAN values are source-frozen but legal production transitions are not implemented",
+            "GAP: SAAS_PLAN_VERSION values are source-frozen but legal production transitions are not implemented"
+          ]
+        },
+        {
+          "operationId": "SAAS-01.COMMAND.CHANGE_PLAN_STATUS",
+          "kind": "COMMAND",
+          "owner": "TENANT",
+          "actor": [
+            "PLATFORM_STAFF"
+          ],
+          "context": [
+            "PLATFORM"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "SAAS_PLAN"
+          ],
+          "input": "CHANGE_PLAN_STATUS: plan/version definition and expected version",
+          "result": "CHANGE_PLAN_STATUS: immutable published plan version",
+          "errorKeys": [
+            "PLAN_VERSION_REFERENCED",
+            "ILLEGAL_STATE"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [],
+          "evidence": [
+            "database-migration/src/main/resources/db/migration/V2_1__tenant_foundation.sql",
+            "GAP: SAAS-01.COMMAND.CHANGE_PLAN_STATUS is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [],
+          "idempotencyKey": "SAAS-01.COMMAND.CHANGE_PLAN_STATUS: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all CHANGE_PLAN_STATUS inputs that determine the TENANT business result",
+          "transactionBoundary": "TENANT owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "NONE"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "GAP: SAAS_PLAN values are source-frozen but legal production transitions are not implemented"
+          ]
+        }
+      ]
+    },
+    {
+      "groupId": "SAAS-02",
+      "title": "分配套餐与订阅",
+      "workPackages": [
+        "P21-TENANT"
+      ],
+      "operations": [
+        {
+          "operationId": "SAAS-02.QUERY.GET_SUBSCRIPTION",
+          "kind": "QUERY",
+          "owner": "TENANT",
+          "actor": [
+            "PLATFORM_STAFF",
+            "INTERNAL_SERVICE"
+          ],
+          "context": [
+            "PLATFORM",
+            "INTERNAL"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "TENANT_SUBSCRIPTION"
+          ],
+          "input": "GET_SUBSCRIPTION: tenant, planVersion, sourceReference and clientRequestId",
+          "result": "GET_SUBSCRIPTION: assignment, subscription and quota snapshot",
+          "errorKeys": [
+            "PLAN_UNAVAILABLE",
+            "IDEMPOTENCY_KEY_CONFLICT"
+          ],
+          "implementationStatus": "PARTIAL",
+          "conflicts": [],
+          "evidence": [
+            "database-migration/src/main/resources/db/migration/V2_5__saas_quota_and_assignment_schema.sql",
+            "GAP: SAAS-02.QUERY.GET_SUBSCRIPTION is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [
+            "ASSIGNMENT_APPLIED"
+          ],
+          "scope": "TENANT owner scope under PLATFORM|INTERNAL trusted context",
+          "resultLimit": 100,
+          "readOnly": true
+        },
+        {
+          "operationId": "SAAS-02.COMMAND.ASSIGN_PLAN",
+          "kind": "COMMAND",
+          "owner": "TENANT",
+          "actor": [
+            "PLATFORM_STAFF",
+            "INTERNAL_SERVICE"
+          ],
+          "context": [
+            "PLATFORM",
+            "INTERNAL"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "TENANT_PLAN_ASSIGNMENT",
+            "TENANT_SUBSCRIPTION"
+          ],
+          "input": "ASSIGN_PLAN: tenant, planVersion, sourceReference and clientRequestId",
+          "result": "ASSIGN_PLAN: assignment, subscription and quota snapshot",
+          "errorKeys": [
+            "PLAN_UNAVAILABLE",
+            "IDEMPOTENCY_KEY_CONFLICT"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [],
+          "evidence": [
+            "database-migration/src/main/resources/db/migration/V2_5__saas_quota_and_assignment_schema.sql",
+            "GAP: SAAS-02.COMMAND.ASSIGN_PLAN is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [
+            "ASSIGNMENT_APPLIED"
+          ],
+          "idempotencyKey": "SAAS-02.COMMAND.ASSIGN_PLAN: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all ASSIGN_PLAN inputs that determine the TENANT business result",
+          "transactionBoundary": "TENANT owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event ASSIGNMENT_APPLIED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->PENDING"
+          ]
+        },
+        {
+          "operationId": "SAAS-02.COMMAND.APPLY_ASSIGNMENT",
+          "kind": "COMMAND",
+          "owner": "TENANT",
+          "actor": [
+            "PLATFORM_STAFF",
+            "INTERNAL_SERVICE"
+          ],
+          "context": [
+            "PLATFORM",
+            "INTERNAL"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "TENANT_PLAN_ASSIGNMENT",
+            "TENANT_SUBSCRIPTION"
+          ],
+          "input": "APPLY_ASSIGNMENT: tenant, planVersion, sourceReference and clientRequestId",
+          "result": "APPLY_ASSIGNMENT: assignment, subscription and quota snapshot",
+          "errorKeys": [
+            "PLAN_UNAVAILABLE",
+            "IDEMPOTENCY_KEY_CONFLICT"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [],
+          "evidence": [
+            "database-migration/src/main/resources/db/migration/V2_5__saas_quota_and_assignment_schema.sql",
+            "GAP: SAAS-02.COMMAND.APPLY_ASSIGNMENT is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [
+            "ASSIGNMENT_APPLIED"
+          ],
+          "idempotencyKey": "SAAS-02.COMMAND.APPLY_ASSIGNMENT: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all APPLY_ASSIGNMENT inputs that determine the TENANT business result",
+          "transactionBoundary": "TENANT owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event ASSIGNMENT_APPLIED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->PENDING"
+          ]
+        },
+        {
+          "operationId": "SAAS-02.COMMAND.EXPIRE_SUBSCRIPTION",
+          "kind": "COMMAND",
+          "owner": "TENANT",
+          "actor": [
+            "PLATFORM_STAFF",
+            "INTERNAL_SERVICE"
+          ],
+          "context": [
+            "PLATFORM",
+            "INTERNAL"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "TENANT_SUBSCRIPTION"
+          ],
+          "input": "EXPIRE_SUBSCRIPTION: tenant, planVersion, sourceReference and clientRequestId",
+          "result": "EXPIRE_SUBSCRIPTION: assignment, subscription and quota snapshot",
+          "errorKeys": [
+            "PLAN_UNAVAILABLE",
+            "IDEMPOTENCY_KEY_CONFLICT"
+          ],
+          "implementationStatus": "PARTIAL",
+          "conflicts": [],
+          "evidence": [
+            "database-migration/src/main/resources/db/migration/V2_5__saas_quota_and_assignment_schema.sql",
+            "GAP: SAAS-02.COMMAND.EXPIRE_SUBSCRIPTION is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [
+            "ASSIGNMENT_APPLIED"
+          ],
+          "idempotencyKey": "SAAS-02.COMMAND.EXPIRE_SUBSCRIPTION: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all EXPIRE_SUBSCRIPTION inputs that determine the TENANT business result",
+          "transactionBoundary": "TENANT owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event ASSIGNMENT_APPLIED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "GAP: TENANT_SUBSCRIPTION values are source-frozen but legal production transitions are not implemented"
+          ]
+        }
+      ]
+    },
+    {
+      "groupId": "QUOTA-01",
+      "title": "配额查询与预留",
+      "workPackages": [
+        "P21-TENANT"
+      ],
+      "operations": [
+        {
+          "operationId": "QUOTA-01.QUERY.GET",
+          "kind": "QUERY",
+          "owner": "TENANT",
+          "actor": [
+            "TENANT_ADMIN",
+            "INTERNAL_SERVICE"
+          ],
+          "context": [
+            "TENANT",
+            "INTERNAL"
+          ],
+          "stateModel": "STATELESS",
+          "stateMachineRefs": [],
+          "input": "GET: tenant, quotaType, businessKey and amount",
+          "result": "GET: quota snapshot and reservation",
+          "errorKeys": [
+            "QUOTA_EXCEEDED",
+            "RESERVATION_CONFLICT"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [],
+          "evidence": [
+            "tenant-service/src/main/java/com/plagod/mapper/TenantQuotaReservationMapper.java",
+            "GAP: QUOTA-01.QUERY.GET is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [
+            "QUOTA_RESERVATION_CHANGED"
+          ],
+          "scope": "TENANT owner scope under TENANT|INTERNAL trusted context",
+          "resultLimit": 1,
+          "readOnly": true
+        },
+        {
+          "operationId": "QUOTA-01.COMMAND.RESERVE",
+          "kind": "COMMAND",
+          "owner": "TENANT",
+          "actor": [
+            "TENANT_ADMIN",
+            "INTERNAL_SERVICE"
+          ],
+          "context": [
+            "TENANT",
+            "INTERNAL"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "TENANT_QUOTA_RESERVATION"
+          ],
+          "input": "RESERVE: tenant, quotaType, businessKey and amount",
+          "result": "RESERVE: quota snapshot and reservation",
+          "errorKeys": [
+            "QUOTA_EXCEEDED",
+            "RESERVATION_CONFLICT"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [],
+          "evidence": [
+            "tenant-service/src/main/java/com/plagod/mapper/TenantQuotaReservationMapper.java",
+            "GAP: QUOTA-01.COMMAND.RESERVE is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [
+            "QUOTA_RESERVATION_CHANGED"
+          ],
+          "idempotencyKey": "QUOTA-01.COMMAND.RESERVE: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all RESERVE inputs that determine the TENANT business result",
+          "transactionBoundary": "TENANT owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event QUOTA_RESERVATION_CHANGED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "GAP: TENANT_QUOTA_RESERVATION values are source-frozen but legal production transitions are not implemented"
+          ]
+        },
+        {
+          "operationId": "QUOTA-01.COMMAND.CONFIRM",
+          "kind": "COMMAND",
+          "owner": "TENANT",
+          "actor": [
+            "TENANT_ADMIN",
+            "INTERNAL_SERVICE"
+          ],
+          "context": [
+            "TENANT",
+            "INTERNAL"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "TENANT_QUOTA_RESERVATION"
+          ],
+          "input": "CONFIRM: tenant, quotaType, businessKey and amount",
+          "result": "CONFIRM: quota snapshot and reservation",
+          "errorKeys": [
+            "QUOTA_EXCEEDED",
+            "RESERVATION_CONFLICT"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [],
+          "evidence": [
+            "tenant-service/src/main/java/com/plagod/mapper/TenantQuotaReservationMapper.java",
+            "GAP: QUOTA-01.COMMAND.CONFIRM is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [
+            "QUOTA_RESERVATION_CHANGED"
+          ],
+          "idempotencyKey": "QUOTA-01.COMMAND.CONFIRM: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all CONFIRM inputs that determine the TENANT business result",
+          "transactionBoundary": "TENANT owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event QUOTA_RESERVATION_CHANGED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "GAP: TENANT_QUOTA_RESERVATION values are source-frozen but legal production transitions are not implemented"
+          ]
+        }
+      ]
+    },
+    {
+      "groupId": "QUOTA-02",
+      "title": "配额释放",
+      "workPackages": [
+        "P21-TENANT"
+      ],
+      "operations": [
+        {
+          "operationId": "QUOTA-02.COMMAND.RELEASE",
+          "kind": "COMMAND",
+          "owner": "TENANT",
+          "actor": [
+            "INTERNAL_SERVICE",
+            "SCHEDULED_SERVICE"
+          ],
+          "context": [
+            "INTERNAL",
+            "SCHEDULED"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "TENANT_QUOTA_RESERVATION"
+          ],
+          "input": "RELEASE: reservation or confirmed business reference",
+          "result": "RELEASE: released or expired reservation",
+          "errorKeys": [
+            "RESERVATION_NOT_FOUND",
+            "BUSINESS_RESULT_UNKNOWN"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [],
+          "evidence": [
+            "database-migration/src/main/resources/db/migration/V2_5__saas_quota_and_assignment_schema.sql",
+            "GAP: QUOTA-02.COMMAND.RELEASE is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [
+            "QUOTA_RESERVATION_CHANGED"
+          ],
+          "idempotencyKey": "QUOTA-02.COMMAND.RELEASE: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all RELEASE inputs that determine the TENANT business result",
+          "transactionBoundary": "TENANT owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event QUOTA_RESERVATION_CHANGED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "GAP: TENANT_QUOTA_RESERVATION values are source-frozen but legal production transitions are not implemented"
+          ]
+        },
+        {
+          "operationId": "QUOTA-02.COMMAND.EXPIRE_RESERVATION",
+          "kind": "COMMAND",
+          "owner": "TENANT",
+          "actor": [
+            "INTERNAL_SERVICE",
+            "SCHEDULED_SERVICE"
+          ],
+          "context": [
+            "INTERNAL",
+            "SCHEDULED"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "TENANT_QUOTA_RESERVATION"
+          ],
+          "input": "EXPIRE_RESERVATION: reservation or confirmed business reference",
+          "result": "EXPIRE_RESERVATION: released or expired reservation",
+          "errorKeys": [
+            "RESERVATION_NOT_FOUND",
+            "BUSINESS_RESULT_UNKNOWN"
+          ],
+          "implementationStatus": "GAP",
+          "conflicts": [],
+          "evidence": [
+            "database-migration/src/main/resources/db/migration/V2_5__saas_quota_and_assignment_schema.sql",
+            "GAP: QUOTA-02.COMMAND.EXPIRE_RESERVATION is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [
+            "QUOTA_RESERVATION_CHANGED"
+          ],
+          "idempotencyKey": "QUOTA-02.COMMAND.EXPIRE_RESERVATION: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all EXPIRE_RESERVATION inputs that determine the TENANT business result",
+          "transactionBoundary": "TENANT owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event QUOTA_RESERVATION_CHANGED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "GAP: TENANT_QUOTA_RESERVATION values are source-frozen but legal production transitions are not implemented"
+          ]
+        }
+      ]
+    }
+  ]
+}

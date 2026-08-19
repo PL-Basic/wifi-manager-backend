@@ -1,0 +1,1757 @@
+{
+  "version": "core-use-cases-v1",
+  "domainId": "DEVICE",
+  "workPackages": [
+    "P21-DEVICE"
+  ],
+  "stateMachines": [
+    {
+      "stateMachineId": "DEVICE_NODE",
+      "businessObject": "DeviceNode",
+      "owner": "DEVICE",
+      "field": "t_esp32_node.status",
+      "machineType": "INTEGER",
+      "source": [
+        "database-migration/src/main/resources/db/migration/V1_5__device_schema.sql",
+        "device-service/src/main/java/com/plagod/service/impl/DeviceHeartbeatServiceImpl.java",
+        "device-service/src/main/java/com/plagod/entity/device/Esp32Node.java",
+        "wifi-common-api/src/main/java/com/plagod/vo/device/DeviceNodeVO.java"
+      ],
+      "machineValues": [
+        {
+          "machineValue": 0,
+          "semanticName": "OFFLINE",
+          "terminal": false
+        },
+        {
+          "machineValue": 1,
+          "semanticName": "ONLINE",
+          "terminal": false
+        }
+      ],
+      "lifecycle": {
+        "status": "FROZEN",
+        "terminalStates": [],
+        "legalTransitions": [
+          "NONE->0(OFFLINE)",
+          "0(OFFLINE)->1(ONLINE)",
+          "1(ONLINE)->0(OFFLINE)"
+        ]
+      }
+    },
+    {
+      "stateMachineId": "DEVICE_COMMAND",
+      "businessObject": "DeviceCommand",
+      "owner": "DEVICE",
+      "field": "t_device_command.status",
+      "machineType": "INTEGER",
+      "source": [
+        "database-migration/src/main/resources/db/migration/V1_5__device_schema.sql",
+        "device-service/src/main/java/com/plagod/constant/DeviceCommandStatus.java",
+        "device-service/src/main/java/com/plagod/entity/device/DeviceCommandRecord.java",
+        "wifi-common-api/src/main/java/com/plagod/vo/device/DeviceCommandVO.java"
+      ],
+      "machineValues": [
+        {
+          "machineValue": 0,
+          "semanticName": "PENDING",
+          "terminal": false
+        },
+        {
+          "machineValue": 1,
+          "semanticName": "PUBLISHED",
+          "terminal": false
+        },
+        {
+          "machineValue": 2,
+          "semanticName": "SUCCEEDED",
+          "terminal": true
+        },
+        {
+          "machineValue": 3,
+          "semanticName": "EXECUTION_FAILED",
+          "terminal": true
+        },
+        {
+          "machineValue": 4,
+          "semanticName": "PUBLISH_FAILED",
+          "terminal": true
+        },
+        {
+          "machineValue": 5,
+          "semanticName": "TIMED_OUT",
+          "terminal": true
+        }
+      ],
+      "lifecycle": {
+        "status": "FROZEN",
+        "terminalStates": [
+          "SUCCEEDED",
+          "EXECUTION_FAILED",
+          "PUBLISH_FAILED",
+          "TIMED_OUT"
+        ],
+        "legalTransitions": [
+          "NONE->0(PENDING)",
+          "0(PENDING)->1(PUBLISHED)",
+          "0(PENDING)->4(PUBLISH_FAILED)",
+          "1(PUBLISHED)->2(SUCCEEDED)",
+          "1(PUBLISHED)->3(EXECUTION_FAILED)",
+          "1(PUBLISHED)->5(TIMED_OUT)"
+        ]
+      }
+    },
+    {
+      "stateMachineId": "DEVICE_WIFI_CONFIG",
+      "businessObject": "DeviceWifiConfig",
+      "owner": "DEVICE",
+      "field": "t_device_wifi_config.status",
+      "machineType": "INTEGER",
+      "source": [
+        "database-migration/src/main/resources/db/migration/V1_5__device_schema.sql",
+        "device-service/src/main/java/com/plagod/constant/DeviceWifiConfigStatus.java",
+        "device-service/src/main/java/com/plagod/entity/device/DeviceWifiConfigRecord.java",
+        "wifi-common-api/src/main/java/com/plagod/vo/device/WifiConfigTaskVO.java"
+      ],
+      "machineValues": [
+        {
+          "machineValue": 0,
+          "semanticName": "DISPATCHING",
+          "terminal": false
+        },
+        {
+          "machineValue": 1,
+          "semanticName": "STAGED",
+          "terminal": false
+        },
+        {
+          "machineValue": 2,
+          "semanticName": "ACTIVE",
+          "terminal": true
+        },
+        {
+          "machineValue": 3,
+          "semanticName": "FAILED",
+          "terminal": true
+        },
+        {
+          "machineValue": 4,
+          "semanticName": "UNKNOWN",
+          "terminal": false
+        },
+        {
+          "machineValue": 5,
+          "semanticName": "SUPERSEDED",
+          "terminal": true
+        }
+      ],
+      "lifecycle": {
+        "status": "FROZEN",
+        "terminalStates": [
+          "ACTIVE",
+          "FAILED",
+          "SUPERSEDED"
+        ],
+        "legalTransitions": [
+          "NONE->0(DISPATCHING)",
+          "0(DISPATCHING)->1(STAGED)",
+          "0(DISPATCHING)->3(FAILED)",
+          "1(STAGED)->2(ACTIVE)",
+          "1(STAGED)->3(FAILED)",
+          "1(STAGED)->4(UNKNOWN)",
+          "4(UNKNOWN)->1(STAGED)",
+          "4(UNKNOWN)->2(ACTIVE)",
+          "0(DISPATCHING)->5(SUPERSEDED)",
+          "1(STAGED)->5(SUPERSEDED)",
+          "4(UNKNOWN)->5(SUPERSEDED)"
+        ]
+      }
+    },
+    {
+      "stateMachineId": "PORTAL_SESSION",
+      "businessObject": "PortalSession",
+      "owner": "DEVICE",
+      "field": "t_session.status",
+      "machineType": "INTEGER",
+      "source": [
+        "database-migration/src/main/resources/db/migration/V1_5__device_schema.sql",
+        "device-service/src/main/java/com/plagod/constant/SessionStatus.java",
+        "device-service/src/main/java/com/plagod/entity/device/SessionRecord.java",
+        "wifi-common-api/src/main/java/com/plagod/vo/device/SessionRecordVO.java"
+      ],
+      "machineValues": [
+        {
+          "machineValue": 0,
+          "semanticName": "CLOSED",
+          "terminal": true
+        },
+        {
+          "machineValue": 1,
+          "semanticName": "ACTIVE",
+          "terminal": false
+        },
+        {
+          "machineValue": 2,
+          "semanticName": "PENDING",
+          "terminal": false
+        },
+        {
+          "machineValue": 3,
+          "semanticName": "WAITING_REPLACEMENT",
+          "terminal": false
+        }
+      ],
+      "lifecycle": {
+        "status": "FROZEN",
+        "terminalStates": [
+          "CLOSED"
+        ],
+        "legalTransitions": [
+          "NONE->2(PENDING)",
+          "2(PENDING)->1(ACTIVE)",
+          "2(PENDING)->3(WAITING_REPLACEMENT)",
+          "3(WAITING_REPLACEMENT)->1(ACTIVE)",
+          "1(ACTIVE)->0(CLOSED)",
+          "2(PENDING)->0(CLOSED)",
+          "3(WAITING_REPLACEMENT)->0(CLOSED)"
+        ]
+      }
+    }
+  ],
+  "groups": [
+    {
+      "groupId": "DEVICE-01",
+      "title": "设备生命周期",
+      "workPackages": [
+        "P21-DEVICE"
+      ],
+      "operations": [
+        {
+          "operationId": "DEVICE-01.QUERY.LIST",
+          "kind": "QUERY",
+          "owner": "DEVICE",
+          "actor": [
+            "TENANT_ADMIN"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "DEVICE_NODE"
+          ],
+          "input": "LIST: tenant, device, clientRequestId and expected version",
+          "result": "LIST: tenant-owned device and quota result",
+          "errorKeys": [
+            "DEVICE_NOT_FOUND",
+            "DEVICE_QUOTA_EXCEEDED"
+          ],
+          "implementationStatus": "PARTIAL",
+          "conflicts": [],
+          "evidence": [
+            "device-service/src/main/java/com/plagod/controller/DeviceController.java",
+            "GAP: DEVICE-01.QUERY.LIST is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [
+            "QUOTA_RESERVATION_CHANGED"
+          ],
+          "scope": "DEVICE owner scope under TENANT trusted context",
+          "resultLimit": 100,
+          "readOnly": true
+        },
+        {
+          "operationId": "DEVICE-01.QUERY.GET",
+          "kind": "QUERY",
+          "owner": "DEVICE",
+          "actor": [
+            "TENANT_ADMIN"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "DEVICE_NODE"
+          ],
+          "input": "GET: tenant, device, clientRequestId and expected version",
+          "result": "GET: tenant-owned device and quota result",
+          "errorKeys": [
+            "DEVICE_NOT_FOUND",
+            "DEVICE_QUOTA_EXCEEDED"
+          ],
+          "implementationStatus": "PARTIAL",
+          "conflicts": [],
+          "evidence": [
+            "device-service/src/main/java/com/plagod/controller/DeviceController.java",
+            "GAP: DEVICE-01.QUERY.GET is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [
+            "QUOTA_RESERVATION_CHANGED"
+          ],
+          "scope": "DEVICE owner scope under TENANT trusted context",
+          "resultLimit": 1,
+          "readOnly": true
+        },
+        {
+          "operationId": "DEVICE-01.COMMAND.CREATE",
+          "kind": "COMMAND",
+          "owner": "DEVICE",
+          "actor": [
+            "TENANT_ADMIN"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "DEVICE_NODE"
+          ],
+          "input": "CREATE: tenant, device, clientRequestId and expected version",
+          "result": "CREATE: tenant-owned device and quota result",
+          "errorKeys": [
+            "DEVICE_NOT_FOUND",
+            "DEVICE_QUOTA_EXCEEDED"
+          ],
+          "implementationStatus": "PARTIAL",
+          "conflicts": [],
+          "evidence": [
+            "device-service/src/main/java/com/plagod/controller/DeviceController.java",
+            "GAP: DEVICE-01.COMMAND.CREATE is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [
+            "QUOTA_RESERVATION_CHANGED"
+          ],
+          "idempotencyKey": "DEVICE-01.COMMAND.CREATE: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all CREATE inputs that determine the DEVICE business result",
+          "transactionBoundary": "DEVICE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event QUOTA_RESERVATION_CHANGED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->0(OFFLINE)",
+            "0(OFFLINE)->1(ONLINE)",
+            "1(ONLINE)->0(OFFLINE)"
+          ]
+        },
+        {
+          "operationId": "DEVICE-01.COMMAND.UPDATE",
+          "kind": "COMMAND",
+          "owner": "DEVICE",
+          "actor": [
+            "TENANT_ADMIN"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "DEVICE_NODE"
+          ],
+          "input": "UPDATE: tenant, device, clientRequestId and expected version",
+          "result": "UPDATE: tenant-owned device and quota result",
+          "errorKeys": [
+            "DEVICE_NOT_FOUND",
+            "DEVICE_QUOTA_EXCEEDED"
+          ],
+          "implementationStatus": "PARTIAL",
+          "conflicts": [],
+          "evidence": [
+            "device-service/src/main/java/com/plagod/controller/DeviceController.java",
+            "GAP: DEVICE-01.COMMAND.UPDATE is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [
+            "QUOTA_RESERVATION_CHANGED"
+          ],
+          "idempotencyKey": "DEVICE-01.COMMAND.UPDATE: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all UPDATE inputs that determine the DEVICE business result",
+          "transactionBoundary": "DEVICE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event QUOTA_RESERVATION_CHANGED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->0(OFFLINE)",
+            "0(OFFLINE)->1(ONLINE)",
+            "1(ONLINE)->0(OFFLINE)"
+          ]
+        },
+        {
+          "operationId": "DEVICE-01.COMMAND.DELETE",
+          "kind": "COMMAND",
+          "owner": "DEVICE",
+          "actor": [
+            "TENANT_ADMIN"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "DEVICE_NODE"
+          ],
+          "input": "DELETE: tenant, device, clientRequestId and expected version",
+          "result": "DELETE: tenant-owned device and quota result",
+          "errorKeys": [
+            "DEVICE_NOT_FOUND",
+            "DEVICE_QUOTA_EXCEEDED"
+          ],
+          "implementationStatus": "PARTIAL",
+          "conflicts": [],
+          "evidence": [
+            "device-service/src/main/java/com/plagod/controller/DeviceController.java",
+            "GAP: DEVICE-01.COMMAND.DELETE is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [
+            "QUOTA_RESERVATION_CHANGED"
+          ],
+          "idempotencyKey": "DEVICE-01.COMMAND.DELETE: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all DELETE inputs that determine the DEVICE business result",
+          "transactionBoundary": "DEVICE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event QUOTA_RESERVATION_CHANGED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->0(OFFLINE)",
+            "0(OFFLINE)->1(ONLINE)",
+            "1(ONLINE)->0(OFFLINE)"
+          ]
+        },
+        {
+          "operationId": "DEVICE-01.COMMAND.RESTORE",
+          "kind": "COMMAND",
+          "owner": "DEVICE",
+          "actor": [
+            "TENANT_ADMIN"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "DEVICE_NODE"
+          ],
+          "input": "RESTORE: tenant, device, clientRequestId and expected version",
+          "result": "RESTORE: tenant-owned device and quota result",
+          "errorKeys": [
+            "DEVICE_NOT_FOUND",
+            "DEVICE_QUOTA_EXCEEDED"
+          ],
+          "implementationStatus": "PARTIAL",
+          "conflicts": [],
+          "evidence": [
+            "device-service/src/main/java/com/plagod/controller/DeviceController.java",
+            "GAP: DEVICE-01.COMMAND.RESTORE is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [
+            "QUOTA_RESERVATION_CHANGED"
+          ],
+          "idempotencyKey": "DEVICE-01.COMMAND.RESTORE: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all RESTORE inputs that determine the DEVICE business result",
+          "transactionBoundary": "DEVICE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event QUOTA_RESERVATION_CHANGED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->0(OFFLINE)",
+            "0(OFFLINE)->1(ONLINE)",
+            "1(ONLINE)->0(OFFLINE)"
+          ]
+        }
+      ]
+    },
+    {
+      "groupId": "DEVICE-02",
+      "title": "心跳与状态",
+      "workPackages": [
+        "P21-DEVICE"
+      ],
+      "operations": [
+        {
+          "operationId": "DEVICE-02.QUERY.GET_STATUS",
+          "kind": "QUERY",
+          "owner": "DEVICE",
+          "actor": [
+            "DEVICE_EVENT",
+            "TENANT_ADMIN"
+          ],
+          "context": [
+            "DEVICE",
+            "TENANT"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "DEVICE_NODE"
+          ],
+          "input": "GET_STATUS: bound device identity and heartbeat payload",
+          "result": "GET_STATUS: device and WiFi status with derived online state",
+          "errorKeys": [
+            "DEVICE_IDENTITY_INVALID"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "device-service/src/main/java/com/plagod/service/impl/DeviceHeartbeatServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [],
+          "scope": "DEVICE owner scope under DEVICE|TENANT trusted context",
+          "resultLimit": 100,
+          "readOnly": true
+        },
+        {
+          "operationId": "DEVICE-02.COMMAND.RECORD_HEARTBEAT",
+          "kind": "COMMAND",
+          "owner": "DEVICE",
+          "actor": [
+            "DEVICE_EVENT",
+            "TENANT_ADMIN"
+          ],
+          "context": [
+            "DEVICE",
+            "TENANT"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "DEVICE_NODE"
+          ],
+          "input": "RECORD_HEARTBEAT: bound device identity and heartbeat payload",
+          "result": "RECORD_HEARTBEAT: device and WiFi status with derived online state",
+          "errorKeys": [
+            "DEVICE_IDENTITY_INVALID"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "device-service/src/main/java/com/plagod/service/impl/DeviceHeartbeatServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [],
+          "idempotencyKey": "DEVICE-02.COMMAND.RECORD_HEARTBEAT: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all RECORD_HEARTBEAT inputs that determine the DEVICE business result",
+          "transactionBoundary": "DEVICE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "NONE"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->0(OFFLINE)",
+            "0(OFFLINE)->1(ONLINE)",
+            "1(ONLINE)->0(OFFLINE)"
+          ]
+        }
+      ]
+    },
+    {
+      "groupId": "DEVICE-03",
+      "title": "命令创建和结果",
+      "workPackages": [
+        "P21-DEVICE"
+      ],
+      "operations": [
+        {
+          "operationId": "DEVICE-03.QUERY.GET_COMMAND",
+          "kind": "QUERY",
+          "owner": "DEVICE",
+          "actor": [
+            "TENANT_ADMIN",
+            "DEVICE_EVENT",
+            "SCHEDULED_SERVICE"
+          ],
+          "context": [
+            "TENANT",
+            "DEVICE",
+            "SCHEDULED"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "DEVICE_COMMAND"
+          ],
+          "input": "GET_COMMAND: tenant target, command type, requestId and firmware result",
+          "result": "GET_COMMAND: command lifecycle and safe result",
+          "errorKeys": [
+            "COMMAND_CONFLICT",
+            "COMMAND_TIMED_OUT"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "device-service/src/main/java/com/plagod/service/impl/DeviceCommandServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [
+            "DEVICE_COMMAND_RESULT"
+          ],
+          "scope": "DEVICE owner scope under TENANT|DEVICE|SCHEDULED trusted context",
+          "resultLimit": 100,
+          "readOnly": true
+        },
+        {
+          "operationId": "DEVICE-03.COMMAND.CREATE_COMMAND",
+          "kind": "COMMAND",
+          "owner": "DEVICE",
+          "actor": [
+            "TENANT_ADMIN",
+            "DEVICE_EVENT",
+            "SCHEDULED_SERVICE"
+          ],
+          "context": [
+            "TENANT",
+            "DEVICE",
+            "SCHEDULED"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "DEVICE_COMMAND"
+          ],
+          "input": "CREATE_COMMAND: tenant target, command type, requestId and firmware result",
+          "result": "CREATE_COMMAND: command lifecycle and safe result",
+          "errorKeys": [
+            "COMMAND_CONFLICT",
+            "COMMAND_TIMED_OUT"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "device-service/src/main/java/com/plagod/service/impl/DeviceCommandServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [
+            "DEVICE_COMMAND_RESULT"
+          ],
+          "idempotencyKey": "DEVICE-03.COMMAND.CREATE_COMMAND: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all CREATE_COMMAND inputs that determine the DEVICE business result",
+          "transactionBoundary": "DEVICE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event DEVICE_COMMAND_RESULT"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->0(PENDING)",
+            "0(PENDING)->1(PUBLISHED)",
+            "0(PENDING)->4(PUBLISH_FAILED)",
+            "1(PUBLISHED)->2(SUCCEEDED)",
+            "1(PUBLISHED)->3(EXECUTION_FAILED)",
+            "1(PUBLISHED)->5(TIMED_OUT)"
+          ]
+        },
+        {
+          "operationId": "DEVICE-03.COMMAND.MARK_PUBLISHED",
+          "kind": "COMMAND",
+          "owner": "DEVICE",
+          "actor": [
+            "TENANT_ADMIN",
+            "DEVICE_EVENT",
+            "SCHEDULED_SERVICE"
+          ],
+          "context": [
+            "TENANT",
+            "DEVICE",
+            "SCHEDULED"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "DEVICE_COMMAND"
+          ],
+          "input": "MARK_PUBLISHED: tenant target, command type, requestId and firmware result",
+          "result": "MARK_PUBLISHED: command lifecycle and safe result",
+          "errorKeys": [
+            "COMMAND_CONFLICT",
+            "COMMAND_TIMED_OUT"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "device-service/src/main/java/com/plagod/service/impl/DeviceCommandServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [
+            "DEVICE_COMMAND_RESULT"
+          ],
+          "idempotencyKey": "DEVICE-03.COMMAND.MARK_PUBLISHED: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all MARK_PUBLISHED inputs that determine the DEVICE business result",
+          "transactionBoundary": "DEVICE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event DEVICE_COMMAND_RESULT"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->0(PENDING)",
+            "0(PENDING)->1(PUBLISHED)",
+            "0(PENDING)->4(PUBLISH_FAILED)",
+            "1(PUBLISHED)->2(SUCCEEDED)",
+            "1(PUBLISHED)->3(EXECUTION_FAILED)",
+            "1(PUBLISHED)->5(TIMED_OUT)"
+          ]
+        },
+        {
+          "operationId": "DEVICE-03.COMMAND.APPLY_RESULT",
+          "kind": "COMMAND",
+          "owner": "DEVICE",
+          "actor": [
+            "TENANT_ADMIN",
+            "DEVICE_EVENT",
+            "SCHEDULED_SERVICE"
+          ],
+          "context": [
+            "TENANT",
+            "DEVICE",
+            "SCHEDULED"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "DEVICE_COMMAND"
+          ],
+          "input": "APPLY_RESULT: tenant target, command type, requestId and firmware result",
+          "result": "APPLY_RESULT: command lifecycle and safe result",
+          "errorKeys": [
+            "COMMAND_CONFLICT",
+            "COMMAND_TIMED_OUT"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "device-service/src/main/java/com/plagod/service/impl/DeviceCommandServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [
+            "DEVICE_COMMAND_RESULT"
+          ],
+          "idempotencyKey": "DEVICE-03.COMMAND.APPLY_RESULT: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all APPLY_RESULT inputs that determine the DEVICE business result",
+          "transactionBoundary": "DEVICE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event DEVICE_COMMAND_RESULT"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->0(PENDING)",
+            "0(PENDING)->1(PUBLISHED)",
+            "0(PENDING)->4(PUBLISH_FAILED)",
+            "1(PUBLISHED)->2(SUCCEEDED)",
+            "1(PUBLISHED)->3(EXECUTION_FAILED)",
+            "1(PUBLISHED)->5(TIMED_OUT)"
+          ]
+        },
+        {
+          "operationId": "DEVICE-03.COMMAND.MARK_TIMED_OUT",
+          "kind": "COMMAND",
+          "owner": "DEVICE",
+          "actor": [
+            "TENANT_ADMIN",
+            "DEVICE_EVENT",
+            "SCHEDULED_SERVICE"
+          ],
+          "context": [
+            "TENANT",
+            "DEVICE",
+            "SCHEDULED"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "DEVICE_COMMAND"
+          ],
+          "input": "MARK_TIMED_OUT: tenant target, command type, requestId and firmware result",
+          "result": "MARK_TIMED_OUT: command lifecycle and safe result",
+          "errorKeys": [
+            "COMMAND_CONFLICT",
+            "COMMAND_TIMED_OUT"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "device-service/src/main/java/com/plagod/service/impl/DeviceCommandServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [
+            "DEVICE_COMMAND_RESULT"
+          ],
+          "idempotencyKey": "DEVICE-03.COMMAND.MARK_TIMED_OUT: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all MARK_TIMED_OUT inputs that determine the DEVICE business result",
+          "transactionBoundary": "DEVICE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event DEVICE_COMMAND_RESULT"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->0(PENDING)",
+            "0(PENDING)->1(PUBLISHED)",
+            "0(PENDING)->4(PUBLISH_FAILED)",
+            "1(PUBLISHED)->2(SUCCEEDED)",
+            "1(PUBLISHED)->3(EXECUTION_FAILED)",
+            "1(PUBLISHED)->5(TIMED_OUT)"
+          ]
+        }
+      ]
+    },
+    {
+      "groupId": "DEVICE-04",
+      "title": "WiFi 配置",
+      "workPackages": [
+        "P21-DEVICE"
+      ],
+      "operations": [
+        {
+          "operationId": "DEVICE-04.QUERY.GET_WIFI_CONFIG",
+          "kind": "QUERY",
+          "owner": "DEVICE",
+          "actor": [
+            "TENANT_ADMIN",
+            "DEVICE_EVENT"
+          ],
+          "context": [
+            "TENANT",
+            "DEVICE"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "DEVICE_WIFI_CONFIG",
+            "DEVICE_COMMAND"
+          ],
+          "input": "GET_WIFI_CONFIG: tenant device, monotonic configVersion and staged result",
+          "result": "GET_WIFI_CONFIG: safe config metadata and active version",
+          "errorKeys": [
+            "CONFIG_VERSION_CONFLICT",
+            "CONFIG_CONFIRMATION_REQUIRED"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "device-service/src/main/java/com/plagod/service/impl/DeviceWifiConfigServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [
+            "DEVICE_COMMAND_RESULT"
+          ],
+          "scope": "DEVICE owner scope under TENANT|DEVICE trusted context",
+          "resultLimit": 100,
+          "readOnly": true
+        },
+        {
+          "operationId": "DEVICE-04.COMMAND.DISPATCH_WIFI_CONFIG",
+          "kind": "COMMAND",
+          "owner": "DEVICE",
+          "actor": [
+            "TENANT_ADMIN",
+            "DEVICE_EVENT"
+          ],
+          "context": [
+            "TENANT",
+            "DEVICE"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "DEVICE_WIFI_CONFIG",
+            "DEVICE_COMMAND"
+          ],
+          "input": "DISPATCH_WIFI_CONFIG: tenant device, monotonic configVersion and staged result",
+          "result": "DISPATCH_WIFI_CONFIG: safe config metadata and active version",
+          "errorKeys": [
+            "CONFIG_VERSION_CONFLICT",
+            "CONFIG_CONFIRMATION_REQUIRED"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "device-service/src/main/java/com/plagod/service/impl/DeviceWifiConfigServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [
+            "DEVICE_COMMAND_RESULT"
+          ],
+          "idempotencyKey": "DEVICE-04.COMMAND.DISPATCH_WIFI_CONFIG: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all DISPATCH_WIFI_CONFIG inputs that determine the DEVICE business result",
+          "transactionBoundary": "DEVICE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event DEVICE_COMMAND_RESULT"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->0(DISPATCHING)",
+            "0(DISPATCHING)->1(STAGED)",
+            "0(DISPATCHING)->3(FAILED)",
+            "1(STAGED)->2(ACTIVE)",
+            "1(STAGED)->3(FAILED)",
+            "1(STAGED)->4(UNKNOWN)",
+            "4(UNKNOWN)->1(STAGED)",
+            "4(UNKNOWN)->2(ACTIVE)",
+            "0(DISPATCHING)->5(SUPERSEDED)",
+            "1(STAGED)->5(SUPERSEDED)",
+            "4(UNKNOWN)->5(SUPERSEDED)",
+            "NONE->0(PENDING)",
+            "0(PENDING)->1(PUBLISHED)",
+            "0(PENDING)->4(PUBLISH_FAILED)",
+            "1(PUBLISHED)->2(SUCCEEDED)",
+            "1(PUBLISHED)->3(EXECUTION_FAILED)",
+            "1(PUBLISHED)->5(TIMED_OUT)"
+          ]
+        },
+        {
+          "operationId": "DEVICE-04.COMMAND.APPLY_WIFI_COMMAND_RESULT",
+          "kind": "COMMAND",
+          "owner": "DEVICE",
+          "actor": [
+            "TENANT_ADMIN",
+            "DEVICE_EVENT"
+          ],
+          "context": [
+            "TENANT",
+            "DEVICE"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "DEVICE_WIFI_CONFIG",
+            "DEVICE_COMMAND"
+          ],
+          "input": "APPLY_WIFI_COMMAND_RESULT: tenant device, monotonic configVersion and staged result",
+          "result": "APPLY_WIFI_COMMAND_RESULT: safe config metadata and active version",
+          "errorKeys": [
+            "CONFIG_VERSION_CONFLICT",
+            "CONFIG_CONFIRMATION_REQUIRED"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "device-service/src/main/java/com/plagod/service/impl/DeviceWifiConfigServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [
+            "DEVICE_COMMAND_RESULT"
+          ],
+          "idempotencyKey": "DEVICE-04.COMMAND.APPLY_WIFI_COMMAND_RESULT: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all APPLY_WIFI_COMMAND_RESULT inputs that determine the DEVICE business result",
+          "transactionBoundary": "DEVICE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event DEVICE_COMMAND_RESULT"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->0(DISPATCHING)",
+            "0(DISPATCHING)->1(STAGED)",
+            "0(DISPATCHING)->3(FAILED)",
+            "1(STAGED)->2(ACTIVE)",
+            "1(STAGED)->3(FAILED)",
+            "1(STAGED)->4(UNKNOWN)",
+            "4(UNKNOWN)->1(STAGED)",
+            "4(UNKNOWN)->2(ACTIVE)",
+            "0(DISPATCHING)->5(SUPERSEDED)",
+            "1(STAGED)->5(SUPERSEDED)",
+            "4(UNKNOWN)->5(SUPERSEDED)",
+            "NONE->0(PENDING)",
+            "0(PENDING)->1(PUBLISHED)",
+            "0(PENDING)->4(PUBLISH_FAILED)",
+            "1(PUBLISHED)->2(SUCCEEDED)",
+            "1(PUBLISHED)->3(EXECUTION_FAILED)",
+            "1(PUBLISHED)->5(TIMED_OUT)"
+          ]
+        },
+        {
+          "operationId": "DEVICE-04.COMMAND.CONFIRM_WIFI_CONFIG",
+          "kind": "COMMAND",
+          "owner": "DEVICE",
+          "actor": [
+            "TENANT_ADMIN",
+            "DEVICE_EVENT"
+          ],
+          "context": [
+            "TENANT",
+            "DEVICE"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "DEVICE_WIFI_CONFIG",
+            "DEVICE_COMMAND"
+          ],
+          "input": "CONFIRM_WIFI_CONFIG: tenant device, monotonic configVersion and staged result",
+          "result": "CONFIRM_WIFI_CONFIG: safe config metadata and active version",
+          "errorKeys": [
+            "CONFIG_VERSION_CONFLICT",
+            "CONFIG_CONFIRMATION_REQUIRED"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "device-service/src/main/java/com/plagod/service/impl/DeviceWifiConfigServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [
+            "DEVICE_COMMAND_RESULT"
+          ],
+          "idempotencyKey": "DEVICE-04.COMMAND.CONFIRM_WIFI_CONFIG: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all CONFIRM_WIFI_CONFIG inputs that determine the DEVICE business result",
+          "transactionBoundary": "DEVICE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event DEVICE_COMMAND_RESULT"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->0(DISPATCHING)",
+            "0(DISPATCHING)->1(STAGED)",
+            "0(DISPATCHING)->3(FAILED)",
+            "1(STAGED)->2(ACTIVE)",
+            "1(STAGED)->3(FAILED)",
+            "1(STAGED)->4(UNKNOWN)",
+            "4(UNKNOWN)->1(STAGED)",
+            "4(UNKNOWN)->2(ACTIVE)",
+            "0(DISPATCHING)->5(SUPERSEDED)",
+            "1(STAGED)->5(SUPERSEDED)",
+            "4(UNKNOWN)->5(SUPERSEDED)",
+            "NONE->0(PENDING)",
+            "0(PENDING)->1(PUBLISHED)",
+            "0(PENDING)->4(PUBLISH_FAILED)",
+            "1(PUBLISHED)->2(SUCCEEDED)",
+            "1(PUBLISHED)->3(EXECUTION_FAILED)",
+            "1(PUBLISHED)->5(TIMED_OUT)"
+          ]
+        }
+      ]
+    },
+    {
+      "groupId": "DEVICE-05",
+      "title": "黑名单和主动控制",
+      "workPackages": [
+        "P21-DEVICE"
+      ],
+      "operations": [
+        {
+          "operationId": "DEVICE-05.QUERY.LIST_BLACKLIST",
+          "kind": "QUERY",
+          "owner": "DEVICE",
+          "actor": [
+            "TENANT_ADMIN"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATELESS",
+          "stateMachineRefs": [],
+          "input": "LIST_BLACKLIST: tenant device, MAC, command and requestId",
+          "result": "LIST_BLACKLIST: blacklist state or auditable command",
+          "errorKeys": [
+            "TARGET_SCOPE_INVALID",
+            "COMMAND_REJECTED"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "device-service/src/main/java/com/plagod/controller/MacBlacklistController.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [
+            "DEVICE_COMMAND_RESULT"
+          ],
+          "scope": "DEVICE owner scope under TENANT trusted context",
+          "resultLimit": 100,
+          "readOnly": true
+        },
+        {
+          "operationId": "DEVICE-05.COMMAND.ADD_BLACKLIST",
+          "kind": "COMMAND",
+          "owner": "DEVICE",
+          "actor": [
+            "TENANT_ADMIN"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATELESS",
+          "stateMachineRefs": [],
+          "input": "ADD_BLACKLIST: tenant device, MAC, command and requestId",
+          "result": "ADD_BLACKLIST: blacklist state or auditable command",
+          "errorKeys": [
+            "TARGET_SCOPE_INVALID",
+            "COMMAND_REJECTED"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "device-service/src/main/java/com/plagod/controller/MacBlacklistController.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [
+            "DEVICE_COMMAND_RESULT"
+          ],
+          "idempotencyKey": "DEVICE-05.COMMAND.ADD_BLACKLIST: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all ADD_BLACKLIST inputs that determine the DEVICE business result",
+          "transactionBoundary": "DEVICE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event DEVICE_COMMAND_RESULT"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "STATELESS"
+          ]
+        },
+        {
+          "operationId": "DEVICE-05.COMMAND.REMOVE_BLACKLIST",
+          "kind": "COMMAND",
+          "owner": "DEVICE",
+          "actor": [
+            "TENANT_ADMIN"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATELESS",
+          "stateMachineRefs": [],
+          "input": "REMOVE_BLACKLIST: tenant device, MAC, command and requestId",
+          "result": "REMOVE_BLACKLIST: blacklist state or auditable command",
+          "errorKeys": [
+            "TARGET_SCOPE_INVALID",
+            "COMMAND_REJECTED"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "device-service/src/main/java/com/plagod/controller/MacBlacklistController.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [
+            "DEVICE_COMMAND_RESULT"
+          ],
+          "idempotencyKey": "DEVICE-05.COMMAND.REMOVE_BLACKLIST: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all REMOVE_BLACKLIST inputs that determine the DEVICE business result",
+          "transactionBoundary": "DEVICE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event DEVICE_COMMAND_RESULT"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "STATELESS"
+          ]
+        },
+        {
+          "operationId": "DEVICE-05.COMMAND.DISCONNECT_MAC",
+          "kind": "COMMAND",
+          "owner": "DEVICE",
+          "actor": [
+            "TENANT_ADMIN"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "DEVICE_COMMAND"
+          ],
+          "input": "DISCONNECT_MAC: tenant device, MAC, command and requestId",
+          "result": "DISCONNECT_MAC: blacklist state or auditable command",
+          "errorKeys": [
+            "TARGET_SCOPE_INVALID",
+            "COMMAND_REJECTED"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "device-service/src/main/java/com/plagod/controller/MacBlacklistController.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [
+            "DEVICE_COMMAND_RESULT"
+          ],
+          "idempotencyKey": "DEVICE-05.COMMAND.DISCONNECT_MAC: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all DISCONNECT_MAC inputs that determine the DEVICE business result",
+          "transactionBoundary": "DEVICE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event DEVICE_COMMAND_RESULT"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->0(PENDING)",
+            "0(PENDING)->1(PUBLISHED)",
+            "0(PENDING)->4(PUBLISH_FAILED)",
+            "1(PUBLISHED)->2(SUCCEEDED)",
+            "1(PUBLISHED)->3(EXECUTION_FAILED)",
+            "1(PUBLISHED)->5(TIMED_OUT)"
+          ]
+        },
+        {
+          "operationId": "DEVICE-05.COMMAND.BLOCK_TRAFFIC",
+          "kind": "COMMAND",
+          "owner": "DEVICE",
+          "actor": [
+            "TENANT_ADMIN"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "DEVICE_COMMAND"
+          ],
+          "input": "BLOCK_TRAFFIC: tenant device, MAC, command and requestId",
+          "result": "BLOCK_TRAFFIC: blacklist state or auditable command",
+          "errorKeys": [
+            "TARGET_SCOPE_INVALID",
+            "COMMAND_REJECTED"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "device-service/src/main/java/com/plagod/controller/MacBlacklistController.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [
+            "DEVICE_COMMAND_RESULT"
+          ],
+          "idempotencyKey": "DEVICE-05.COMMAND.BLOCK_TRAFFIC: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all BLOCK_TRAFFIC inputs that determine the DEVICE business result",
+          "transactionBoundary": "DEVICE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event DEVICE_COMMAND_RESULT"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->0(PENDING)",
+            "0(PENDING)->1(PUBLISHED)",
+            "0(PENDING)->4(PUBLISH_FAILED)",
+            "1(PUBLISHED)->2(SUCCEEDED)",
+            "1(PUBLISHED)->3(EXECUTION_FAILED)",
+            "1(PUBLISHED)->5(TIMED_OUT)"
+          ]
+        },
+        {
+          "operationId": "DEVICE-05.COMMAND.KICK",
+          "kind": "COMMAND",
+          "owner": "DEVICE",
+          "actor": [
+            "TENANT_ADMIN"
+          ],
+          "context": [
+            "TENANT"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "DEVICE_COMMAND"
+          ],
+          "input": "KICK: tenant device, MAC, command and requestId",
+          "result": "KICK: blacklist state or auditable command",
+          "errorKeys": [
+            "TARGET_SCOPE_INVALID",
+            "COMMAND_REJECTED"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "device-service/src/main/java/com/plagod/controller/MacBlacklistController.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [
+            "DEVICE_COMMAND_RESULT"
+          ],
+          "idempotencyKey": "DEVICE-05.COMMAND.KICK: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all KICK inputs that determine the DEVICE business result",
+          "transactionBoundary": "DEVICE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event DEVICE_COMMAND_RESULT"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->0(PENDING)",
+            "0(PENDING)->1(PUBLISHED)",
+            "0(PENDING)->4(PUBLISH_FAILED)",
+            "1(PUBLISHED)->2(SUCCEEDED)",
+            "1(PUBLISHED)->3(EXECUTION_FAILED)",
+            "1(PUBLISHED)->5(TIMED_OUT)"
+          ]
+        }
+      ]
+    },
+    {
+      "groupId": "SESSION-01",
+      "title": "Portal 授权",
+      "workPackages": [
+        "P21-DEVICE"
+      ],
+      "operations": [
+        {
+          "operationId": "SESSION-01.COMMAND.AUTHORIZE_PORTAL",
+          "kind": "COMMAND",
+          "owner": "DEVICE",
+          "actor": [
+            "TENANT_MEMBER",
+            "INTERNAL_SERVICE",
+            "DEVICE_EVENT"
+          ],
+          "context": [
+            "TENANT",
+            "INTERNAL",
+            "DEVICE"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "PORTAL_SESSION",
+            "DEVICE_COMMAND"
+          ],
+          "input": "AUTHORIZE_PORTAL: tenant, user, device, MAC, clientRequestId and lease",
+          "result": "AUTHORIZE_PORTAL: pending then active/closed session",
+          "errorKeys": [
+            "ENTITLEMENT_DENIED",
+            "SESSION_QUOTA_EXCEEDED",
+            "ALLOW_FAILED"
+          ],
+          "implementationStatus": "PARTIAL",
+          "conflicts": [],
+          "evidence": [
+            "device-service/src/main/java/com/plagod/service/impl/PortalSessionServiceImpl.java",
+            "GAP: SESSION-01.COMMAND.AUTHORIZE_PORTAL is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [
+            "SESSION_STATE_CHANGED",
+            "QUOTA_RESERVATION_CHANGED"
+          ],
+          "idempotencyKey": "SESSION-01.COMMAND.AUTHORIZE_PORTAL: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all AUTHORIZE_PORTAL inputs that determine the DEVICE business result",
+          "transactionBoundary": "DEVICE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event SESSION_STATE_CHANGED",
+            "after-commit event QUOTA_RESERVATION_CHANGED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->2(PENDING)",
+            "2(PENDING)->1(ACTIVE)",
+            "2(PENDING)->3(WAITING_REPLACEMENT)",
+            "3(WAITING_REPLACEMENT)->1(ACTIVE)",
+            "1(ACTIVE)->0(CLOSED)",
+            "2(PENDING)->0(CLOSED)",
+            "3(WAITING_REPLACEMENT)->0(CLOSED)",
+            "NONE->0(PENDING)",
+            "0(PENDING)->1(PUBLISHED)",
+            "0(PENDING)->4(PUBLISH_FAILED)",
+            "1(PUBLISHED)->2(SUCCEEDED)",
+            "1(PUBLISHED)->3(EXECUTION_FAILED)",
+            "1(PUBLISHED)->5(TIMED_OUT)"
+          ]
+        },
+        {
+          "operationId": "SESSION-01.COMMAND.APPLY_ALLOW_RESULT",
+          "kind": "COMMAND",
+          "owner": "DEVICE",
+          "actor": [
+            "TENANT_MEMBER",
+            "INTERNAL_SERVICE",
+            "DEVICE_EVENT"
+          ],
+          "context": [
+            "TENANT",
+            "INTERNAL",
+            "DEVICE"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "PORTAL_SESSION",
+            "DEVICE_COMMAND"
+          ],
+          "input": "APPLY_ALLOW_RESULT: tenant, user, device, MAC, clientRequestId and lease",
+          "result": "APPLY_ALLOW_RESULT: pending then active/closed session",
+          "errorKeys": [
+            "ENTITLEMENT_DENIED",
+            "SESSION_QUOTA_EXCEEDED",
+            "ALLOW_FAILED"
+          ],
+          "implementationStatus": "PARTIAL",
+          "conflicts": [],
+          "evidence": [
+            "device-service/src/main/java/com/plagod/service/impl/PortalSessionServiceImpl.java",
+            "GAP: SESSION-01.COMMAND.APPLY_ALLOW_RESULT is not a complete production business loop; target 2.4"
+          ],
+          "targetLayer": "2.4",
+          "events": [
+            "SESSION_STATE_CHANGED",
+            "QUOTA_RESERVATION_CHANGED"
+          ],
+          "idempotencyKey": "SESSION-01.COMMAND.APPLY_ALLOW_RESULT: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all APPLY_ALLOW_RESULT inputs that determine the DEVICE business result",
+          "transactionBoundary": "DEVICE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event SESSION_STATE_CHANGED",
+            "after-commit event QUOTA_RESERVATION_CHANGED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->2(PENDING)",
+            "2(PENDING)->1(ACTIVE)",
+            "2(PENDING)->3(WAITING_REPLACEMENT)",
+            "3(WAITING_REPLACEMENT)->1(ACTIVE)",
+            "1(ACTIVE)->0(CLOSED)",
+            "2(PENDING)->0(CLOSED)",
+            "3(WAITING_REPLACEMENT)->0(CLOSED)",
+            "NONE->0(PENDING)",
+            "0(PENDING)->1(PUBLISHED)",
+            "0(PENDING)->4(PUBLISH_FAILED)",
+            "1(PUBLISHED)->2(SUCCEEDED)",
+            "1(PUBLISHED)->3(EXECUTION_FAILED)",
+            "1(PUBLISHED)->5(TIMED_OUT)"
+          ]
+        }
+      ]
+    },
+    {
+      "groupId": "SESSION-02",
+      "title": "租约撤销和关闭",
+      "workPackages": [
+        "P21-DEVICE"
+      ],
+      "operations": [
+        {
+          "operationId": "SESSION-02.QUERY.LIST",
+          "kind": "QUERY",
+          "owner": "DEVICE",
+          "actor": [
+            "TENANT_MEMBER",
+            "TENANT_ADMIN",
+            "INTERNAL_SERVICE"
+          ],
+          "context": [
+            "TENANT",
+            "INTERNAL"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "PORTAL_SESSION"
+          ],
+          "input": "LIST: tenant session, lease receipt and close reason",
+          "result": "LIST: renewed or idempotently closed session",
+          "errorKeys": [
+            "SESSION_NOT_FOUND",
+            "LEASE_EXPIRED"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "device-service/src/main/java/com/plagod/service/impl/SessionLeaseServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [
+            "SESSION_STATE_CHANGED",
+            "QUOTA_RESERVATION_CHANGED"
+          ],
+          "scope": "DEVICE owner scope under TENANT|INTERNAL trusted context",
+          "resultLimit": 100,
+          "readOnly": true
+        },
+        {
+          "operationId": "SESSION-02.COMMAND.RENEW_LEASE",
+          "kind": "COMMAND",
+          "owner": "DEVICE",
+          "actor": [
+            "TENANT_MEMBER",
+            "TENANT_ADMIN",
+            "INTERNAL_SERVICE"
+          ],
+          "context": [
+            "TENANT",
+            "INTERNAL"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "PORTAL_SESSION"
+          ],
+          "input": "RENEW_LEASE: tenant session, lease receipt and close reason",
+          "result": "RENEW_LEASE: renewed or idempotently closed session",
+          "errorKeys": [
+            "SESSION_NOT_FOUND",
+            "LEASE_EXPIRED"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "device-service/src/main/java/com/plagod/service/impl/SessionLeaseServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [
+            "SESSION_STATE_CHANGED",
+            "QUOTA_RESERVATION_CHANGED"
+          ],
+          "idempotencyKey": "SESSION-02.COMMAND.RENEW_LEASE: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all RENEW_LEASE inputs that determine the DEVICE business result",
+          "transactionBoundary": "DEVICE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event SESSION_STATE_CHANGED",
+            "after-commit event QUOTA_RESERVATION_CHANGED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->2(PENDING)",
+            "2(PENDING)->1(ACTIVE)",
+            "2(PENDING)->3(WAITING_REPLACEMENT)",
+            "3(WAITING_REPLACEMENT)->1(ACTIVE)",
+            "1(ACTIVE)->0(CLOSED)",
+            "2(PENDING)->0(CLOSED)",
+            "3(WAITING_REPLACEMENT)->0(CLOSED)"
+          ]
+        },
+        {
+          "operationId": "SESSION-02.COMMAND.REVOKE",
+          "kind": "COMMAND",
+          "owner": "DEVICE",
+          "actor": [
+            "TENANT_MEMBER",
+            "TENANT_ADMIN",
+            "INTERNAL_SERVICE"
+          ],
+          "context": [
+            "TENANT",
+            "INTERNAL"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "PORTAL_SESSION"
+          ],
+          "input": "REVOKE: tenant session, lease receipt and close reason",
+          "result": "REVOKE: renewed or idempotently closed session",
+          "errorKeys": [
+            "SESSION_NOT_FOUND",
+            "LEASE_EXPIRED"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "device-service/src/main/java/com/plagod/service/impl/SessionLeaseServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [
+            "SESSION_STATE_CHANGED",
+            "QUOTA_RESERVATION_CHANGED"
+          ],
+          "idempotencyKey": "SESSION-02.COMMAND.REVOKE: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all REVOKE inputs that determine the DEVICE business result",
+          "transactionBoundary": "DEVICE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event SESSION_STATE_CHANGED",
+            "after-commit event QUOTA_RESERVATION_CHANGED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->2(PENDING)",
+            "2(PENDING)->1(ACTIVE)",
+            "2(PENDING)->3(WAITING_REPLACEMENT)",
+            "3(WAITING_REPLACEMENT)->1(ACTIVE)",
+            "1(ACTIVE)->0(CLOSED)",
+            "2(PENDING)->0(CLOSED)",
+            "3(WAITING_REPLACEMENT)->0(CLOSED)"
+          ]
+        },
+        {
+          "operationId": "SESSION-02.COMMAND.CLOSE",
+          "kind": "COMMAND",
+          "owner": "DEVICE",
+          "actor": [
+            "TENANT_MEMBER",
+            "TENANT_ADMIN",
+            "INTERNAL_SERVICE"
+          ],
+          "context": [
+            "TENANT",
+            "INTERNAL"
+          ],
+          "stateModel": "STATEFUL",
+          "stateMachineRefs": [
+            "PORTAL_SESSION"
+          ],
+          "input": "CLOSE: tenant session, lease receipt and close reason",
+          "result": "CLOSE: renewed or idempotently closed session",
+          "errorKeys": [
+            "SESSION_NOT_FOUND",
+            "LEASE_EXPIRED"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "device-service/src/main/java/com/plagod/service/impl/SessionLeaseServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [
+            "SESSION_STATE_CHANGED",
+            "QUOTA_RESERVATION_CHANGED"
+          ],
+          "idempotencyKey": "SESSION-02.COMMAND.CLOSE: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all CLOSE inputs that determine the DEVICE business result",
+          "transactionBoundary": "DEVICE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event SESSION_STATE_CHANGED",
+            "after-commit event QUOTA_RESERVATION_CHANGED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "NONE->2(PENDING)",
+            "2(PENDING)->1(ACTIVE)",
+            "2(PENDING)->3(WAITING_REPLACEMENT)",
+            "3(WAITING_REPLACEMENT)->1(ACTIVE)",
+            "1(ACTIVE)->0(CLOSED)",
+            "2(PENDING)->0(CLOSED)",
+            "3(WAITING_REPLACEMENT)->0(CLOSED)"
+          ]
+        }
+      ]
+    },
+    {
+      "groupId": "TELEMETRY-01",
+      "title": "流量信号和断开事件",
+      "workPackages": [
+        "P21-DEVICE"
+      ],
+      "operations": [
+        {
+          "operationId": "TELEMETRY-01.QUERY.QUERY",
+          "kind": "QUERY",
+          "owner": "DEVICE",
+          "actor": [
+            "DEVICE_EVENT",
+            "TENANT_ADMIN"
+          ],
+          "context": [
+            "DEVICE",
+            "TENANT"
+          ],
+          "stateModel": "STATELESS",
+          "stateMachineRefs": [],
+          "input": "QUERY: bound device payload and derived tenant/session",
+          "result": "QUERY: tenant-owned telemetry or bounded query",
+          "errorKeys": [
+            "TELEMETRY_TENANT_UNRESOLVED"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "device-service/src/main/java/com/plagod/service/impl/TrafficEventServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [
+            "TRAFFIC_INGESTED"
+          ],
+          "scope": "DEVICE owner scope under DEVICE|TENANT trusted context",
+          "resultLimit": 100,
+          "readOnly": true
+        },
+        {
+          "operationId": "TELEMETRY-01.COMMAND.INGEST_TRAFFIC",
+          "kind": "COMMAND",
+          "owner": "DEVICE",
+          "actor": [
+            "DEVICE_EVENT",
+            "TENANT_ADMIN"
+          ],
+          "context": [
+            "DEVICE",
+            "TENANT"
+          ],
+          "stateModel": "STATELESS",
+          "stateMachineRefs": [],
+          "input": "INGEST_TRAFFIC: bound device payload and derived tenant/session",
+          "result": "INGEST_TRAFFIC: tenant-owned telemetry or bounded query",
+          "errorKeys": [
+            "TELEMETRY_TENANT_UNRESOLVED"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "device-service/src/main/java/com/plagod/service/impl/TrafficEventServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [
+            "TRAFFIC_INGESTED"
+          ],
+          "idempotencyKey": "TELEMETRY-01.COMMAND.INGEST_TRAFFIC: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all INGEST_TRAFFIC inputs that determine the DEVICE business result",
+          "transactionBoundary": "DEVICE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event TRAFFIC_INGESTED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "STATELESS"
+          ]
+        },
+        {
+          "operationId": "TELEMETRY-01.COMMAND.INGEST_SIGNAL",
+          "kind": "COMMAND",
+          "owner": "DEVICE",
+          "actor": [
+            "DEVICE_EVENT",
+            "TENANT_ADMIN"
+          ],
+          "context": [
+            "DEVICE",
+            "TENANT"
+          ],
+          "stateModel": "STATELESS",
+          "stateMachineRefs": [],
+          "input": "INGEST_SIGNAL: bound device payload and derived tenant/session",
+          "result": "INGEST_SIGNAL: tenant-owned telemetry or bounded query",
+          "errorKeys": [
+            "TELEMETRY_TENANT_UNRESOLVED"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "device-service/src/main/java/com/plagod/service/impl/TrafficEventServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [
+            "TRAFFIC_INGESTED"
+          ],
+          "idempotencyKey": "TELEMETRY-01.COMMAND.INGEST_SIGNAL: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all INGEST_SIGNAL inputs that determine the DEVICE business result",
+          "transactionBoundary": "DEVICE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event TRAFFIC_INGESTED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "STATELESS"
+          ]
+        },
+        {
+          "operationId": "TELEMETRY-01.COMMAND.INGEST_DISCONNECT",
+          "kind": "COMMAND",
+          "owner": "DEVICE",
+          "actor": [
+            "DEVICE_EVENT",
+            "TENANT_ADMIN"
+          ],
+          "context": [
+            "DEVICE",
+            "TENANT"
+          ],
+          "stateModel": "STATELESS",
+          "stateMachineRefs": [],
+          "input": "INGEST_DISCONNECT: bound device payload and derived tenant/session",
+          "result": "INGEST_DISCONNECT: tenant-owned telemetry or bounded query",
+          "errorKeys": [
+            "TELEMETRY_TENANT_UNRESOLVED"
+          ],
+          "implementationStatus": "REUSE",
+          "conflicts": [],
+          "evidence": [
+            "device-service/src/main/java/com/plagod/service/impl/TrafficEventServiceImpl.java"
+          ],
+          "targetLayer": "NONE",
+          "events": [
+            "TRAFFIC_INGESTED"
+          ],
+          "idempotencyKey": "TELEMETRY-01.COMMAND.INGEST_DISCONNECT: clientRequestId/requestId/eventId or owner business key",
+          "fingerprint": "all INGEST_DISCONNECT inputs that determine the DEVICE business result",
+          "transactionBoundary": "DEVICE owner-local state, idempotency receipt and owner-local outbox",
+          "externalEffects": [
+            "after-commit event TRAFFIC_INGESTED"
+          ],
+          "auditPolicy": "audit-v1: SUCCESS after commit; DENIED/FAILED independent",
+          "legalStateTransitions": [
+            "STATELESS"
+          ]
+        }
+      ]
+    }
+  ]
+}

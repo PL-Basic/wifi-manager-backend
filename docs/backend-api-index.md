@@ -1,5 +1,42 @@
 # Wifi Manager 后端接口清单
 
+## 0. Demo 2.1 S0 核心用例交叉引用
+
+本文件继续只记录真实 HTTP、WebSocket 和内部传输入口。传输入口数量不等于
+业务用例数量，也不能从 Controller、BFF、Feign 或 worker 反推第二套业务
+owner。
+
+Demo 2.1 S0 已在
+[核心用例索引](core-use-case-index.md) 中冻结 58 个业务用例组和 183 个全局
+唯一 `QUERY/COMMAND operationId`；对应机器事实源为
+`wifi-test-kit/src/test/resources/fixtures/core-use-cases-v1/manifest.json`。
+机器索引采用“中央 manifest + 分域 fixture”：8 个业务分域文件分别拥有唯一
+group、operation 和 stateMachine，跨 owner 事件与审计关闭矩阵使用独立文件。
+测试只按 manifest 固定清单在内存组合，不递归加载，也不生成单体聚合 JSON。
+fixture 使用 42 个对象级状态模型，不保留
+`AUTH_REFRESH/ACCOUNT_ENTITLEMENT/SAAS_QUOTA/MARKETPLACE/SUPPORT/DEVICE/`
+`MONITOR` 等聚合状态机。每个 operation 都是物理自描述对象，只允许一个业务
+owner，并在自身登记 actor/context、状态引用或 `STATELESS`、输入输出、错误、
+证据、`REUSE/PARTIAL/GAP`、完整冲突和唯一 `targetLayer`；不得依赖 manifest
+默认值、loader 默认值、全局 defaults 或组级继承。
+
+八个后续证据包的输入固定为：
+
+- `P21-AUTH`：`AUTH-01..05`；
+- `P21-USER`：`ACCOUNT-01..03`、`ENT-01..06`、`GOV-01` 的 USER 边界；
+- `P21-TENANT`：`TENANT-01..03`、`SAAS-01..02`、`QUOTA-01..02`、
+  `GOV-01` 的 TENANT 边界；
+- `P21-MARKET`：`MARKET-01..06`；
+- `P21-SUPPORT`：`ANN-01..06`、`SUPPORT-01..06`；
+- `P21-AI`：`AI-01..03`；
+- `P21-DEVICE`：`DEVICE-01..05`、`SESSION-01..02`、`TELEMETRY-01`；
+- `P21-MONITOR`：`RULE-01..02`、`ALERT-01`、`AUDIT-01`、
+  `LOCATION-01`、`GEOFENCE-01`、`ANALYTICS-01`。
+
+本节不声明上述 P21 包已经启动。后续包只能用真实入口核对中央 operation，
+不能新增 operationId、改变状态词、修改中央索引或把 `/internal/**` 暴露给
+浏览器/设备。发现入口与中央索引冲突时必须停止并退回 2.1 协调门。
+
 ## 1. 访问入口
 
 客户端、前端和第三方回调统一通过 Gateway：

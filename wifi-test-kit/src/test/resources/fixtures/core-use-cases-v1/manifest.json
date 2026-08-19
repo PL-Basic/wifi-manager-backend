@@ -1,0 +1,562 @@
+{
+  "version": "core-use-cases-v1",
+  "stage": "2.1-S0",
+  "sourceCommits": {
+    "backend": "5d5222f23cb0b3f589c4d35e34785554def81479",
+    "frontend": "0b68b097c0e1e184449a074204def67c4240986e",
+    "firmware": "4f42cc16de5274c807c9ad11a18ce537cc468e6a"
+  },
+  "groupCount": 58,
+  "operationCount": 183,
+  "commandCount": 135,
+  "queryCount": 48,
+  "stateMachineCount": 42,
+  "eventCount": 15,
+  "auditClosureCount": 15,
+  "operationIdPattern": "^[A-Z]+-[0-9]{2}\\.(QUERY|COMMAND)\\.[A-Z][A-Z0-9_]*$",
+  "implementationStatuses": [
+    "REUSE",
+    "PARTIAL",
+    "GAP"
+  ],
+  "targetLayers": [
+    "NONE",
+    "2.2",
+    "2.3",
+    "2.4",
+    "2.5"
+  ],
+  "actorContexts": {
+    "actors": [
+      "ANONYMOUS_USER",
+      "ACCOUNT_USER",
+      "TENANT_MEMBER",
+      "TENANT_ADMIN",
+      "PLATFORM_STAFF",
+      "INTERNAL_SERVICE",
+      "SCHEDULED_SERVICE",
+      "DEVICE_EVENT"
+    ],
+    "contexts": [
+      "NONE",
+      "PLATFORM",
+      "TENANT",
+      "PLATFORM_TENANT",
+      "INTERNAL",
+      "SCHEDULED",
+      "DEVICE"
+    ],
+    "platformAuthority": "PLATFORM_SUPER_ADMIN",
+    "platformTenantReasonCodes": [
+      "TENANT_SUPPORT",
+      "SECURITY_INVESTIGATION",
+      "BILLING_RECONCILIATION",
+      "DATA_REPAIR"
+    ],
+    "trustedContextSource": "wifi-common-api/src/main/java/com/plagod/security/TrustedRequestContext.java",
+    "machineActorSource": "wifi-audit-spring-boot-starter/src/main/java/com/plagod/audit/AuditActorContext.java"
+  },
+  "operationContract": {
+    "inheritanceAllowed": false,
+    "commonFields": [
+      "operationId",
+      "kind",
+      "owner",
+      "actor",
+      "context",
+      "stateModel",
+      "stateMachineRefs",
+      "input",
+      "result",
+      "errorKeys",
+      "implementationStatus",
+      "conflicts",
+      "evidence",
+      "targetLayer"
+    ],
+    "commandFields": [
+      "idempotencyKey",
+      "fingerprint",
+      "transactionBoundary",
+      "externalEffects",
+      "auditPolicy",
+      "legalStateTransitions"
+    ],
+    "queryFields": [
+      "scope",
+      "resultLimit",
+      "readOnly"
+    ]
+  },
+  "deviceCommandTypes": [
+    "ALLOW",
+    "REVOKE_ACCESS",
+    "DISCONNECT_MAC",
+    "BLOCK_TRAFFIC",
+    "KICK",
+    "STAGE_WIFI_CONFIG"
+  ],
+  "vocabularyGaps": [
+    {
+      "vocabularyId": "PLATFORM_STAFF_AUTHORITY",
+      "businessObject": "PlatformStaff",
+      "owner": "TENANT",
+      "field": "t_platform_staff.authority",
+      "machineType": "STRING",
+      "source": [
+        "database-migration/src/main/resources/db/migration/V2_1__tenant_foundation.sql",
+        "tenant-service/src/main/java/com/plagod/entity/PlatformStaff.java"
+      ],
+      "currentTruth": "The column is unconstrained varchar(64); no production constant or CHECK freezes the complete authority vocabulary.",
+      "requiredContractValue": "PLATFORM_SUPER_ADMIN",
+      "status": "GAP",
+      "targetLayer": "2.2",
+      "evidence": "GAP: freeze the production PlatformStaff authority vocabulary before treating grants as implemented."
+    }
+  ],
+  "conflicts": [
+    {
+      "id": "C-MARKET-STATE",
+      "source": "historical cross-domain marketplace aliases",
+      "currentTruth": "Marketplace Order and TARGET_DOMAIN/TRACK_ONLY Fulfillment use separate schema-constrained vocabularies; TARGET_DOMAIN PROCESSING is legal.",
+      "resolution": "Reject PENDING_PAYMENT, COMPLETED, ATTENTION_REQUIRED, RETRY_WAIT and MANUAL_REQUIRED only in Marketplace domains; retain PROCESSING in TARGET_DOMAIN Fulfillment.",
+      "targetLayer": "2.4",
+      "evidence": "database-migration/src/main/resources/db/migration/V2_5_1__marketplace_demo_schema.sql"
+    },
+    {
+      "id": "C-ANNOUNCEMENT-COMMENT-STATE",
+      "source": "historical combined announcement/comment aliases",
+      "currentTruth": "Announcement, Comment, CapabilityRestriction and review Outbox are separate persisted objects.",
+      "resolution": "Use REVIEW_APPROVED/REVIEW_REJECTED, USER_DELETED/ADMIN_HIDDEN and the Outbox vocabulary from V2_6.",
+      "targetLayer": "2.4",
+      "evidence": "database-migration/src/main/resources/db/migration/V2_6__announcement_schema.sql"
+    },
+    {
+      "id": "C-AI-STATE",
+      "source": "historical AI PENDING/PROCESSING/RETRY_WAIT/CANCELLED aliases",
+      "currentTruth": "AI task uses QUEUED/RUNNING/SUCCEEDED/FAILED/MANUAL_REQUIRED/STALE.",
+      "resolution": "Keep aliases scoped out of AI without banning legal PROCESSING elsewhere.",
+      "targetLayer": "2.4",
+      "evidence": "database-migration/src/main/resources/db/migration/V2_7__ai_review_schema.sql"
+    },
+    {
+      "id": "C-SUPPORT-ACCEPT",
+      "source": "historical ACCEPTED terminal interpretation",
+      "currentTruth": "ACCEPTED is compatibility-only; successful accept must atomically create Ticket, first Message and NONE->OPEN transition before persisting CONVERTED_TO_TICKET.",
+      "resolution": "Do not expose ACCEPTED as the completed acceptance result.",
+      "targetLayer": "2.4",
+      "evidence": "database-migration/src/main/resources/db/migration/V2_8__support_ticket_schema.sql"
+    },
+    {
+      "id": "C-ALERT-HANDLE",
+      "source": "desired replay-safe duplicate alert handling",
+      "currentTruth": "AlertEventServiceImpl rejects an already handled event with conflict.",
+      "resolution": "ALERT-01.COMMAND.HANDLE remains PARTIAL and is uniquely assigned to 2.4.",
+      "targetLayer": "2.4",
+      "evidence": "monitor-service/src/main/java/com/plagod/service/impl/AlertEventServiceImpl.java"
+    }
+  ],
+  "fixtureFiles": [
+    "auth.json",
+    "user-entitlement.json",
+    "tenant-saas.json",
+    "marketplace.json",
+    "support-announcement.json",
+    "ai.json",
+    "device.json",
+    "monitor-governance.json",
+    "cross-domain-events.json",
+    "audit-closures.json"
+  ],
+  "domainFixtures": [
+    {
+      "domainId": "AUTH",
+      "file": "auth.json",
+      "workPackages": [
+        "P21-AUTH"
+      ],
+      "groupIds": [
+        "AUTH-01",
+        "AUTH-02",
+        "AUTH-03",
+        "AUTH-04",
+        "AUTH-05"
+      ],
+      "stateMachineIds": [
+        "AUTH_REFRESH_SESSION",
+        "AUTH_REFRESH_TOKEN"
+      ]
+    },
+    {
+      "domainId": "USER_ENTITLEMENT",
+      "file": "user-entitlement.json",
+      "workPackages": [
+        "P21-USER"
+      ],
+      "groupIds": [
+        "ACCOUNT-01",
+        "ACCOUNT-02",
+        "ACCOUNT-03",
+        "ENT-01",
+        "ENT-02",
+        "ENT-03",
+        "ENT-04",
+        "ENT-05",
+        "ENT-06"
+      ],
+      "stateMachineIds": [
+        "USER_ACCOUNT",
+        "USER_OPERATION_REQUEST",
+        "ENTITLEMENT_ORDER",
+        "ENTITLEMENT_PAYMENT",
+        "ENTITLEMENT_REFUND",
+        "ENTITLEMENT_PURCHASE",
+        "ENTITLEMENT_LEASE_RECEIPT"
+      ]
+    },
+    {
+      "domainId": "TENANT_SAAS",
+      "file": "tenant-saas.json",
+      "workPackages": [
+        "P21-TENANT"
+      ],
+      "groupIds": [
+        "TENANT-01",
+        "TENANT-02",
+        "TENANT-03",
+        "SAAS-01",
+        "SAAS-02",
+        "QUOTA-01",
+        "QUOTA-02"
+      ],
+      "stateMachineIds": [
+        "TENANT_ACCOUNT",
+        "TENANT_MEMBER",
+        "PLATFORM_STAFF_STATUS",
+        "SAAS_PLAN",
+        "SAAS_PLAN_VERSION",
+        "TENANT_SUBSCRIPTION",
+        "TENANT_PLAN_ASSIGNMENT",
+        "TENANT_QUOTA_RESERVATION"
+      ]
+    },
+    {
+      "domainId": "MARKETPLACE",
+      "file": "marketplace.json",
+      "workPackages": [
+        "P21-MARKET"
+      ],
+      "groupIds": [
+        "MARKET-01",
+        "MARKET-02",
+        "MARKET-03",
+        "MARKET-04",
+        "MARKET-05",
+        "MARKET-06"
+      ],
+      "stateMachineIds": [
+        "MARKETPLACE_PRODUCT",
+        "MARKETPLACE_SKU",
+        "MARKETPLACE_PAYMENT",
+        "MARKETPLACE_ORDER",
+        "MARKETPLACE_TARGET_FULFILLMENT",
+        "MARKETPLACE_TRACK_ONLY_FULFILLMENT"
+      ]
+    },
+    {
+      "domainId": "SUPPORT_ANNOUNCEMENT",
+      "file": "support-announcement.json",
+      "workPackages": [
+        "P21-SUPPORT"
+      ],
+      "groupIds": [
+        "ANN-01",
+        "ANN-02",
+        "ANN-03",
+        "ANN-04",
+        "ANN-05",
+        "ANN-06",
+        "SUPPORT-01",
+        "SUPPORT-02",
+        "SUPPORT-03",
+        "SUPPORT-04",
+        "SUPPORT-05",
+        "SUPPORT-06"
+      ],
+      "stateMachineIds": [
+        "ANNOUNCEMENT",
+        "ANNOUNCEMENT_CONTENT_VERSION",
+        "COMMENT",
+        "CAPABILITY_RESTRICTION",
+        "ANNOUNCEMENT_REVIEW_OUTBOX",
+        "SUPPORT_SUBMISSION",
+        "SUPPORT_TICKET",
+        "SUPPORT_REVIEW_OUTBOX"
+      ]
+    },
+    {
+      "domainId": "AI",
+      "file": "ai.json",
+      "workPackages": [
+        "P21-AI"
+      ],
+      "groupIds": [
+        "AI-01",
+        "AI-02",
+        "AI-03"
+      ],
+      "stateMachineIds": [
+        "AI_REVIEW_TASK"
+      ]
+    },
+    {
+      "domainId": "DEVICE",
+      "file": "device.json",
+      "workPackages": [
+        "P21-DEVICE"
+      ],
+      "groupIds": [
+        "DEVICE-01",
+        "DEVICE-02",
+        "DEVICE-03",
+        "DEVICE-04",
+        "DEVICE-05",
+        "SESSION-01",
+        "SESSION-02",
+        "TELEMETRY-01"
+      ],
+      "stateMachineIds": [
+        "DEVICE_NODE",
+        "DEVICE_COMMAND",
+        "DEVICE_WIFI_CONFIG",
+        "PORTAL_SESSION"
+      ]
+    },
+    {
+      "domainId": "MONITOR_GOVERNANCE",
+      "file": "monitor-governance.json",
+      "workPackages": [
+        "P21-MONITOR",
+        "P21-USER",
+        "P21-TENANT"
+      ],
+      "groupIds": [
+        "RULE-01",
+        "RULE-02",
+        "ALERT-01",
+        "AUDIT-01",
+        "LOCATION-01",
+        "GEOFENCE-01",
+        "ANALYTICS-01",
+        "GOV-01"
+      ],
+      "stateMachineIds": [
+        "ACCESS_RULE",
+        "ALERT_EVENT",
+        "LOCATION_AUTHORIZATION",
+        "GEOFENCE",
+        "GEOFENCE_PRESENCE",
+        "GEOFENCE_EVENT"
+      ]
+    }
+  ],
+  "crossDomainEventsFile": "cross-domain-events.json",
+  "auditClosuresFile": "audit-closures.json",
+  "workPackages": [
+    {
+      "id": "P21-AUTH",
+      "inputGroups": [
+        "AUTH-01",
+        "AUTH-02",
+        "AUTH-03",
+        "AUTH-04",
+        "AUTH-05"
+      ],
+      "ownedPaths": [
+        "auth-service/src/test/**"
+      ],
+      "readOnlyPaths": [
+        "auth-service/src/main/**",
+        "gateway-service/**",
+        "wifi-security-spring-boot-starter/**",
+        "wifi-common-api/**"
+      ]
+    },
+    {
+      "id": "P21-USER",
+      "inputGroups": [
+        "ACCOUNT-01",
+        "ACCOUNT-02",
+        "ACCOUNT-03",
+        "ENT-01",
+        "ENT-02",
+        "ENT-03",
+        "ENT-04",
+        "ENT-05",
+        "ENT-06",
+        "GOV-01"
+      ],
+      "ownedPaths": [
+        "user-service/src/test/**"
+      ],
+      "readOnlyPaths": [
+        "user-service/src/main/**",
+        "database-migration/src/main/**",
+        "wifi-common-api/**"
+      ]
+    },
+    {
+      "id": "P21-TENANT",
+      "inputGroups": [
+        "TENANT-01",
+        "TENANT-02",
+        "TENANT-03",
+        "SAAS-01",
+        "SAAS-02",
+        "QUOTA-01",
+        "QUOTA-02",
+        "GOV-01"
+      ],
+      "ownedPaths": [
+        "tenant-service/src/test/**"
+      ],
+      "readOnlyPaths": [
+        "tenant-service/src/main/**",
+        "database-migration/src/main/**",
+        "wifi-common-api/**"
+      ]
+    },
+    {
+      "id": "P21-MARKET",
+      "inputGroups": [
+        "MARKET-01",
+        "MARKET-02",
+        "MARKET-03",
+        "MARKET-04",
+        "MARKET-05",
+        "MARKET-06"
+      ],
+      "ownedPaths": [
+        "marketplace-service/src/test/**"
+      ],
+      "readOnlyPaths": [
+        "marketplace-service/src/main/**",
+        "database-migration/src/main/**",
+        "user-service/src/main/**",
+        "tenant-service/src/main/**"
+      ]
+    },
+    {
+      "id": "P21-SUPPORT",
+      "inputGroups": [
+        "ANN-01",
+        "ANN-02",
+        "ANN-03",
+        "ANN-04",
+        "ANN-05",
+        "ANN-06",
+        "SUPPORT-01",
+        "SUPPORT-02",
+        "SUPPORT-03",
+        "SUPPORT-04",
+        "SUPPORT-05",
+        "SUPPORT-06"
+      ],
+      "ownedPaths": [
+        "support-service/src/test/**"
+      ],
+      "readOnlyPaths": [
+        "support-service/src/main/**",
+        "database-migration/src/main/**",
+        "ai-service/src/main/**"
+      ]
+    },
+    {
+      "id": "P21-AI",
+      "inputGroups": [
+        "AI-01",
+        "AI-02",
+        "AI-03"
+      ],
+      "ownedPaths": [
+        "ai-service/src/test/**"
+      ],
+      "readOnlyPaths": [
+        "ai-service/src/main/**",
+        "database-migration/src/main/**",
+        "support-service/src/main/**"
+      ]
+    },
+    {
+      "id": "P21-DEVICE",
+      "inputGroups": [
+        "DEVICE-01",
+        "DEVICE-02",
+        "DEVICE-03",
+        "DEVICE-04",
+        "DEVICE-05",
+        "SESSION-01",
+        "SESSION-02",
+        "TELEMETRY-01"
+      ],
+      "ownedPaths": [
+        "device-service/src/test/**"
+      ],
+      "readOnlyPaths": [
+        "device-service/src/main/**",
+        "database-migration/src/main/**",
+        "wifi-common-api/**",
+        "FIRMWARE_READ_ONLY"
+      ]
+    },
+    {
+      "id": "P21-MONITOR",
+      "inputGroups": [
+        "RULE-01",
+        "RULE-02",
+        "ALERT-01",
+        "AUDIT-01",
+        "LOCATION-01",
+        "GEOFENCE-01",
+        "ANALYTICS-01"
+      ],
+      "ownedPaths": [
+        "monitor-service/src/test/**"
+      ],
+      "readOnlyPaths": [
+        "monitor-service/src/main/**",
+        "device-service/src/main/**",
+        "database-migration/src/main/**",
+        "wifi-common-api/**"
+      ]
+    }
+  ],
+  "coordinatorOwnedPaths": [
+    "docs/core-use-case-index.md",
+    "docs/backend-api-index.md",
+    "wifi-test-kit/src/test/java/com/plagod/testkit/CoreUseCaseIndexContractTest.java",
+    "wifi-test-kit/src/test/resources/fixtures/core-use-cases-v1/manifest.json",
+    "wifi-test-kit/src/test/resources/fixtures/core-use-cases-v1/auth.json",
+    "wifi-test-kit/src/test/resources/fixtures/core-use-cases-v1/user-entitlement.json",
+    "wifi-test-kit/src/test/resources/fixtures/core-use-cases-v1/tenant-saas.json",
+    "wifi-test-kit/src/test/resources/fixtures/core-use-cases-v1/marketplace.json",
+    "wifi-test-kit/src/test/resources/fixtures/core-use-cases-v1/support-announcement.json",
+    "wifi-test-kit/src/test/resources/fixtures/core-use-cases-v1/ai.json",
+    "wifi-test-kit/src/test/resources/fixtures/core-use-cases-v1/device.json",
+    "wifi-test-kit/src/test/resources/fixtures/core-use-cases-v1/monitor-governance.json",
+    "wifi-test-kit/src/test/resources/fixtures/core-use-cases-v1/cross-domain-events.json",
+    "wifi-test-kit/src/test/resources/fixtures/core-use-cases-v1/audit-closures.json"
+  ],
+  "globallyForbiddenPaths": [
+    "pom.xml",
+    "*/src/main/**",
+    "database-migration/**",
+    "wifi-common-api/**",
+    "*-spring-boot-starter/**",
+    "gateway-service/**",
+    "admin-service/**",
+    "FRONTEND/**",
+    "FIRMWARE/**",
+    "auth-service/src/main/java/com/plagod/controller/AuthController.java"
+  ]
+}
