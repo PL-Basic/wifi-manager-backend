@@ -1,5 +1,6 @@
 package com.plagod.audit;
 
+import com.plagod.security.TrustedRequestContextResolver;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
@@ -8,7 +9,11 @@ import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.util.ClassUtils;
+
+import javax.sql.DataSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -29,6 +34,10 @@ class AuditStarterConsumerBoundaryTest {
         contextRunner.run(context -> {
             assertEquals(1, context.getBeansOfType(AuditWriter.class).size());
             assertEquals(1, context.getBeansOfType(AuditAspect.class).size());
+            assertEquals(
+                    1,
+                    context.getBeansOfType(
+                            PlatformTransactionManager.class).size());
             assertFalse(ClassUtils.isPresent(
                     "com.plagod.mapper.AuditLogMapper",
                     context.getClassLoader()));
@@ -48,6 +57,17 @@ class AuditStarterConsumerBoundaryTest {
         @Bean
         JdbcTemplate jdbcTemplate() {
             return mock(JdbcTemplate.class);
+        }
+
+        @Bean
+        PlatformTransactionManager transactionManager() {
+            return new DataSourceTransactionManager(
+                    mock(DataSource.class));
+        }
+
+        @Bean
+        TrustedRequestContextResolver trustedRequestContextResolver() {
+            return new TrustedRequestContextResolver();
         }
     }
 }

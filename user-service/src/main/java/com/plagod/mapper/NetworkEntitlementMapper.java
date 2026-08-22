@@ -14,6 +14,13 @@ public interface NetworkEntitlementMapper extends BaseMapper<NetworkEntitlement>
     NetworkEntitlement selectByUserIdForUpdate(@Param("tenantId") Long tenantId,
                                                @Param("userId") Long userId);
 
+    @Select("select * from t_network_entitlement where tenant_id = #{tenantId} " +
+            "and user_id = #{userId} and entitlement_id = #{entitlementId} limit 1")
+    NetworkEntitlement selectOwnedEntitlement(
+            @Param("tenantId") Long tenantId,
+            @Param("userId") Long userId,
+            @Param("entitlementId") Long entitlementId);
+
     // 原子扣减余额，返回0表示余额不足或权益无效。
     int deductRemainingSeconds(@Param("tenantId") Long tenantId,
                                @Param("entitlementId") Long entitlementId,

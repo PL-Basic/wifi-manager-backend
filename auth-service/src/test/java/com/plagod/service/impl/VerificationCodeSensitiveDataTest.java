@@ -13,6 +13,7 @@ import com.plagod.sender.VerifyCodeSender;
 import com.plagod.sender.phone.PhoneVerificationProvider;
 import com.plagod.sender.phone.PhoneVerificationProviderRegistry;
 import com.plagod.service.VerificationCodeStateService;
+import com.plagod.transaction.TestTransactionManager;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.slf4j.LoggerFactory;
@@ -47,7 +48,8 @@ class VerificationCodeSensitiveDataTest {
                 anyString(),
                 any())).thenReturn(true);
         when(mapper.insert(any(VerifyCode.class))).thenReturn(1);
-        when(mapper.updateById(any(VerifyCode.class))).thenReturn(1);
+        when(mapper.finalizeSendFailure(any(VerifyCode.class)))
+                .thenReturn(1);
         when(registry.current()).thenReturn(provider);
         when(provider.providerName()).thenReturn("aliyun-number-auth");
         when(provider.send(
@@ -64,7 +66,8 @@ class VerificationCodeSensitiveDataTest {
                         mock(VerifyCodeSender.class),
                         registry,
                         mock(VerificationCodeStateService.class),
-                        rateLimiter);
+                        rateLimiter,
+                        new TestTransactionManager());
 
         Logger logger = (Logger) LoggerFactory.getLogger(
                 VerificationCodeServiceImpl.class);
@@ -88,7 +91,7 @@ class VerificationCodeSensitiveDataTest {
 
         ArgumentCaptor<VerifyCode> record =
                 ArgumentCaptor.forClass(VerifyCode.class);
-        verify(mapper).updateById(record.capture());
+        verify(mapper).finalizeSendFailure(record.capture());
 
         assertFalse(record.getValue().getSendError().contains(canary));
         assertTrue(record.getValue().getSendError().contains(

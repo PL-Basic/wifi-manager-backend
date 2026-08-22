@@ -1,18 +1,13 @@
 package com.plagod.audit;
 
-import com.plagod.security.TrustedHeaderNames;
-import org.springframework.util.StringUtils;
+import com.plagod.security.TrustedContextType;
+import com.plagod.security.TrustedRequestContext;
 
-import javax.servlet.http.HttpServletRequest;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
-import java.util.Locale;
 
 final class AuditScopeResolver {
 
-    private static final String CONTEXT_PLATFORM = "PLATFORM";
-    private static final String CONTEXT_PLATFORM_TENANT = "PLATFORM_TENANT";
-    private static final String CONTEXT_TENANT = "TENANT";
     private static final String SCOPE_PLATFORM = "PLATFORM";
     private static final String SCOPE_TENANT = "TENANT";
 
@@ -20,57 +15,59 @@ final class AuditScopeResolver {
     }
 
     static AuditScope resolve(Audited audited,
+                              TrustedRequestContext context,
                               Method method,
-                              Object[] arguments,
-                              HttpServletRequest request) {
+                              Object[] arguments) {
         if (audited.scope() == Audited.Scope.PLATFORM) {
-            requireRequestSource(audited);
-            requireTrustedRequest(request);
-            return new AuditScope(null, SCOPE_PLATFORM);
+            return new AuditScope(null, SCOPE_PLATFORM, false);
         }
         if (audited.scope() == Audited.Scope.CONTEXT) {
-            requireRequestSource(audited);
-            return resolveTrustedContext(request);
+            return resolveTrustedContext(context);
         }
         return resolveTenant(
                 audited.tenantIdSource(),
+                context,
                 method,
-                arguments,
-                request);
+                arguments);
     }
 
     private static AuditScope resolveTrustedContext(
-            HttpServletRequest request) {
-        requireTrustedRequest(request);
-        String contextType = normalizedHeader(
-                request,
-                TrustedHeaderNames.CONTEXT_TYPE);
-        String tenantIdValue = normalizedHeader(
-                request,
-                TrustedHeaderNames.TENANT_ID);
-
-        if (CONTEXT_PLATFORM.equals(contextType)) {
-            if (tenantIdValue != null) {
-                throw invalidContext();
-            }
-            return new AuditScope(null, SCOPE_PLATFORM);
+            TrustedRequestContext context) {
+        if (context == null) {
+            throw invalidContext();
         }
-
-        if (CONTEXT_TENANT.equals(contextType)
-                || CONTEXT_PLATFORM_TENANT.equals(contextType)) {
-            return new AuditScope(positiveTenantId(tenantIdValue), SCOPE_TENANT);
+        TrustedContextType contextType = context.getContextType();
+        if (contextType == TrustedContextType.PLATFORM) {
+            return new AuditScope(null, SCOPE_PLATFORM, false);
         }
-
-        throw invalidContext();
+        if (contextType == TrustedContextType.TENANT) {
+            return new AuditScope(
+                    positiveTenantId(context.getTenantId()),
+                    SCOPE_TENANT,
+                    false);
+        }
+        if (contextType == TrustedContextType.PLATFORM_TENANT) {
+            return new AuditScope(
+                    positiveTenantId(context.getTenantId()),
+                    SCOPE_TENANT,
+                    true);
+        }
+        if (context.getTenantId() != null) {
+            return new AuditScope(
+                    positiveTenantId(context.getTenantId()),
+                    SCOPE_TENANT,
+                    false);
+        }
+        return new AuditScope(null, SCOPE_PLATFORM, false);
     }
 
     private static AuditScope resolveTenant(
                                             Audited.TenantIdSource source,
+                                            TrustedRequestContext context,
                                             Method method,
-                                            Object[] arguments,
-                                            HttpServletRequest request) {
+                                            Object[] arguments) {
         if (source == Audited.TenantIdSource.REQUEST) {
-            AuditScope contextScope = resolveTrustedContext(request);
+            AuditScope contextScope = resolveTrustedContext(context);
             if (!SCOPE_TENANT.equals(contextScope.getScopeType())) {
                 throw invalidContext();
             }
@@ -78,32 +75,18 @@ final class AuditScopeResolver {
         }
 
         Long argumentTenantId = tenantIdArgument(method, arguments);
-        if (request != null) {
-            requireTrustedRequest(request);
-            String contextType = normalizedHeader(
-                    request,
-                    TrustedHeaderNames.CONTEXT_TYPE);
-            String headerTenantId = normalizedHeader(
-                    request,
-                    TrustedHeaderNames.TENANT_ID);
-            if (CONTEXT_TENANT.equals(contextType)
-                    || CONTEXT_PLATFORM_TENANT.equals(contextType)) {
-                if (!argumentTenantId.equals(
-                        positiveTenantId(headerTenantId))) {
-                    throw invalidContext();
-                }
-            } else {
+        if (context != null && context.getTenantId() != null) {
+            if (!argumentTenantId.equals(
+                    positiveTenantId(context.getTenantId()))) {
                 throw invalidContext();
             }
         }
-        return new AuditScope(argumentTenantId, SCOPE_TENANT);
-    }
-
-    private static void requireRequestSource(Audited audited) {
-        if (audited.tenantIdSource()
-                != Audited.TenantIdSource.REQUEST) {
-            throw invalidContext();
-        }
+        return new AuditScope(
+                argumentTenantId,
+                SCOPE_TENANT,
+                context != null
+                        && context.getContextType()
+                        == TrustedContextType.PLATFORM_TENANT);
     }
 
     private static Long tenantIdArgument(Method method,
@@ -134,28 +117,6 @@ final class AuditScopeResolver {
         }
         return positiveTenantId(
                 String.valueOf(arguments[markedIndex]));
-    }
-
-    private static void requireTrustedRequest(HttpServletRequest request) {
-        if (request == null) {
-            throw invalidContext();
-        }
-
-        Object source = request.getAttribute(
-                TrustedHeaderNames.TRUSTED_SOURCE_ATTRIBUTE);
-        if (!TrustedHeaderNames.SOURCE_GATEWAY.equals(source)
-                && !TrustedHeaderNames.SOURCE_INTERNAL.equals(source)) {
-            throw invalidContext();
-        }
-    }
-
-    private static String normalizedHeader(
-            HttpServletRequest request,
-            String name) {
-        String value = request.getHeader(name);
-        return StringUtils.hasText(value)
-                ? value.trim().toUpperCase(Locale.ROOT)
-                : null;
     }
 
     private static Long positiveTenantId(String value) {

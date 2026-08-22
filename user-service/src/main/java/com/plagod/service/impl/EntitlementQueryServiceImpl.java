@@ -38,11 +38,13 @@ public class EntitlementQueryServiceImpl implements EntitlementQueryService {
             throw new IllegalArgumentException("权益标识无效");
         }
 
-        NetworkEntitlement entitlement = entitlementMapper.selectById(entitlementId);
+        NetworkEntitlement entitlement =
+                entitlementMapper.selectOwnedEntitlement(
+                        tenantId,
+                        userId,
+                        entitlementId);
 
-        if (entitlement == null
-                || !tenantId.equals(entitlement.getTenantId())
-                || !userId.equals(entitlement.getUserId())) {
+        if (entitlement == null) {
             throw ApiStatusException.notFound("权益不存在");
         }
 

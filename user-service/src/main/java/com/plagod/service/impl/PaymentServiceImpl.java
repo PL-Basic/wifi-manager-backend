@@ -68,9 +68,13 @@ public class PaymentServiceImpl implements PaymentService {
         PaymentChannelAdapter adapter = requireAdapter(channel);
 
         // 固定锁顺序从订单开始。
-        EntitlementOrder order = orderMapper.selectByOrderNoForUpdate(orderNo);
+        EntitlementOrder order =
+                orderMapper.selectOwnedOrderForUpdate(
+                        tenantId,
+                        orderNo,
+                        userId);
 
-        if (order == null || !tenantId.equals(order.getTenantId()) || !userId.equals(order.getUserId())) {
+        if (order == null) {
             throw ApiStatusException.notFound("订单不存在");
         }
 

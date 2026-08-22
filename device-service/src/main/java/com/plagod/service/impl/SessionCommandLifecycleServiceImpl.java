@@ -15,6 +15,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
 
@@ -200,9 +202,7 @@ public class SessionCommandLifecycleServiceImpl implements SessionCommandLifecyc
         }
 
         if (Integer.valueOf(DeviceCommandStatus.SUCCEEDED).equals(command.getStatus())) {
-            // 旧授权已由固件撤销，现在才允许生成新 ALLOW。
-            portalSessionService.activateWaitingReplacement(
-                    command.getTenantId(), command.getSessionId());
+            activateReplacementAfterCommit(command);
             return;
         }
 
@@ -223,6 +223,27 @@ public class SessionCommandLifecycleServiceImpl implements SessionCommandLifecyc
         if (sessionRecordMapper.updateById(waiting) != 1) {
             throw new IllegalStateException("强制替换失败状态保存失败");
         }
+    }
+
+    private void activateReplacementAfterCommit(
+            DeviceCommandRecord command) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            throw new IllegalStateException(
+                    "强制替换激活必须注册在命令结果事务提交之后");
+        }
+
+        Long tenantId = command.getTenantId();
+        Long replacedSessionId = command.getSessionId();
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        // 旧授权撤销结果已经提交，权益 Feign 和后续本地事务
+                        // 都不能再占用 command-result 的行锁。
+                        portalSessionService.activateWaitingReplacement(
+                                tenantId, replacedSessionId);
+                    }
+                });
     }
 
     private String resolveReplacementFailureReason(Integer commandStatus) {

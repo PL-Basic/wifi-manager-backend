@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class MarketplacePersistenceMappingContractTest {
 
     @Test
-    void allMappersRemainBasicMappings() {
+    void allMappersRemainMarketplaceOwnedMappings() {
         for (Class<?> mapper : Arrays.asList(
                 MarketplaceProductMapper.class,
                 MarketplaceSkuMapper.class,
@@ -19,7 +19,12 @@ class MarketplacePersistenceMappingContractTest {
                 MarketplaceOrderItemMapper.class,
                 MarketplaceFulfillmentMapper.class)) {
             assertTrue(BaseMapper.class.isAssignableFrom(mapper));
-            assertEquals(0, mapper.getDeclaredMethods().length);
         }
+
+        assertEquals(0, MarketplaceProductMapper.class.getDeclaredMethods().length);
+        assertEquals(0, MarketplaceSkuMapper.class.getDeclaredMethods().length);
+        assertEquals(0, MarketplaceOrderItemMapper.class.getDeclaredMethods().length);
+        assertEquals(1, MarketplaceOrderMapper.class.getDeclaredMethods().length);
+        assertEquals(5, MarketplaceFulfillmentMapper.class.getDeclaredMethods().length);
     }
 }

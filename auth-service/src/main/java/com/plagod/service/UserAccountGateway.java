@@ -12,31 +12,42 @@ import com.plagod.vo.user.UserPasswordReplaceResultVO;
 import feign.FeignException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class UserAccountGateway {
 
     private final UserAccountClient client;
     private final String internalToken;
+    private final TransactionTemplate remoteCallTemplate;
 
     public UserAccountGateway(
             UserAccountClient client,
+            PlatformTransactionManager transactionManager,
             @Value("${wifi.internal.token}") String internalToken) {
         this.client = client;
         this.internalToken = internalToken;
+        this.remoteCallTemplate = new TransactionTemplate(transactionManager);
+        this.remoteCallTemplate.setPropagationBehavior(
+                TransactionDefinition.PROPAGATION_NOT_SUPPORTED);
     }
 
     public UserAccountCreateResultVO create(UserAccountCreateRequest request) {
-        return requireData(client.create(internalToken, request), "账号创建");
+        return requireData(remoteCallTemplate.execute(
+                status -> client.create(internalToken, request)), "账号创建");
     }
 
     public UserAccountSnapshotVO findById(Long userId) {
-        return optionalData(client.findById(internalToken, userId), "账号读取");
+        return optionalData(remoteCallTemplate.execute(
+                status -> client.findById(internalToken, userId)), "账号读取");
     }
 
     public UserAuthenticationSnapshotVO findAuthenticationById(Long userId) {
         return optionalData(
-                client.findAuthenticationById(internalToken, userId),
+                remoteCallTemplate.execute(status ->
+                        client.findAuthenticationById(internalToken, userId)),
                 "账号认证信息读取");
     }
 
@@ -44,20 +55,27 @@ public class UserAccountGateway {
             String loginType,
             String account) {
         return optionalData(
-                client.findByLogin(internalToken, loginType, account),
+                remoteCallTemplate.execute(status ->
+                        client.findByLogin(
+                                internalToken,
+                                loginType,
+                                account)),
                 "账号读取");
     }
 
     public UserPasswordReplaceResultVO replacePassword(
             UserPasswordReplaceRequest request) {
         return requireData(
-                client.replacePassword(internalToken, request),
+                remoteCallTemplate.execute(status ->
+                        client.replacePassword(internalToken, request)),
                 "密码修改");
     }
 
     public void dispatchDefaultMembership(Long userId) {
-        requireSuccess(
-                client.dispatchDefaultMembership(internalToken, userId),
+        requireSuccess(remoteCallTemplate.execute(status ->
+                        client.dispatchDefaultMembership(
+                                internalToken,
+                                userId)),
                 "默认租户成员事件投递");
     }
 

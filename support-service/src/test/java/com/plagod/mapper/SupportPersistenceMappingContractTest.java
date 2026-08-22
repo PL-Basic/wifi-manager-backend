@@ -18,15 +18,18 @@ class SupportPersistenceMappingContractTest {
                 AnnouncementCommentMapper.class,
                 AnnouncementActionRequestMapper.class,
                 UserCapabilityRestrictionMapper.class,
-                SupportContentReviewOutboxMapper.class,
                 SupportUserGuardMapper.class,
                 SupportDailyGuardMapper.class,
-                SupportSubmissionMapper.class,
                 SupportTicketMapper.class,
                 SupportTicketMessageMapper.class,
                 SupportTicketTransitionMapper.class)) {
             assertTrue(BaseMapper.class.isAssignableFrom(mapper));
             assertEquals(0, mapper.getDeclaredMethods().length);
         }
+
+        assertTrue(BaseMapper.class.isAssignableFrom(
+                SupportContentReviewOutboxMapper.class));
+        assertTrue(BaseMapper.class.isAssignableFrom(
+                SupportSubmissionMapper.class));
     }
 }

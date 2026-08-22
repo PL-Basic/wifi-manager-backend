@@ -6,7 +6,6 @@ import com.plagod.vo.device.SessionRecordVO;
 public interface PortalSessionService {
     SessionRecordVO authorize(Long tenantId, PortalAuthorizeDTO dto, Long userId);
 
-    // FORCE_LOGIN_REPLACE 成功后继续新 Session 的授权。
-    // 调用方必须已经位于命令结果事务中。
+    // FORCE_LOGIN_REPLACE 的命令结果提交后，继续新 Session 的授权。
     void activateWaitingReplacement(Long tenantId, Long replacedSessionId);
 }

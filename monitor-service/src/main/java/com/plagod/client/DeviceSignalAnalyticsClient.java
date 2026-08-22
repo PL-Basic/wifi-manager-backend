@@ -4,7 +4,6 @@ import com.plagod.dto.ApiResponse;
 import com.plagod.vo.device.SignalAnalyticsSourceVO;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 
 @FeignClient(name = "device-service", contextId = "deviceSignalAnalyticsClient")
@@ -16,8 +15,7 @@ public interface DeviceSignalAnalyticsClient {
                                                       @RequestParam("startTime") String startTime,
                                                       @RequestParam("endTime") String endTime,
                                                       @RequestParam("sampleLimit") Integer sampleLimit,
-                                                      @RequestParam("bucketMinutes") Integer bucketMinutes,
-                                                      @RequestHeader("X-Internal-Token") String internalToken);
+                                                      @RequestParam("bucketMinutes") Integer bucketMinutes);
 
     @GetMapping("/internal/analytics/signals/coverage")
     ApiResponse<SignalAnalyticsSourceVO> queryCoverageSignals(@RequestParam("nodeId") Long nodeId,
@@ -25,6 +23,5 @@ public interface DeviceSignalAnalyticsClient {
                                                               @RequestParam("sessionId") Long sessionId,
                                                               @RequestParam("startTime") String startTime,
                                                               @RequestParam("endTime") String endTime,
-                                                              @RequestParam("sampleLimit") Integer sampleLimit,
-                                                              @RequestHeader("X-Internal-Token") String internalToken);
+                                                              @RequestParam("sampleLimit") Integer sampleLimit);
 }

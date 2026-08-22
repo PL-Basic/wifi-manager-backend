@@ -22,7 +22,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 
@@ -40,32 +39,21 @@ public interface UserServiceClient {
 
     @PutMapping("/internal/admin/users/{userId}")
     ApiResponse<UserVO> updateUser(@PathVariable("userId") Long userId,
-                                   @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
-                                   @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole,
                                    @RequestBody UserUpdateDTO updateDTO);
 
     @PutMapping("/internal/admin/users/{userId}/status")
     ApiResponse<Void> updateStatus(@PathVariable("userId") Long userId,
-                                   @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
-                                   @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole,
                                    @RequestBody UserStatusDTO statusDTO);
 
 
     @DeleteMapping("/internal/admin/users/{userId}")
-    ApiResponse<Void> deleteUser(@PathVariable("userId") Long userId,
-                                 @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
-                                 @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole);
+    ApiResponse<Void> deleteUser(@PathVariable("userId") Long userId);
 
     @DeleteMapping("/internal/admin/users/{userId}/purge")
-    ApiResponse<Void> purgeUser(@PathVariable("userId") Long userId,
-                                @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
-                                @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole);
+    ApiResponse<Void> purgeUser(@PathVariable("userId") Long userId);
 
     @PostMapping("/internal/admin/users/{userId}/purge-requests")
     ApiResponse<Long> requestPurgeUser(@PathVariable("userId") Long userId,
-                                       @RequestHeader(value = "X-User-Id", required = false) Long requesterId,
-                                       @RequestHeader(value = "X-User-Name", required = false) String requesterName,
-                                       @RequestHeader(value = "X-User-Role", required = false) Integer requesterRole,
                                        @RequestBody UserPurgeRequestDTO purgeRequestDTO);
 
     @GetMapping("/internal/admin/users/operation-requests")
@@ -75,9 +63,6 @@ public interface UserServiceClient {
 
     @PutMapping("/internal/admin/users/operation-requests/{id}/review")
     ApiResponse<Void> reviewOperationRequest(@PathVariable("id") Long id,
-                                             @RequestHeader(value = "X-User-Id", required = false) Long approverId,
-                                             @RequestHeader(value = "X-User-Name", required = false) String approverName,
-                                             @RequestHeader(value = "X-User-Role", required = false) Integer approverRole,
                                              @RequestBody UserOperationReviewDTO dto);
 
     @GetMapping("/internal/admin/users/stats")
@@ -98,30 +83,20 @@ public interface UserServiceClient {
 
     @PostMapping("/internal/admin/entitlements/users/{userId}/adjustments")
     ApiResponse<EntitlementSnapshotVO> adjustEntitlement(@PathVariable("userId") Long userId,
-                                                         @RequestHeader("X-User-Id") Long operatorId,
-                                                         @RequestHeader("X-User-Name") String operatorName,
                                                          @RequestBody EntitlementAdjustmentRequest request);
 
     @PostMapping("/internal/admin/entitlements/users/{userId}/unlimited-adjustments")
     ApiResponse<EntitlementSnapshotVO> adjustUnlimitedEntitlement(
             @PathVariable("userId") Long userId,
-            @RequestHeader("X-User-Id") Long operatorId,
-            @RequestHeader("X-User-Name") String operatorName,
-            @RequestHeader("X-User-Role") Integer operatorRole,
             @RequestBody UnlimitedEntitlementRequest request);
 
     @PostMapping("/internal/admin/entitlements/users/{userId}/reward-orders")
     ApiResponse<EntitlementOrderVO> createRewardOrder(
             @PathVariable("userId") Long userId,
-            @RequestHeader("X-User-Id") Long operatorId,
-            @RequestHeader("X-User-Name") String operatorName,
-            @RequestHeader("X-User-Role") Integer operatorRole,
             @RequestBody EntitlementRewardOrderRequest request);
 
     @PutMapping("/internal/admin/entitlements/refunds/{refundNo}/review")
     ApiResponse<RefundVO> reviewRefund(@PathVariable("refundNo") String refundNo,
-                                       @RequestHeader("X-User-Id") Long reviewerId,
-                                       @RequestHeader("X-User-Name") String reviewerName,
                                        @RequestBody RefundReviewRequest request);
 
     @PostMapping("/internal/admin/entitlements/refunds/{refundNo}/demo-result")

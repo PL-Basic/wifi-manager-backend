@@ -2,13 +2,13 @@ package com.plagod.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.plagod.audit.Audited;
-import com.plagod.client.UserEntitlementClient;
-import com.plagod.client.UserPolicyClient;
+import com.plagod.audit.AuditTenantId;
 import com.plagod.constant.DeviceCommandPurpose;
 import com.plagod.constant.SessionStatus;
 import com.plagod.dto.ApiResponse;
 import com.plagod.dto.device.PortalAuthorizeDTO;
 import com.plagod.dto.user.EntitlementLeaseRequest;
+import com.plagod.entity.device.DeviceCommandRecord;
 import com.plagod.entity.device.Esp32Node;
 import com.plagod.entity.device.MacBlacklist;
 import com.plagod.entity.device.SessionRecord;
@@ -16,6 +16,8 @@ import com.plagod.exception.ApiStatusException;
 import com.plagod.mapper.*;
 import com.plagod.service.ClientSignalQueryService;
 import com.plagod.service.DeviceCommandService;
+import com.plagod.service.DeviceUserRemoteGateway;
+import com.plagod.service.PortalAuthorizationFingerprint;
 import com.plagod.service.PortalSessionService;
 import com.plagod.service.SessionLeaseService;
 import com.plagod.vo.device.SessionRecordVO;
@@ -28,13 +30,19 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 @Slf4j
@@ -44,6 +52,8 @@ public class PortalSessionServiceImpl implements PortalSessionService {
     // 首次授权只申请短 TTL，后续由续租任务定期刷新
     private static final int INITIAL_LEASE_TTL_SECONDS = 20;
     private static final Pattern MAC_PATTERN = Pattern.compile("(?i)^[0-9a-f]{2}(:[0-9a-f]{2}){5}$");
+    private static final Pattern CLIENT_REQUEST_ID_PATTERN =
+            Pattern.compile("^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$");
 
     @Autowired
     private Esp32NodeMapper esp32NodeMapper;
@@ -54,32 +64,36 @@ public class PortalSessionServiceImpl implements PortalSessionService {
     @Autowired
     private DeviceCommandService deviceCommandService;
     @Autowired
-    private UserEntitlementClient userEntitlementClient;
+    private DeviceUserRemoteGateway userRemoteGateway;
     @Autowired
     private ClientSignalQueryService clientSignalQueryService;
-    @Autowired
-    private UserPolicyClient userPolicyClient;
     @Autowired
     private SessionUserGuardMapper sessionUserGuardMapper;
     @Autowired
     private SessionLeaseService sessionLeaseService;
     @Autowired
     private ClientAccessGuardMapper clientAccessGuardMapper;
-
-    @Value("${wifi.internal.token}")
-    private String internalToken;
+    @Autowired
+    private DeviceCommandRecordMapper deviceCommandRecordMapper;
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     // RSSI 记录允许的最大年龄。默认30秒，避免使用历史记录冒充当前在线客户端。
     @Value("${wifi.portal.client-signal-max-age-seconds:30}")
     private long clientSignalMaxAgeSeconds;
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     @Audited(
             action = "session.portal-authorize",
+            targetType = "SESSION",
             scope = Audited.Scope.TENANT,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
-    public SessionRecordVO authorize(Long tenantId, PortalAuthorizeDTO dto, Long userId) {
+            tenantIdSource = Audited.TenantIdSource.ARGUMENT,
+            recordDenied = true,
+            recordFailed = true)
+    public SessionRecordVO authorize(
+            @AuditTenantId Long tenantId,
+            PortalAuthorizeDTO dto,
+            Long userId) {
         TenantScopeUtils.requireTenantId(tenantId);
         if (dto == null || userId == null || userId <= 0) {
             throw new IllegalArgumentException("Portal 授权参数或者用户身份无效");
@@ -91,7 +105,140 @@ public class PortalSessionServiceImpl implements PortalSessionService {
         if (mac == null) {
             throw new IllegalArgumentException("客户端 MAC 格式不正确");
         }
+        String clientRequestId = requireClientRequestId(dto.getClientRequestId());
+        String requestFingerprint =
+                PortalAuthorizationFingerprint.calculate(tenantId, userId, dto);
 
+        DeviceCommandRecord completedReceipt =
+                deviceCommandRecordMapper.selectPortalAuthorizationReceipt(
+                        tenantId, userId, clientRequestId);
+        if (completedReceipt != null) {
+            requireMatchingFingerprint(
+                    requestFingerprint, completedReceipt.getRequestFingerprint());
+            return replaySession(tenantId, userId, completedReceipt.getSessionId());
+        }
+
+        SessionRecord waitingReplay =
+                sessionRecordMapper.selectByAuthorizeRequest(
+                        tenantId, userId, clientRequestId);
+        if (waitingReplay != null
+                && SessionStatus.isWaitingReplacement(
+                waitingReplay.getStatus())) {
+            requireMatchingFingerprint(
+                    requestFingerprint,
+                    waitingReplay.getRequestFingerprint());
+            return toVO(waitingReplay);
+        }
+
+        UserConnectionPolicyVO connectionPolicy = loadConnectionPolicy(userId);
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        transaction.setPropagationBehavior(
+                TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        AuthorizationPlan plan = prepareWithSettlements(
+                transaction,
+                tenantId,
+                userId,
+                dto,
+                deviceCode,
+                ip,
+                mac,
+                clientRequestId,
+                requestFingerprint,
+                connectionPolicy);
+        if (plan == null) {
+            throw new IllegalStateException("Portal 本地准备事务没有返回结果");
+        }
+        if (!plan.requiresLease) {
+            return replaySession(tenantId, userId, plan.sessionId);
+        }
+
+        EntitlementLeaseResult lease =
+                acquireInitialLease(
+                        tenantId,
+                        userId,
+                        plan.sessionId,
+                        clientRequestId);
+        try {
+            validateLease(lease);
+        } catch (IllegalArgumentException exception) {
+            transaction.executeWithoutResult(status ->
+                    closePreparedAuthorization(plan, "ENTITLEMENT_DENIED"));
+            throw exception;
+        }
+
+        completeWithSettlements(transaction, plan, lease);
+        return replaySession(tenantId, userId, plan.sessionId);
+    }
+
+    private AuthorizationPlan prepareWithSettlements(
+            TransactionTemplate transaction,
+            Long tenantId,
+            Long userId,
+            PortalAuthorizeDTO dto,
+            String deviceCode,
+            String ip,
+            String mac,
+            String clientRequestId,
+            String requestFingerprint,
+            UserConnectionPolicyVO connectionPolicy) {
+        Set<Long> settledSessions = new HashSet<>();
+        while (true) {
+            try {
+                return transaction.execute(status ->
+                        prepareAuthorization(
+                                tenantId,
+                                userId,
+                                dto,
+                                deviceCode,
+                                ip,
+                                mac,
+                                clientRequestId,
+                                requestFingerprint,
+                                connectionPolicy));
+            } catch (FinalSettlementRequiredException exception) {
+                settleOutsideTransaction(
+                        exception.sessionId, settledSessions);
+            }
+        }
+    }
+
+    private void completeWithSettlements(
+            TransactionTemplate transaction,
+            AuthorizationPlan plan,
+            EntitlementLeaseResult lease) {
+        Set<Long> settledSessions = new HashSet<>();
+        while (true) {
+            try {
+                transaction.executeWithoutResult(status ->
+                        completeAuthorization(plan, lease));
+                return;
+            } catch (FinalSettlementRequiredException exception) {
+                settleOutsideTransaction(
+                        exception.sessionId, settledSessions);
+            }
+        }
+    }
+
+    private void settleOutsideTransaction(
+            Long sessionId,
+            Set<Long> settledSessions) {
+        if (sessionId == null || !settledSessions.add(sessionId)) {
+            throw new IllegalStateException(
+                    "Portal 最终结算后 Session 计费基准未推进");
+        }
+        sessionLeaseService.settleFinalUsage(sessionId);
+    }
+
+    private AuthorizationPlan prepareAuthorization(
+            Long tenantId,
+            Long userId,
+            PortalAuthorizeDTO dto,
+            String deviceCode,
+            String ip,
+            String mac,
+            String clientRequestId,
+            String requestFingerprint,
+            UserConnectionPolicyVO connectionPolicy) {
         // 从黑名单检查开始，到 Session 创建和命令入队结束，
         // 同一个 MAC 只能存在一个授权或管控事务。
         lockClientAccess(tenantId, mac);
@@ -119,18 +266,39 @@ public class PortalSessionServiceImpl implements PortalSessionService {
 
         validateRecentClientSignal(tenantId, node, deviceCode, mac, now);
 
-        SessionRecord reusableSession = findReusableOpenSession(tenantId, userId, node.getNodeId(), mac);
+        SessionRecord reusableSession =
+                sessionRecordMapper.selectByAuthorizeRequestForUpdate(
+                        tenantId, userId, clientRequestId);
+        boolean sameRequestInProgress = reusableSession != null;
+        if (reusableSession != null) {
+            requireMatchingFingerprint(
+                    requestFingerprint, reusableSession.getRequestFingerprint());
+        } else {
+            reusableSession =
+                    findReusableOpenSession(
+                            tenantId, userId, node.getNodeId(), mac);
+        }
 
         if (reusableSession != null) {
+            reusableSession.setClientRequestId(clientRequestId);
+            reusableSession.setRequestFingerprint(requestFingerprint);
+
             // 撤销命令还没有成功，重复请求只返回当前状态。
             if (SessionStatus.isWaitingReplacement(reusableSession.getStatus())) {
-                return toVO(reusableSession);
+                if (!sameRequestInProgress
+                        && sessionRecordMapper.updateById(reusableSession) != 1) {
+                    throw new IllegalStateException("Portal 幂等状态保存失败");
+                }
+                return new AuthorizationPlan(
+                        tenantId,
+                        userId,
+                        reusableSession.getSessionId(),
+                        deviceCode,
+                        mac,
+                        clientRequestId,
+                        requestFingerprint,
+                        false);
             }
-
-            EntitlementLeaseResult lease = acquireInitialLease(tenantId, userId, reusableSession.getSessionId());
-            validateLease(lease);
-
-            closeConflictingSessions(tenantId, mac, reusableSession.getSessionId(), now);
 
             reusableSession.setIp(ip);
 
@@ -139,13 +307,19 @@ public class PortalSessionServiceImpl implements PortalSessionService {
                 reusableSession.setDeviceInfo(deviceInfo);
             }
 
-            applyLease(reusableSession, lease, now);
-            return saveAndEnqueue(deviceCode, reusableSession, lease.getTtlSeconds());
+            if (sessionRecordMapper.updateById(reusableSession) != 1) {
+                throw new IllegalStateException("Portal 幂等准备状态保存失败");
+            }
+            return new AuthorizationPlan(
+                    tenantId,
+                    userId,
+                    reusableSession.getSessionId(),
+                    deviceCode,
+                    mac,
+                    clientRequestId,
+                    requestFingerprint,
+                    true);
         }
-
-        // 获取 user-service 统一解释后的有效连接上限。
-        // 远程调用放在加锁前，避免持有数据库锁时等待网络请求。
-        UserConnectionPolicyVO connectionPolicy = loadConnectionPolicy(userId);
 
         // 串行化同一用户的“统计名额并创建 Session”流程。
         lockSessionAllocation(tenantId, userId);
@@ -154,12 +328,11 @@ public class PortalSessionServiceImpl implements PortalSessionService {
         // 因此只统计其他 MAC 占用的名额。
         Long replacedSessionId = prepareConnectionSlot(tenantId, userId, mac, connectionPolicy.getMaxConnections(), Boolean.TRUE.equals(dto.getForceReplaceOldest()), now);
 
-        // 没有可复用 Session，才关闭旧连接并创建新记录。
-        closeConflictingSessions(tenantId, mac, null, now);
-
         SessionRecord sessionRecord = new SessionRecord();
         sessionRecord.setTenantId(tenantId);
         sessionRecord.setUserId(userId);
+        sessionRecord.setClientRequestId(clientRequestId);
+        sessionRecord.setRequestFingerprint(requestFingerprint);
         sessionRecord.setNodeId(node.getNodeId());
         sessionRecord.setReplacedSessionId(replacedSessionId);
         sessionRecord.setMac(mac);
@@ -179,62 +352,252 @@ public class PortalSessionServiceImpl implements PortalSessionService {
 
         // 必须等待旧 Session 的撤销结果，当前不能生成 ALLOW。
         if (replacedSessionId != null) {
-            return toVO(sessionRecord);
+            return new AuthorizationPlan(
+                    tenantId,
+                    userId,
+                    sessionRecord.getSessionId(),
+                    deviceCode,
+                    mac,
+                    clientRequestId,
+                    requestFingerprint,
+                    false);
         }
 
-        EntitlementLeaseResult lease = acquireInitialLease(tenantId, userId, sessionRecord.getSessionId());
-        validateLease(lease);
+        return new AuthorizationPlan(
+                tenantId,
+                userId,
+                sessionRecord.getSessionId(),
+                deviceCode,
+                mac,
+                clientRequestId,
+                requestFingerprint,
+                true);
+    }
 
-        applyLease(sessionRecord, lease, now);
-        return saveAndEnqueue(deviceCode, sessionRecord, lease.getTtlSeconds());
+    private void completeAuthorization(
+            AuthorizationPlan plan,
+            EntitlementLeaseResult lease) {
+        lockClientAccess(plan.tenantId, plan.mac);
+
+        DeviceCommandRecord receipt =
+                deviceCommandRecordMapper.selectPortalAuthorizationReceipt(
+                        plan.tenantId,
+                        plan.userId,
+                        plan.clientRequestId);
+        if (receipt != null) {
+            requireMatchingFingerprint(
+                    plan.requestFingerprint,
+                    receipt.getRequestFingerprint());
+            return;
+        }
+
+        Esp32Node node =
+                esp32NodeMapper.selectByDeviceCodeForUpdateAndTenantIncludeDeleted(
+                        plan.tenantId, plan.deviceCode);
+        if (node == null
+                || Integer.valueOf(1).equals(node.getDelFlag())
+                || !Integer.valueOf(1).equals(node.getStatus())) {
+            throw new IllegalStateException("Portal 完成授权时设备已不可用");
+        }
+
+        SessionRecord session =
+                sessionRecordMapper.selectByIdForUpdate(
+                        plan.tenantId, plan.sessionId);
+        requirePreparedSession(plan, session);
+        if (SessionStatus.isWaitingReplacement(session.getStatus())) {
+            return;
+        }
+        if (Integer.valueOf(SessionStatus.CLOSED).equals(session.getStatus())) {
+            throw new IllegalStateException("Portal 准备 Session 已关闭");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        closeConflictingSessions(
+                plan.tenantId, plan.mac, plan.sessionId, now);
+        applyLease(session, lease, now);
+        saveAndEnqueue(
+                plan.deviceCode,
+                session,
+                lease.getTtlSeconds(),
+                plan.userId,
+                plan.clientRequestId,
+                plan.requestFingerprint);
+    }
+
+    private void closePreparedAuthorization(
+            AuthorizationPlan plan,
+            String reason) {
+        SessionRecord session =
+                sessionRecordMapper.selectByIdForUpdate(
+                        plan.tenantId, plan.sessionId);
+        if (session == null) {
+            return;
+        }
+        requirePreparedSession(plan, session);
+        if (SessionStatus.isActive(session.getStatus())
+                || SessionStatus.isWaitingReplacement(session.getStatus())) {
+            return;
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        session.setStatus(SessionStatus.CLOSED);
+        session.setExpireTime(now);
+        session.setLogoutTime(now);
+        session.setEndReason(reason);
+        if (sessionRecordMapper.updateById(session) != 1) {
+            throw new IllegalStateException("Portal 拒绝状态保存失败");
+        }
+    }
+
+    private void requirePreparedSession(
+            AuthorizationPlan plan,
+            SessionRecord session) {
+        if (session == null
+                || !plan.userId.equals(session.getUserId())
+                || !plan.clientRequestId.equals(session.getClientRequestId())) {
+            throw new IllegalStateException("Portal 准备 Session 不存在");
+        }
+        requireMatchingFingerprint(
+                plan.requestFingerprint, session.getRequestFingerprint());
     }
 
     @Override
-    @Transactional(propagation = Propagation.MANDATORY, rollbackFor = Exception.class)
     public void activateWaitingReplacement(Long tenantId, Long replacedSessionId) {
         TenantScopeUtils.requireTenantId(tenantId);
         if (replacedSessionId == null || replacedSessionId <= 0) {
             throw new IllegalArgumentException("被替换 SessionId 无效");
         }
 
-        SessionRecord waiting = sessionRecordMapper.selectWaitingReplacementForUpdate(tenantId, replacedSessionId);
-
-        // 重复 command-result 或等待 Session 已取消时直接幂等返回。
-        if (waiting == null) {
-            return;
-        }
-
-        LocalDateTime now = LocalDateTime.now();
-
-        Esp32Node node = esp32NodeMapper.selectByNodeIdAndTenantIncludeDeleted(tenantId, waiting.getNodeId());
-
-        if (node == null || Integer.valueOf(1).equals(node.getDelFlag()) || !Integer.valueOf(1).equals(node.getStatus())) {
-            closeWaitingSession(waiting, now, "REPLACEMENT_NODE_UNAVAILABLE");
+        TransactionTemplate transaction =
+                new TransactionTemplate(transactionManager);
+        transaction.setPropagationBehavior(
+                TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        AuthorizationPlan plan = transaction.execute(status ->
+                prepareWaitingReplacement(tenantId, replacedSessionId));
+        if (plan == null) {
             return;
         }
 
         EntitlementLeaseResult lease;
         try {
-            lease = acquireInitialLease(tenantId, waiting.getUserId(), waiting.getSessionId());
+            lease = acquireInitialLease(
+                    plan.tenantId,
+                    plan.userId,
+                    plan.sessionId,
+                    plan.clientRequestId);
             validateLease(lease);
         } catch (IllegalArgumentException exception) {
-            closeWaitingSession(waiting, now, "REPLACEMENT_ENTITLEMENT_DENIED");
+            transaction.executeWithoutResult(status ->
+                    closePreparedReplacement(
+                            plan, "REPLACEMENT_ENTITLEMENT_DENIED"));
             return;
         } catch (RuntimeException exception) {
             // 旧授权已经撤销成功，不能因权益服务临时异常回滚该 command-result。
             // 关闭等待 Session 后允许用户重新发起认证。
             log.warn(
                     "强制替换撤销成功，但新 Session 权益暂时不可用，sessionId={}, type={}, safeStack={}",
-                    waiting.getSessionId(),
+                    plan.sessionId,
                     exception.getClass().getName(),
                     SafeExceptionLogFormatter.format(exception));
-            closeWaitingSession(waiting, now, "REPLACEMENT_ENTITLEMENT_UNAVAILABLE");
+            transaction.executeWithoutResult(status ->
+                    closePreparedReplacement(
+                            plan, "REPLACEMENT_ENTITLEMENT_UNAVAILABLE"));
+            return;
+        }
+
+        transaction.executeWithoutResult(status ->
+                completeWaitingReplacement(plan, lease));
+    }
+
+    private AuthorizationPlan prepareWaitingReplacement(
+            Long tenantId,
+            Long replacedSessionId) {
+        SessionRecord waiting =
+                sessionRecordMapper.selectWaitingReplacementForUpdate(
+                        tenantId, replacedSessionId);
+        // 重复 command-result 或等待 Session 已取消时直接幂等返回。
+        if (waiting == null) {
+            return null;
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        Esp32Node node =
+                esp32NodeMapper.selectByNodeIdAndTenantIncludeDeleted(
+                        tenantId, waiting.getNodeId());
+        if (node == null
+                || Integer.valueOf(1).equals(node.getDelFlag())
+                || !Integer.valueOf(1).equals(node.getStatus())
+                || !StringUtils.hasText(node.getDeviceCode())) {
+            closeWaitingSession(
+                    waiting, now, "REPLACEMENT_NODE_UNAVAILABLE");
+            return null;
+        }
+
+        String clientRequestId =
+                requireClientRequestId(waiting.getClientRequestId());
+        String requestFingerprint =
+                requireRequestFingerprint(waiting.getRequestFingerprint());
+        return new AuthorizationPlan(
+                tenantId,
+                waiting.getUserId(),
+                waiting.getSessionId(),
+                node.getDeviceCode(),
+                waiting.getMac(),
+                clientRequestId,
+                requestFingerprint,
+                true);
+    }
+
+    private void closePreparedReplacement(
+            AuthorizationPlan plan,
+            String reason) {
+        SessionRecord waiting =
+                sessionRecordMapper.selectByIdForUpdate(
+                        plan.tenantId, plan.sessionId);
+        if (waiting == null
+                || !SessionStatus.isWaitingReplacement(
+                waiting.getStatus())) {
+            return;
+        }
+        requirePreparedSession(plan, waiting);
+        closeWaitingSession(waiting, LocalDateTime.now(), reason);
+    }
+
+    private void completeWaitingReplacement(
+            AuthorizationPlan plan,
+            EntitlementLeaseResult lease) {
+        lockClientAccess(plan.tenantId, plan.mac);
+        SessionRecord waiting =
+                sessionRecordMapper.selectByIdForUpdate(
+                        plan.tenantId, plan.sessionId);
+        if (waiting == null
+                || !SessionStatus.isWaitingReplacement(
+                waiting.getStatus())) {
+            return;
+        }
+        requirePreparedSession(plan, waiting);
+
+        Esp32Node node =
+                esp32NodeMapper.selectByDeviceCodeForUpdateAndTenantIncludeDeleted(
+                        plan.tenantId, plan.deviceCode);
+        LocalDateTime now = LocalDateTime.now();
+        if (node == null
+                || Integer.valueOf(1).equals(node.getDelFlag())
+                || !Integer.valueOf(1).equals(node.getStatus())) {
+            closeWaitingSession(
+                    waiting, now, "REPLACEMENT_NODE_UNAVAILABLE");
             return;
         }
 
         // applyLease 会把 WAITING_REPLACEMENT 转为 PENDING。
         applyLease(waiting, lease, now);
-        saveAndEnqueue(node.getDeviceCode(), waiting, lease.getTtlSeconds());
+        saveAndEnqueue(
+                plan.deviceCode,
+                waiting,
+                lease.getTtlSeconds(),
+                plan.userId,
+                plan.clientRequestId,
+                plan.requestFingerprint);
     }
 
 
@@ -258,17 +621,22 @@ public class PortalSessionServiceImpl implements PortalSessionService {
     }
 
     // 申请 Portal 首次授权租约。
-    private EntitlementLeaseResult acquireInitialLease(Long tenantId, Long userId, Long sessionId) {
+    private EntitlementLeaseResult acquireInitialLease(
+            Long tenantId,
+            Long userId,
+            Long sessionId,
+            String clientRequestId) {
         EntitlementLeaseRequest request = new EntitlementLeaseRequest();
 
-        request.setRequestId("portal-init-" + sessionId);
+        request.setRequestId(
+                buildEntitlementRequestId(userId, clientRequestId));
         request.setUserId(userId);
         request.setSessionId(sessionId);
         request.setUsageSeconds(0L);
         request.setRequestedTtlSeconds(INITIAL_LEASE_TTL_SECONDS);
 
-        ApiResponse<EntitlementLeaseResult> response = userEntitlementClient.acquireLease(
-                internalToken, String.valueOf(tenantId), request);
+        ApiResponse<EntitlementLeaseResult> response =
+                userRemoteGateway.acquireLease(request);
 
         if (response == null) {
             throw new IllegalStateException("权益服务没有返回结果");
@@ -281,6 +649,30 @@ public class PortalSessionServiceImpl implements PortalSessionService {
         }
 
         return response.getData();
+    }
+
+    private String buildEntitlementRequestId(
+            Long userId,
+            String clientRequestId) {
+        if (userId == null || userId <= 0) {
+            throw new IllegalArgumentException("用户身份无效");
+        }
+        String normalizedRequestId =
+                requireClientRequestId(clientRequestId);
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(normalizedRequestId.getBytes(
+                            StandardCharsets.UTF_8));
+            StringBuilder suffix = new StringBuilder(32);
+            for (int index = 0; index < 16; index++) {
+                suffix.append(String.format(
+                        Locale.ROOT, "%02x", digest[index] & 0xff));
+            }
+            return "portal-u" + userId + "-" + suffix;
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException(
+                    "运行环境缺少 SHA-256", exception);
+        }
     }
 
     // ACTIVE 或 PENDING Session 都可以被相同认证请求复用。
@@ -311,7 +703,7 @@ public class PortalSessionServiceImpl implements PortalSessionService {
             boolean waitingReplacement = SessionStatus.isWaitingReplacement(session.getStatus());
 
             if (SessionStatus.isActive(session.getStatus())) {
-                sessionLeaseService.settleFinalUsage(session, now);
+                requireFinalSettlementCompleted(session, now);
             }
 
             session.setStatus(SessionStatus.CLOSED);
@@ -380,12 +772,26 @@ public class PortalSessionServiceImpl implements PortalSessionService {
     }
 
     // 保存 Session，然后使用同一个 sessionId 刷新 ESP32 的短 TTL。
-    private SessionRecordVO saveAndEnqueue(String deviceCode, SessionRecord session, Integer ttlSeconds) {
+    private SessionRecordVO saveAndEnqueue(
+            String deviceCode,
+            SessionRecord session,
+            Integer ttlSeconds,
+            Long actorUserId,
+            String clientRequestId,
+            String requestFingerprint) {
         if (sessionRecordMapper.updateById(session) != 1) {
             throw new IllegalStateException("Portal 会话状态更新失败");
         }
 
-        deviceCommandService.allowClient(session.getNodeId(), deviceCode, session.getMac(), session.getSessionId(), ttlSeconds);
+        deviceCommandService.allowClient(
+                session.getNodeId(),
+                deviceCode,
+                session.getMac(),
+                session.getSessionId(),
+                ttlSeconds,
+                actorUserId,
+                clientRequestId,
+                requestFingerprint);
         SessionRecordVO result = new SessionRecordVO();
         BeanUtils.copyProperties(session, result);
         return result;
@@ -407,7 +813,8 @@ public class PortalSessionServiceImpl implements PortalSessionService {
 
     // 从 user-service 获取已经处理默认值的连接策略。
     private UserConnectionPolicyVO loadConnectionPolicy(Long userId) {
-        ApiResponse<UserConnectionPolicyVO> response = userPolicyClient.getConnectionPolicy(internalToken, userId);
+        ApiResponse<UserConnectionPolicyVO> response =
+                userRemoteGateway.getConnectionPolicy(userId);
 
         if (response == null) {
             throw new IllegalStateException("用户连接策略服务没有返回结果");
@@ -463,7 +870,7 @@ public class PortalSessionServiceImpl implements PortalSessionService {
 
         // 只有 ACTIVE Session 存在需要结算的真实在线时间。
         if (SessionStatus.isActive(oldest.getStatus())) {
-            sessionLeaseService.settleFinalUsage(oldest, now);
+            requireFinalSettlementCompleted(oldest, now);
         }
 
         oldest.setStatus(SessionStatus.CLOSED);
@@ -504,6 +911,110 @@ public class PortalSessionServiceImpl implements PortalSessionService {
 
         if (!mac.equals(lockedMac)) {
             throw new IllegalStateException("客户端访问状态锁定失败");
+        }
+    }
+
+    private String requireClientRequestId(String value) {
+        if (!StringUtils.hasText(value)) {
+            throw new IllegalArgumentException("clientRequestId 不能为空");
+        }
+        String cleaned = value.trim();
+        if (!CLIENT_REQUEST_ID_PATTERN.matcher(cleaned).matches()) {
+            throw new IllegalArgumentException("clientRequestId 格式不正确");
+        }
+        return cleaned;
+    }
+
+    private void requireMatchingFingerprint(String requested, String stored) {
+        if (!StringUtils.hasText(stored)) {
+            throw new IllegalStateException("Portal 幂等记录缺少 fingerprint");
+        }
+        if (!stored.equals(requested)) {
+            throw ApiStatusException.idempotencyConflict(
+                    "clientRequestId 已用于不同的 Portal 授权输入");
+        }
+    }
+
+    private String requireRequestFingerprint(String value) {
+        if (!StringUtils.hasText(value)) {
+            throw new IllegalStateException("Portal 幂等记录缺少 fingerprint");
+        }
+        return value;
+    }
+
+    private SessionRecordVO replaySession(
+            Long tenantId,
+            Long userId,
+            Long sessionId) {
+        if (sessionId == null) {
+            throw new IllegalStateException("Portal 幂等记录缺少 sessionId");
+        }
+        SessionRecord session =
+                sessionRecordMapper.selectOwnedById(tenantId, userId, sessionId);
+        if (session == null) {
+            throw new IllegalStateException("Portal 幂等记录关联 Session 不存在");
+        }
+        return toVO(session);
+    }
+
+    private void requireFinalSettlementCompleted(
+            SessionRecord session,
+            LocalDateTime now) {
+        if (session.getLastSeenTime() == null) {
+            return;
+        }
+        LocalDateTime billedTime = session.getLastBilledTime();
+        if (billedTime == null) {
+            billedTime = session.getLoginTime();
+        }
+        LocalDateTime observedTime =
+                session.getLastSeenTime().isAfter(now)
+                        ? now
+                        : session.getLastSeenTime();
+        if (billedTime != null && observedTime.isAfter(billedTime)) {
+            throw new FinalSettlementRequiredException(
+                    session.getSessionId());
+        }
+    }
+
+    private static final class AuthorizationPlan {
+        private final Long tenantId;
+        private final Long userId;
+        private final Long sessionId;
+        private final String deviceCode;
+        private final String mac;
+        private final String clientRequestId;
+        private final String requestFingerprint;
+        private final boolean requiresLease;
+
+        private AuthorizationPlan(
+                Long tenantId,
+                Long userId,
+                Long sessionId,
+                String deviceCode,
+                String mac,
+                String clientRequestId,
+                String requestFingerprint,
+                boolean requiresLease) {
+            this.tenantId = tenantId;
+            this.userId = userId;
+            this.sessionId = sessionId;
+            this.deviceCode = deviceCode;
+            this.mac = mac;
+            this.clientRequestId = clientRequestId;
+            this.requestFingerprint = requestFingerprint;
+            this.requiresLease = requiresLease;
+        }
+    }
+
+    private static final class FinalSettlementRequiredException
+            extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+        private final Long sessionId;
+
+        private FinalSettlementRequiredException(Long sessionId) {
+            super("Portal Session 需要事务外最终结算");
+            this.sessionId = sessionId;
         }
     }
 }

@@ -4,7 +4,6 @@ import com.plagod.dto.ApiResponse;
 import com.plagod.vo.device.TrafficAnalyticsSourceVO;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 
 @FeignClient(name = "device-service", contextId = "deviceTrafficAnalyticsClient")
@@ -19,6 +18,5 @@ public interface DeviceTrafficAnalyticsClient {
                                                        @RequestParam("startTime") String startTime,
                                                        @RequestParam("endTime") String endTime,
                                                        @RequestParam("bucketMinutes") Integer bucketMinutes,
-                                                       @RequestParam("topLimit") Integer topLimit,
-                                                       @RequestHeader("X-Internal-Token") String internalToken);
+                                                       @RequestParam("topLimit") Integer topLimit);
 }

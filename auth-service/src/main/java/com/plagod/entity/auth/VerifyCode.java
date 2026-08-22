@@ -34,6 +34,9 @@ public class VerifyCode {
     private String providerVerifyCode;
     private String providerVerifyResult;
     private String verifyError;
+    private String verifyClaimOwner;
+    private LocalDateTime verifyLeaseUntil;
+    private LocalDateTime verifyClaimedTime;
 
     private Integer status;
     private LocalDateTime expireTime;

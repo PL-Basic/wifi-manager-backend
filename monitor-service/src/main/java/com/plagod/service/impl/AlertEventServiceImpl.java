@@ -1,16 +1,21 @@
 package com.plagod.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.plagod.audit.AuditTargetId;
 import com.plagod.audit.Audited;
 import com.plagod.vo.monitor.AlertEventPageResult;
 import com.plagod.vo.monitor.AlertEventVO;
 import com.plagod.entity.monitor.AlertEvent;
+import com.plagod.exception.ApiStatusException;
 import com.plagod.mapper.AlertEventMapper;
+import com.plagod.security.MonitorTenantScope;
+import com.plagod.security.TrustedRequestContext;
 import com.plagod.service.AlertEventService;
 import com.plagod.support.PageBounds;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
@@ -23,9 +28,14 @@ public class AlertEventServiceImpl implements AlertEventService {
     @Autowired
     private AlertEventMapper alertEventMapper;
 
+    @Autowired
+    private MonitorTenantScope tenantScope;
+
     @Override
-    public AlertEventPageResult pageAlerts(long current, long size, Integer level, Integer status, String mac,
+    public AlertEventPageResult pageAlerts(TrustedRequestContext context,
+                                           long current, long size, Integer level, Integer status, String mac,
                                            LocalDateTime startTime, LocalDateTime endTime) {
+        Long tenantId = tenantScope.requireTenantId(context);
         PageBounds pageBounds = PageBounds.of(
                 current <= 0L
                         ? null
@@ -35,6 +45,7 @@ public class AlertEventServiceImpl implements AlertEventService {
                         : (int) Math.min(size, Integer.MAX_VALUE));
 
         QueryWrapper<AlertEvent> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("tenant_id", tenantId);
         if (level != null) {
             queryWrapper.eq("level", level);
         }
@@ -73,10 +84,13 @@ public class AlertEventServiceImpl implements AlertEventService {
     }
 
     @Override
-    public AlertEventVO getAlert(Long id) {
-        AlertEvent entity = alertEventMapper.selectById(id);
+    public AlertEventVO getAlert(TrustedRequestContext context, Long id) {
+        Long tenantId = tenantScope.requireTenantId(context);
+        AlertEvent entity = alertEventMapper.selectByIdAndTenant(
+                tenantId,
+                id);
         if (entity == null) {
-            throw new IllegalArgumentException("告警事件不存在");
+            throw ApiStatusException.notFound("告警事件不存在");
         }
         return toVO(entity);
     }
@@ -84,20 +98,52 @@ public class AlertEventServiceImpl implements AlertEventService {
     @Override
     @Audited(
             action = "alert.handle",
-            scope = Audited.Scope.TENANT,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
-    public void handle(Long id, Long handleUserId) {
-        AlertEvent entity = alertEventMapper.selectById(id);
+            targetType = "ALERT_EVENT",
+            scope = Audited.Scope.CONTEXT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST,
+            recordDenied = true,
+            recordFailed = true)
+    @Transactional(rollbackFor = Exception.class)
+    public void handle(TrustedRequestContext context,
+                       @AuditTargetId Long id) {
+        Long tenantId = tenantScope.requireTenantId(context);
+        AlertEvent entity = alertEventMapper.selectByIdAndTenantForUpdate(
+                tenantId,
+                id);
         if (entity == null) {
-            throw new IllegalArgumentException("告警事件不存在");
+            throw ApiStatusException.notFound("告警事件不存在");
         }
-        if (entity.getStatus() != null && entity.getStatus() == 1) {
-            throw new IllegalArgumentException("告警事件已处理");
+        requirePendingState(entity);
+        Integer expectedVersion = entity.getVersion();
+        if (expectedVersion == null || expectedVersion < 0) {
+            throw ApiStatusException.conflict("告警事件版本无效");
         }
-        entity.setStatus(1);
-        entity.setHandleUserId(handleUserId);
-        entity.setHandleTime(LocalDateTime.now());
-        alertEventMapper.updateById(entity);
+
+        int affected = alertEventMapper.handleByTenantAndVersion(
+                tenantId,
+                id,
+                context.getUserId(),
+                LocalDateTime.now(),
+                expectedVersion);
+        if (affected != 1) {
+            AlertEvent current = alertEventMapper.selectByIdAndTenant(
+                    tenantId,
+                    id);
+            if (current == null) {
+                throw ApiStatusException.notFound("告警事件不存在");
+            }
+            requirePendingState(current);
+            throw ApiStatusException.conflict(
+                    !expectedVersion.equals(current.getVersion())
+                            ? "告警事件版本冲突"
+                            : "告警事件并发更新冲突");
+        }
+    }
+
+    private void requirePendingState(AlertEvent entity) {
+        if (!Integer.valueOf(0).equals(entity.getStatus())) {
+            throw ApiStatusException.conflict("告警事件状态不允许处理");
+        }
     }
 
     private AlertEventVO toVO(AlertEvent entity) {

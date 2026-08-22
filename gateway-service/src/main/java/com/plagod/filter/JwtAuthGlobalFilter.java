@@ -1,6 +1,7 @@
 package com.plagod.filter;
 
 import com.plagod.ratelimit.GatewayRateLimiter;
+import com.plagod.security.TrustedRequestHeaders;
 import com.plagod.service.GatewayIdentityContext;
 import com.plagod.service.GatewayIdentityValidationService;
 import com.plagod.service.GatewayValidationException;
@@ -30,21 +31,8 @@ import java.util.regex.Pattern;
 public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
 
     private static final String BEARER_PREFIX = "Bearer ";
-    private static final String GATEWAY_TOKEN_HEADER = "X-Gateway-Token";
-    private static final String INTERNAL_TOKEN_HEADER = "X-Internal-Token";
     private static final String SEC_WEBSOCKET_PROTOCOL_HEADER = "Sec-WebSocket-Protocol";
     private static final String LOCAL_DEMO_CALLBACK = "/payment/callbacks/local-demo";
-    private static final String CLIENT_IP_HEADER = "X-Client-IP";
-
-    private static final Set<String> TRUST_HEADERS = new HashSet<>(Arrays.asList(
-            "X-User-Id", "X-User-Name", "X-User-Role",
-            "X-Session-Id", "X-Token-Id", "X-Context-Type",
-            "X-Tenant-Id", "X-Tenant-Code", "X-Tenant-Role",
-            "X-Tenant-Context-Version", "X-Member-Context-Version",
-            "X-Context-Version", "X-Platform-Authorities",
-            GATEWAY_TOKEN_HEADER, INTERNAL_TOKEN_HEADER,
-            CLIENT_IP_HEADER
-    ));
 
     private static final Set<String> AUTH_WHITE_PATHS = new HashSet<>(Arrays.asList(
             "/auth/login", "/auth/register", "/auth/codes",
@@ -178,7 +166,8 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
 
     private ServerWebExchange removeUntrustedHeaders(ServerWebExchange exchange) {
         ServerHttpRequest request = exchange.getRequest().mutate()
-                .headers(headers -> TRUST_HEADERS.forEach(headers::remove))
+                .headers(headers -> TrustedRequestHeaders.GATEWAY_STRIPPED_HEADERS
+                        .forEach(headers::remove))
                 .build();
         return exchange.mutate().request(request).build();
     }
@@ -188,45 +177,72 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
 
         ServerHttpRequest request = exchange.getRequest().mutate()
                 .headers(headers -> {
-                    TRUST_HEADERS.forEach(headers::remove);
+                    TrustedRequestHeaders.GATEWAY_STRIPPED_HEADERS
+                            .forEach(headers::remove);
                     // 用户 JWT 已在 Gateway 完成验证，下游只接收受服务凭据保护的身份。
                     headers.remove(HttpHeaders.AUTHORIZATION);
-                    headers.set(GATEWAY_TOKEN_HEADER, gatewayToken);
-                    headers.set(CLIENT_IP_HEADER, clientIp(exchange.getRequest()));
+                    headers.set(TrustedRequestHeaders.GATEWAY_TOKEN, gatewayToken);
+                    headers.set(
+                            TrustedRequestHeaders.CLIENT_IP,
+                            clientIp(exchange.getRequest()));
                     if (alertWebSocket) {
                         // JWT 只在 Gateway 完成验证，下游只接收已选择的子协议标记。
                         headers.set(SEC_WEBSOCKET_PROTOCOL_HEADER, "access_token");
                     }
                     if (identity != null) {
-                        headers.set("X-User-Id", String.valueOf(identity.getUserId()));
-                        headers.set("X-User-Name", identity.getUsername());
-                        headers.set("X-User-Role", String.valueOf(identity.getRole()));
-                        setIfPresent(headers, "X-Session-Id", identity.getSessionId());
-                        setIfPresent(headers, "X-Token-Id", identity.getTokenId());
+                        headers.set(
+                                TrustedRequestHeaders.USER_ID,
+                                String.valueOf(identity.getUserId()));
+                        headers.set(
+                                TrustedRequestHeaders.USER_NAME,
+                                identity.getUsername());
+                        headers.set(
+                                TrustedRequestHeaders.USER_ROLE,
+                                String.valueOf(identity.getRole()));
+                        setIfPresent(
+                                headers,
+                                TrustedRequestHeaders.SESSION_ID,
+                                identity.getSessionId());
+                        setIfPresent(
+                                headers,
+                                TrustedRequestHeaders.TOKEN_ID,
+                                identity.getTokenId());
                         TenantContextVO context = identity.getTenantContext();
                         if (context != null) {
-                            setIfPresent(headers, "X-Context-Type", context.getContextType());
-                            setIfPresent(headers, "X-Tenant-Id", context.getTenantId());
-                            setIfPresent(headers, "X-Tenant-Code", context.getTenantCode());
-                            setIfPresent(headers, "X-Tenant-Role", context.getTenantRole());
                             setIfPresent(
                                     headers,
-                                    "X-Tenant-Context-Version",
+                                    TrustedRequestHeaders.CONTEXT_TYPE,
+                                    context.getContextType());
+                            setIfPresent(
+                                    headers,
+                                    TrustedRequestHeaders.TENANT_ID,
+                                    context.getTenantId());
+                            setIfPresent(
+                                    headers,
+                                    TrustedRequestHeaders.TENANT_CODE,
+                                    context.getTenantCode());
+                            setIfPresent(
+                                    headers,
+                                    TrustedRequestHeaders.TENANT_ROLE,
+                                    context.getTenantRole());
+                            setIfPresent(
+                                    headers,
+                                    TrustedRequestHeaders.TENANT_CONTEXT_VERSION,
                                     context.getContextVersion() == null
                                             ? null : String.valueOf(context.getContextVersion()));
                             setIfPresent(
                                     headers,
-                                    "X-Context-Version",
+                                    TrustedRequestHeaders.LEGACY_CONTEXT_VERSION,
                                     context.getContextVersion() == null
                                             ? null : String.valueOf(context.getContextVersion()));
                             setIfPresent(
                                     headers,
-                                    "X-Member-Context-Version",
+                                    TrustedRequestHeaders.MEMBER_CONTEXT_VERSION,
                                     context.getMemberContextVersion() == null
                                             ? null : String.valueOf(context.getMemberContextVersion()));
                             if (context.getAuthorities() != null && !context.getAuthorities().isEmpty()) {
                                 headers.set(
-                                        "X-Platform-Authorities",
+                                        TrustedRequestHeaders.PLATFORM_AUTHORITIES,
                                         String.join(",", context.getAuthorities()));
                             }
                         }

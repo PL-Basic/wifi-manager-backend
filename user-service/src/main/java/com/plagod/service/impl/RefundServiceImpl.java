@@ -1,5 +1,10 @@
 package com.plagod.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
+import com.plagod.audit.AuditDetail;
+import com.plagod.audit.AuditTargetId;
+import com.plagod.audit.AuditTenantId;
 import com.plagod.audit.Audited;
 import com.plagod.constant.EntitlementTradeConstants;
 import com.plagod.dto.entitlement.RefundApplyRequest;
@@ -10,6 +15,7 @@ import com.plagod.entity.user.User;
 import com.plagod.exception.ApiStatusException;
 import com.plagod.mapper.*;
 import com.plagod.service.RefundService;
+import com.plagod.transition.ConditionalStateTransition;
 import com.plagod.vo.entitlement.RefundVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -19,6 +25,7 @@ import org.springframework.util.StringUtils;
 import java.math.BigInteger;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -49,10 +56,17 @@ public class RefundServiceImpl implements RefundService {
     @Override
     @Audited(
             action = "refund.apply",
+            targetType = "REFUND",
+            target = "new",
             scope = Audited.Scope.TENANT,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
+            tenantIdSource = Audited.TenantIdSource.ARGUMENT,
+            recordDenied = true,
+            recordFailed = true)
     @Transactional(rollbackFor = Exception.class)
-    public RefundVO apply(Long tenantId, Long userId, RefundApplyRequest request) {
+    public RefundVO apply(
+            @AuditTenantId Long tenantId,
+            @AuditDetail("userId") Long userId,
+            RefundApplyRequest request) {
 
         if (tenantId == null || tenantId <= 0) {
             throw new IllegalArgumentException("租户身份无效");
@@ -88,9 +102,13 @@ public class RefundServiceImpl implements RefundService {
         }
 
         // 固定锁顺序：订单 -> 支付 -> 退款 -> 用户 -> 权益 -> 购买批次。
-        EntitlementOrder order = orderMapper.selectByOrderNoForUpdate(orderNo);
+        EntitlementOrder order =
+                orderMapper.selectOwnedOrderForUpdate(
+                        tenantId,
+                        orderNo,
+                        userId);
 
-        if (order == null || !tenantId.equals(order.getTenantId()) || !userId.equals(order.getUserId())) {
+        if (order == null) {
             throw ApiStatusException.notFound("退款关联订单不存在");
         }
 
@@ -243,10 +261,18 @@ public class RefundServiceImpl implements RefundService {
     @Override
     @Audited(
             action = "refund.review",
+            targetType = "REFUND",
             scope = Audited.Scope.TENANT,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
+            tenantIdSource = Audited.TenantIdSource.ARGUMENT,
+            recordDenied = true,
+            recordFailed = true)
     @Transactional(rollbackFor = Exception.class)
-    public RefundVO review(Long tenantId, String rawRefundNo, Long reviewerId, String reviewerName, RefundReviewRequest request) {
+    public RefundVO review(
+            @AuditTenantId Long tenantId,
+            @AuditTargetId String rawRefundNo,
+            @AuditDetail("reviewerId") Long reviewerId,
+            String reviewerName,
+            RefundReviewRequest request) {
 
         if (tenantId == null || tenantId <= 0) {
             throw new IllegalArgumentException("租户身份无效");
@@ -274,13 +300,18 @@ public class RefundServiceImpl implements RefundService {
             throw new IllegalArgumentException("拒绝退款必须填写原因");
         }
 
-        RefundRecord hint = refundMapper.selectByRefundNo(refundNo);
-        if (hint == null || !tenantId.equals(hint.getTenantId())) {
+        RefundRecord hint = refundMapper.selectByTenantAndRefundNo(
+                tenantId,
+                refundNo);
+        if (hint == null) {
             throw ApiStatusException.notFound("退款单不存在");
         }
 
         // 固定锁顺序：订单 -> 支付 -> 退款 -> 用户 -> 权益 -> 购买批次。
-        EntitlementOrder order = orderMapper.selectByOrderNoForUpdate(hint.getOrderNo());
+        EntitlementOrder order =
+                orderMapper.selectByTenantAndOrderNoForUpdate(
+                        tenantId,
+                        hint.getOrderNo());
 
         if (order == null) {
             throw new IllegalStateException("退款关联订单不存在");
@@ -292,7 +323,10 @@ public class RefundServiceImpl implements RefundService {
             throw new IllegalStateException("退款关联支付记录不存在");
         }
 
-        RefundRecord refund = refundMapper.selectByRefundNoForUpdate(refundNo);
+        RefundRecord refund =
+                refundMapper.selectByTenantAndRefundNoForUpdate(
+                        tenantId,
+                        refundNo);
 
         if (refund == null) {
             throw new IllegalArgumentException("退款单不存在");
@@ -316,8 +350,12 @@ public class RefundServiceImpl implements RefundService {
     @Override
     @Audited(
             action = "refund.channel.result",
+            targetType = "REFUND",
+            target = "channel-result",
             scope = Audited.Scope.TENANT,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
+            tenantIdSource = Audited.TenantIdSource.REQUEST,
+            recordDenied = true,
+            recordFailed = true)
     @Transactional(rollbackFor = Exception.class)
     public RefundVO handleChannelResult(VerifiedRefundResult result) {
 
@@ -483,7 +521,9 @@ public class RefundServiceImpl implements RefundService {
         log.setOperatorId(operatorId);
         log.setRemark(remark);
         log.setCreateTime(now);
-        statusLogMapper.insertIgnore(log);
+        if (statusLogMapper.insertIgnore(log) != 1) {
+            throw ApiStatusException.conflict("交易状态事件已存在");
+        }
     }
 
     private void validateDuplicate(RefundRecord refund, String orderNo, String reason) {
@@ -534,6 +574,104 @@ public class RefundServiceImpl implements RefundService {
         return value;
     }
 
+    private void persistRefundTransition(
+            RefundRecord refund,
+            String fromStatus,
+            int expectedVersion,
+            String eventKey) {
+        if (refund.getRefundId() == null
+                || refund.getTenantId() == null
+                || !StringUtils.hasText(refund.getRefundNo())) {
+            throw new IllegalStateException("退款状态转换缺少持久化标识");
+        }
+
+        ConditionalStateTransition<String> transition =
+                ConditionalStateTransition.of(
+                        Collections.singleton(fromStatus),
+                        refund.getStatus(),
+                        expectedVersion,
+                        eventKey);
+        transition.requireLegalEdge(
+                RefundServiceImpl::isLegalRefundTransition);
+
+        UpdateWrapper<RefundRecord> update = new UpdateWrapper<>();
+        update.eq("refund_id", refund.getRefundId())
+                .eq("tenant_id", refund.getTenantId())
+                .eq("status", fromStatus)
+                .eq("version", expectedVersion);
+
+        int affectedRows = refundMapper.update(refund, update);
+        if (affectedRows == 1) {
+            return;
+        }
+
+        RefundRecord current =
+                refundMapper.selectByTenantAndRefundNoForUpdate(
+                        refund.getTenantId(),
+                        refund.getRefundNo());
+        ConditionalStateTransition.Outcome outcome =
+                transition.classify(
+                        affectedRows,
+                        hasStatusEvent(
+                                refund.getTenantId(),
+                                refund.getRefundNo(),
+                                eventKey,
+                                refund.getStatus()),
+                        current != null,
+                        current == null ? null : current.getStatus(),
+                        current == null || current.getVersion() == null
+                                ? -1
+                                : current.getVersion());
+
+        if (outcome == ConditionalStateTransition.Outcome.REPLAYED) {
+            throw ApiStatusException.conflict("退款状态事件已处理");
+        }
+        if (outcome == ConditionalStateTransition.Outcome.RESOURCE_NOT_FOUND) {
+            throw ApiStatusException.notFound("退款单不存在");
+        }
+        if (outcome == ConditionalStateTransition.Outcome.ILLEGAL_STATE) {
+            throw ApiStatusException.conflict("当前退款状态不允许该转换");
+        }
+        throw ApiStatusException.conflict("退款状态版本冲突");
+    }
+
+    private boolean hasStatusEvent(
+            Long tenantId,
+            String refundNo,
+            String eventKey,
+            String toStatus) {
+        QueryWrapper<TradeStatusLog> query = new QueryWrapper<>();
+        query.eq("tenant_id", tenantId)
+                .eq("business_type",
+                        EntitlementTradeConstants.BUSINESS_REFUND)
+                .eq("business_no", refundNo)
+                .eq("event_key", eventKey)
+                .eq("to_status", toStatus);
+        Long count = statusLogMapper.selectCount(query);
+        return count != null && count > 0;
+    }
+
+    private static boolean isLegalRefundTransition(
+            String fromStatus,
+            String toStatus) {
+        if (EntitlementTradeConstants.REFUND_REQUESTED.equals(fromStatus)) {
+            return EntitlementTradeConstants.REFUND_PROCESSING.equals(toStatus)
+                    || EntitlementTradeConstants.REFUND_REJECTED.equals(toStatus);
+        }
+        if (EntitlementTradeConstants.REFUND_PROCESSING.equals(fromStatus)) {
+            return EntitlementTradeConstants.REFUND_SUCCEEDED.equals(toStatus)
+                    || EntitlementTradeConstants.REFUND_FAILED.equals(toStatus);
+        }
+        return false;
+    }
+
+    private int requireVersion(Integer version) {
+        if (version == null || version < 0) {
+            throw new IllegalStateException("退款状态版本无效");
+        }
+        return version;
+    }
+
     private int nextVersion(Integer version) {
         return version == null ? 1 : Math.addExact(version, 1);
     }
@@ -582,20 +720,24 @@ public class RefundServiceImpl implements RefundService {
 
         LocalDateTime now = LocalDateTime.now();
         String previousStatus = refund.getStatus();
+        int expectedVersion = requireVersion(refund.getVersion());
+        String eventKey = "REVIEW:APPROVE";
 
         refund.setStatus(EntitlementTradeConstants.REFUND_PROCESSING);
         refund.setReviewerId(reviewerId);
         refund.setReviewerName(reviewerName);
         refund.setReviewComment(comment);
         refund.setReviewTime(now);
-        refund.setVersion(nextVersion(refund.getVersion()));
+        refund.setVersion(nextVersion(expectedVersion));
         refund.setUpdateTime(now);
 
-        if (refundMapper.updateById(refund) != 1) {
-            throw new IllegalStateException("退款审核状态更新失败");
-        }
+        persistRefundTransition(
+                refund,
+                previousStatus,
+                expectedVersion,
+                eventKey);
 
-        appendStatusLog(refund.getTenantId(), EntitlementTradeConstants.BUSINESS_REFUND, refund.getRefundNo(), "REVIEW:APPROVE", previousStatus, EntitlementTradeConstants.REFUND_PROCESSING, EntitlementTradeConstants.OPERATOR_ADMIN, reviewerId, "管理员批准退款，等待渠道结果", now);
+        appendStatusLog(refund.getTenantId(), EntitlementTradeConstants.BUSINESS_REFUND, refund.getRefundNo(), eventKey, previousStatus, EntitlementTradeConstants.REFUND_PROCESSING, EntitlementTradeConstants.OPERATOR_ADMIN, reviewerId, "管理员批准退款，等待渠道结果", now);
 
         return toVO(refund);
     }
@@ -613,6 +755,8 @@ public class RefundServiceImpl implements RefundService {
         LocalDateTime now = LocalDateTime.now();
         String previousRefundStatus = refund.getStatus();
         String previousOrderStatus = order.getStatus();
+        int expectedRefundVersion = requireVersion(refund.getVersion());
+        String refundEventKey = "REVIEW:REJECT";
 
         releaseFrozenEntitlement(refund, entitlement, purchase, now);
 
@@ -632,14 +776,16 @@ public class RefundServiceImpl implements RefundService {
         refund.setReviewComment(comment);
         refund.setReviewTime(now);
         refund.setCompleteTime(now);
-        refund.setVersion(nextVersion(refund.getVersion()));
+        refund.setVersion(nextVersion(expectedRefundVersion));
         refund.setUpdateTime(now);
 
-        if (refundMapper.updateById(refund) != 1) {
-            throw new IllegalStateException("退款拒绝状态更新失败");
-        }
+        persistRefundTransition(
+                refund,
+                previousRefundStatus,
+                expectedRefundVersion,
+                refundEventKey);
 
-        appendStatusLog(refund.getTenantId(), EntitlementTradeConstants.BUSINESS_REFUND, refund.getRefundNo(), "REVIEW:REJECT", previousRefundStatus, EntitlementTradeConstants.REFUND_REJECTED, EntitlementTradeConstants.OPERATOR_ADMIN, reviewerId, "管理员拒绝退款：" + comment, now);
+        appendStatusLog(refund.getTenantId(), EntitlementTradeConstants.BUSINESS_REFUND, refund.getRefundNo(), refundEventKey, previousRefundStatus, EntitlementTradeConstants.REFUND_REJECTED, EntitlementTradeConstants.OPERATOR_ADMIN, reviewerId, "管理员拒绝退款：" + comment, now);
 
         appendStatusLog(order.getTenantId(), EntitlementTradeConstants.BUSINESS_ORDER, order.getOrderNo(), "REFUND_REJECT:" + refund.getRefundNo(), previousOrderStatus, restoredOrderStatus, EntitlementTradeConstants.OPERATOR_ADMIN, reviewerId, "退款被拒绝，恢复订单状态", now);
 
@@ -765,6 +911,8 @@ public class RefundServiceImpl implements RefundService {
         String oldRefundStatus = refund.getStatus();
         String oldPaymentStatus = payment.getStatus();
         String oldOrderStatus = order.getStatus();
+        int expectedRefundVersion = requireVersion(refund.getVersion());
+        String refundEventKey = "CHANNEL:" + result.getEventId();
 
         purchase.setRemainingSeconds(0L);
         purchase.setRefundedAmountCents(purchaseRefunded);
@@ -803,14 +951,16 @@ public class RefundServiceImpl implements RefundService {
         refund.setRefundAmountCents(amount);
         refund.setFailureMessage(null);
         refund.setCompleteTime(now);
-        refund.setVersion(nextVersion(refund.getVersion()));
+        refund.setVersion(nextVersion(expectedRefundVersion));
         refund.setUpdateTime(now);
 
-        if (refundMapper.updateById(refund) != 1) {
-            throw new IllegalStateException("退款成功状态更新失败");
-        }
+        persistRefundTransition(
+                refund,
+                oldRefundStatus,
+                expectedRefundVersion,
+                refundEventKey);
 
-        appendStatusLog(refund.getTenantId(), EntitlementTradeConstants.BUSINESS_REFUND, refund.getRefundNo(), "CHANNEL:" + result.getEventId(), oldRefundStatus, EntitlementTradeConstants.REFUND_SUCCEEDED, EntitlementTradeConstants.OPERATOR_CHANNEL, null, "渠道退款成功", now);
+        appendStatusLog(refund.getTenantId(), EntitlementTradeConstants.BUSINESS_REFUND, refund.getRefundNo(), refundEventKey, oldRefundStatus, EntitlementTradeConstants.REFUND_SUCCEEDED, EntitlementTradeConstants.OPERATOR_CHANNEL, null, "渠道退款成功", now);
         appendStatusLog(payment.getTenantId(), EntitlementTradeConstants.BUSINESS_PAYMENT, payment.getPaymentNo(), "REFUND:" + refund.getRefundNo(), oldPaymentStatus, paymentStatus, EntitlementTradeConstants.OPERATOR_CHANNEL, null, "累计退款金额更新", now);
         appendStatusLog(order.getTenantId(), EntitlementTradeConstants.BUSINESS_ORDER, order.getOrderNo(), "REFUND_SUCCESS:" + refund.getRefundNo(), oldOrderStatus, orderStatus, EntitlementTradeConstants.OPERATOR_CHANNEL, null, "退款成功，更新订单状态", now);
     }
@@ -819,6 +969,8 @@ public class RefundServiceImpl implements RefundService {
 
         String oldRefundStatus = refund.getStatus();
         String oldOrderStatus = order.getStatus();
+        int expectedRefundVersion = requireVersion(refund.getVersion());
+        String refundEventKey = "CHANNEL:" + result.getEventId();
 
         releaseFrozenEntitlement(refund, entitlement, purchase, now);
 
@@ -836,14 +988,16 @@ public class RefundServiceImpl implements RefundService {
         refund.setStatus(EntitlementTradeConstants.REFUND_FAILED);
         refund.setFailureMessage(StringUtils.hasText(result.getFailureMessage()) ? result.getFailureMessage() : "渠道退款失败");
         refund.setCompleteTime(now);
-        refund.setVersion(nextVersion(refund.getVersion()));
+        refund.setVersion(nextVersion(expectedRefundVersion));
         refund.setUpdateTime(now);
 
-        if (refundMapper.updateById(refund) != 1) {
-            throw new IllegalStateException("退款失败状态更新失败");
-        }
+        persistRefundTransition(
+                refund,
+                oldRefundStatus,
+                expectedRefundVersion,
+                refundEventKey);
 
-        appendStatusLog(refund.getTenantId(), EntitlementTradeConstants.BUSINESS_REFUND, refund.getRefundNo(), "CHANNEL:" + result.getEventId(), oldRefundStatus, EntitlementTradeConstants.REFUND_FAILED, EntitlementTradeConstants.OPERATOR_CHANNEL, null, "渠道退款失败，已恢复冻结时长", now);
+        appendStatusLog(refund.getTenantId(), EntitlementTradeConstants.BUSINESS_REFUND, refund.getRefundNo(), refundEventKey, oldRefundStatus, EntitlementTradeConstants.REFUND_FAILED, EntitlementTradeConstants.OPERATOR_CHANNEL, null, "渠道退款失败，已恢复冻结时长", now);
         appendStatusLog(order.getTenantId(), EntitlementTradeConstants.BUSINESS_ORDER, order.getOrderNo(), "REFUND_FAILED:" + refund.getRefundNo(), oldOrderStatus, orderStatus, EntitlementTradeConstants.OPERATOR_CHANNEL, null, "渠道退款失败，恢复订单状态", now);
     }
 

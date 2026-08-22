@@ -19,6 +19,36 @@ public interface SessionRecordMapper extends BaseMapper<SessionRecord> {
     SessionRecord selectByIdForUpdate(@Param("tenantId") Long tenantId,
                                       @Param("sessionId") Long sessionId);
 
+    @Select("select * from t_session "
+            + "where tenant_id = #{tenantId} "
+            + "and user_id = #{userId} "
+            + "and client_request_id = #{clientRequestId} "
+            + "limit 1 for update")
+    SessionRecord selectByAuthorizeRequestForUpdate(
+            @Param("tenantId") Long tenantId,
+            @Param("userId") Long userId,
+            @Param("clientRequestId") String clientRequestId);
+
+    @Select("select * from t_session "
+            + "where tenant_id = #{tenantId} "
+            + "and user_id = #{userId} "
+            + "and client_request_id = #{clientRequestId} "
+            + "limit 1")
+    SessionRecord selectByAuthorizeRequest(
+            @Param("tenantId") Long tenantId,
+            @Param("userId") Long userId,
+            @Param("clientRequestId") String clientRequestId);
+
+    @Select("select * from t_session "
+            + "where tenant_id = #{tenantId} "
+            + "and user_id = #{userId} "
+            + "and session_id = #{sessionId} "
+            + "limit 1")
+    SessionRecord selectOwnedById(
+            @Param("tenantId") Long tenantId,
+            @Param("userId") Long userId,
+            @Param("sessionId") Long sessionId);
+
     // WAITING_REPLACEMENT 也占用连接名额。
     @Select("select count(*) from t_session where tenant_id = #{tenantId} and user_id = #{userId} and status in (1, 2, 3) and mac <> #{excludedMac}")
     long countAllocatedSessionsExcludingMac(@Param("tenantId") Long tenantId,

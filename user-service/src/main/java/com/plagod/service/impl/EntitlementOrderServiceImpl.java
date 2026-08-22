@@ -239,9 +239,13 @@ public class EntitlementOrderServiceImpl implements EntitlementOrderService {
         String normalizedOrderNo = normalizeOrderNo(orderNo);
 
         // 固定锁顺序：订单 -> 支付。
-        EntitlementOrder order = orderMapper.selectByOrderNoForUpdate(normalizedOrderNo);
+        EntitlementOrder order =
+                orderMapper.selectOwnedOrderForUpdate(
+                        tenantId,
+                        normalizedOrderNo,
+                        userId);
 
-        if (order == null || !tenantId.equals(order.getTenantId()) || !userId.equals(order.getUserId())) {
+        if (order == null) {
             throw ApiStatusException.notFound("订单不存在");
         }
 

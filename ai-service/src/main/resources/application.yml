@@ -1,0 +1,39 @@
+server:
+  port: 8388
+
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: ${MYSQL_URL:jdbc:mysql://localhost:3306/wifi?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&useSSL=false}
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD:}
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+
+wifi:
+  internal:
+    token: ${WIFI_INTERNAL_TOKEN:local-internal-token-change-me}
+  security:
+    enabled: true
+    gateway-token: ${WIFI_GATEWAY_TOKEN:local-gateway-token-change-me}
+    internal-token: ${WIFI_INTERNAL_TOKEN:local-internal-token-change-me}
+    internal-token-required: true
+    internal-path-prefixes:
+      - /internal/
+  ai:
+    task:
+      batch-size: ${WIFI_AI_TASK_BATCH_SIZE:50}
+      scan-interval-ms: ${WIFI_AI_TASK_SCAN_INTERVAL_MS:1000}
+      scan-initial-delay-ms: ${WIFI_AI_TASK_SCAN_INITIAL_DELAY_MS:1000}
+    provider:
+      selected: ${WIFI_AI_PROVIDER_SELECTED:}
+      http:
+        enabled: ${WIFI_AI_HTTP_PROVIDER_ENABLED:false}
+        provider-code: ${WIFI_AI_HTTP_PROVIDER_CODE:http}
+        endpoint: ${WIFI_AI_HTTP_PROVIDER_ENDPOINT:}
+        model: ${WIFI_AI_HTTP_PROVIDER_MODEL:}
+        api-key: ${WIFI_AI_HTTP_PROVIDER_API_KEY:}
+        no-training-supported: ${WIFI_AI_HTTP_NO_TRAINING_SUPPORTED:false}
+        retention-mode: ${WIFI_AI_HTTP_RETENTION_MODE:UNKNOWN}

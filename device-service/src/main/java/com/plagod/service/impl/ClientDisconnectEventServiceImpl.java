@@ -11,7 +11,11 @@ import com.plagod.service.SessionLeaseService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
@@ -35,9 +39,13 @@ public class ClientDisconnectEventServiceImpl implements ClientDisconnectEventSe
 
     @Autowired
     private SessionLeaseService sessionLeaseService;
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(
+            propagation = Propagation.NOT_SUPPORTED,
+            rollbackFor = Exception.class)
     public void handleClientDisconnectEvent(ClientDisconnectEvent event) {
         if (event == null) {
             throw new IllegalArgumentException("客户端断线事件不能为空");
@@ -72,43 +80,84 @@ public class ClientDisconnectEventServiceImpl implements ClientDisconnectEventSe
             throw new IllegalArgumentException("携带有效 sessionId 的断线客户端不是 AUTHORIZED 状态");
         }
 
-        // 串行化断线、定时续租、主动退出和管理员撤销。
-        SessionRecord session = sessionRecordMapper.selectByIdForUpdate(
-                topicNode.getTenantId(), sessionId);
+        TransactionTemplate transaction =
+                new TransactionTemplate(transactionManager);
+        transaction.setPropagationBehavior(
+                TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        DisconnectPlan plan = transaction.execute(status ->
+                prepareDisconnect(
+                        topicNode.getTenantId(),
+                        sessionId,
+                        deviceCode,
+                        mac));
+        if (plan == null) {
+            return;
+        }
 
+        // 准备事务已释放 Session 行锁，最终结算的 User 调用位于事务外。
+        if (plan.requiresFinalSettlement) {
+            sessionLeaseService.settleFinalUsage(sessionId);
+        }
+
+        transaction.executeWithoutResult(status ->
+                completeDisconnect(
+                        topicNode.getTenantId(),
+                        sessionId,
+                        deviceCode,
+                        mac));
+
+        // 客户端已经物理断线，因此这里不能再创建 REVOKE_ACCESS 命令。
+        log.info("客户端断线 Session 已关闭，deviceCode={}, sessionId={}", deviceCode, sessionId);
+    }
+
+    private DisconnectPlan prepareDisconnect(
+            Long tenantId,
+            Long sessionId,
+            String deviceCode,
+            String mac) {
+        SessionRecord session =
+                sessionRecordMapper.selectByIdForUpdate(
+                        tenantId, sessionId);
         // 未知 Session 只忽略，绝不根据固件数据反向创建。
         if (session == null) {
-            log.warn("忽略未知 Session 的客户端断线事件，sessionId={}", sessionId);
-            return;
+            log.warn(
+                    "忽略未知 Session 的客户端断线事件，sessionId={}",
+                    sessionId);
+            return null;
         }
-
         // QoS 1 可能重复投递，已关闭 Session 不重复结算。
         if (!SessionStatus.isOpen(session.getStatus())) {
-            log.info("忽略已关闭 Session 的重复断线事件，sessionId={}", sessionId);
+            log.info(
+                    "忽略已关闭 Session 的重复断线事件，sessionId={}",
+                    sessionId);
+            return null;
+        }
+        validateRelationship(session, deviceCode, mac);
+        return new DisconnectPlan(
+                SessionStatus.isActive(session.getStatus()));
+    }
+
+    private void completeDisconnect(
+            Long tenantId,
+            Long sessionId,
+            String deviceCode,
+            String mac) {
+        SessionRecord session =
+                sessionRecordMapper.selectByIdForUpdate(
+                        tenantId, sessionId);
+        if (session == null || !SessionStatus.isOpen(session.getStatus())) {
             return;
         }
-
         validateRelationship(session, deviceCode, mac);
-
         LocalDateTime now = LocalDateTime.now();
-
-        // PENDING 尚未得到固件成功确认，不产生计费；
-        // ACTIVE 使用后端最后观测到的 RSSI 时间进行最终结算。
-        if (SessionStatus.isActive(session.getStatus())) {
-            sessionLeaseService.settleFinalUsage(session, now);
-        }
-
         session.setStatus(SessionStatus.CLOSED);
         session.setExpireTime(now);
         session.setLogoutTime(now);
         session.setEndReason(END_REASON);
-
         if (sessionRecordMapper.updateById(session) != 1) {
-            throw new IllegalStateException("客户端断线后的 Session 保存失败");
+            throw new IllegalStateException(
+                    "客户端断线后的 Session 保存失败");
         }
-
-        // 客户端已经物理断线，因此这里不能再创建 REVOKE_ACCESS 命令。
-        log.info("客户端断线 Session 已关闭，deviceCode={}, sessionId={}", deviceCode, sessionId);
     }
 
     private void validateRelationship(SessionRecord session, String deviceCode, String eventMac) {
@@ -166,5 +215,13 @@ public class ClientDisconnectEventServiceImpl implements ClientDisconnectEventSe
             throw new IllegalArgumentException("客户端状态长度超过限制");
         }
         return normalized;
+    }
+
+    private static final class DisconnectPlan {
+        private final boolean requiresFinalSettlement;
+
+        private DisconnectPlan(boolean requiresFinalSettlement) {
+            this.requiresFinalSettlement = requiresFinalSettlement;
+        }
     }
 }

@@ -2,6 +2,7 @@ package com.plagod.client;
 
 import com.plagod.configuration.InternalWebClientConfiguration;
 import com.plagod.request.RequestId;
+import com.plagod.security.TrustedRequestHeaders;
 import com.plagod.service.GatewayValidationException;
 import com.plagod.vo.auth.SessionValidationVO;
 import org.junit.jupiter.api.Test;
@@ -76,12 +77,15 @@ class AuthSessionWebClientTest {
     }
 
     @Test
-    void propagatesGatewayRequestIdToAuthValidation() {
+    void propagatesGatewayRequestIdAndServiceTokenToAuthValidation() {
         String requestId = "request_01JABCDEF1234";
         AtomicReference<String> forwarded = new AtomicReference<>();
+        AtomicReference<String> forwardedToken = new AtomicReference<>();
         ExchangeFunction exchange = request -> {
             forwarded.set(request.headers().getFirst(
                     RequestId.HEADER_NAME));
+            forwardedToken.set(request.headers().getFirst(
+                    TrustedRequestHeaders.INTERNAL_TOKEN));
             return Mono.just(successResponse());
         };
         AuthSessionWebClient client = client(exchange);
@@ -93,6 +97,7 @@ class AuthSessionWebClientTest {
                 .block();
 
         assertEquals(requestId, forwarded.get());
+        assertEquals(INTERNAL_TOKEN, forwardedToken.get());
     }
 
     private AuthSessionWebClient client(ExchangeFunction exchange) {

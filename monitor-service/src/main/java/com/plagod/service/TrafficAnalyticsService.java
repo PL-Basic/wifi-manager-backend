@@ -5,9 +5,7 @@ import com.plagod.dto.ApiResponse;
 import com.plagod.vo.device.TrafficAnalyticsSourceVO;
 import feign.FeignException;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 
@@ -17,19 +15,21 @@ public class TrafficAnalyticsService {
     @Autowired
     private DeviceTrafficAnalyticsClient deviceTrafficAnalyticsClient;
 
-    @Value("${wifi.internal.token:}")
-    private String internalToken;
-
     public TrafficAnalyticsSourceVO query(Long userId, String mac, Long sessionId, Long nodeId, String deviceCode, LocalDateTime startTime, LocalDateTime endTime, Integer bucketMinutes, Integer topLimit) {
-
-        if (!StringUtils.hasText(internalToken)) {
-            throw new IllegalStateException("设备流量数据源当前不可用");
-        }
 
         ApiResponse<TrafficAnalyticsSourceVO> response;
 
         try {
-            response = deviceTrafficAnalyticsClient.queryTraffic(userId, mac, sessionId, nodeId, deviceCode, startTime == null ? null : startTime.toString(), endTime == null ? null : endTime.toString(), bucketMinutes, topLimit, internalToken);
+            response = deviceTrafficAnalyticsClient.queryTraffic(
+                    userId,
+                    mac,
+                    sessionId,
+                    nodeId,
+                    deviceCode,
+                    startTime == null ? null : startTime.toString(),
+                    endTime == null ? null : endTime.toString(),
+                    bucketMinutes,
+                    topLimit);
         } catch (FeignException exception) {
             if (exception.status() == 400) {
                 throw new IllegalArgumentException("流量统计查询参数无效");

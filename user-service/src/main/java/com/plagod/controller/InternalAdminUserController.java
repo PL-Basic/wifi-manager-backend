@@ -5,6 +5,8 @@ import com.plagod.dto.user.UserOperationReviewDTO;
 import com.plagod.dto.user.UserPurgeRequestDTO;
 import com.plagod.dto.user.UserStatusDTO;
 import com.plagod.dto.user.UserUpdateDTO;
+import com.plagod.security.TrustedRequestContext;
+import com.plagod.security.UserRequestContextPolicy;
 import com.plagod.service.UserManageService;
 import com.plagod.service.UserOperationRequestService;
 import com.plagod.vo.user.UserOperationRequestPageResult;
@@ -14,6 +16,7 @@ import com.plagod.vo.user.UserVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+import javax.servlet.http.HttpServletRequest;
 import javax.validation.Valid;
 
 @RestController
@@ -26,29 +29,42 @@ public class InternalAdminUserController {
     @Autowired
     private UserOperationRequestService userOperationRequestService;
 
-    @GetMapping
-    public ApiResponse<UserPageResult> pageUsers(@RequestParam(defaultValue = "1") Integer current,
-                                                 @RequestParam(defaultValue = "10") Integer size,
-                                                 @RequestParam(required = false) String keyword) {
+    @Autowired
+    private UserRequestContextPolicy contextPolicy;
 
+    @GetMapping
+    public ApiResponse<UserPageResult> pageUsers(
+            HttpServletRequest request,
+            @RequestParam(defaultValue = "1") Integer current,
+            @RequestParam(defaultValue = "10") Integer size,
+            @RequestParam(required = false) String keyword) {
+        contextPolicy.requirePlatformActor(request);
         return ApiResponse.success(userManageService.pageUsers(current, size, keyword));
     }
 
     @GetMapping("/stats")
-    public ApiResponse<UserStatsVO> getUserStats() {
+    public ApiResponse<UserStatsVO> getUserStats(
+            HttpServletRequest request) {
+        contextPolicy.requirePlatformActor(request);
         return ApiResponse.success(userManageService.getUserStats());
     }
 
     @GetMapping("/{userId}")
-    public ApiResponse<UserVO> getUser(@PathVariable Long userId) {
+    public ApiResponse<UserVO> getUser(
+            HttpServletRequest request,
+            @PathVariable Long userId) {
+        contextPolicy.requirePlatformActor(request);
         return ApiResponse.success(userManageService.getUser(userId));
     }
 
     @PutMapping("/{userId}")
     public ApiResponse<UserVO> updateUser(@PathVariable Long userId,
-                                          @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
-                                          @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole,
+                                          HttpServletRequest request,
                                           @Valid @RequestBody UserUpdateDTO updateDTO) {
+        TrustedRequestContext context =
+                contextPolicy.requirePlatformActor(request);
+        Long operatorId = context.getUserId();
+        Integer operatorRole = context.getGlobalRole();
 
         if (updateDTO == null) {
             throw new IllegalArgumentException("用户修改参数不能为空");
@@ -67,9 +83,12 @@ public class InternalAdminUserController {
 
     @PutMapping("/{userId}/status")
     public ApiResponse<Void> updateStatus(@PathVariable Long userId,
-                                          @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
-                                          @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole,
+                                          HttpServletRequest request,
                                           @Valid @RequestBody UserStatusDTO statusDTO) {
+        TrustedRequestContext context =
+                contextPolicy.requirePlatformActor(request);
+        Long operatorId = context.getUserId();
+        Integer operatorRole = context.getGlobalRole();
 
         if (isSelf(userId, operatorId) && Integer.valueOf(0).equals(statusDTO.getStatus())) {
 
@@ -88,8 +107,11 @@ public class InternalAdminUserController {
 
     @DeleteMapping("/{userId}")
     public ApiResponse<Void> deleteUser(@PathVariable Long userId,
-                                        @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
-                                        @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole) {
+                                        HttpServletRequest request) {
+        TrustedRequestContext context =
+                contextPolicy.requirePlatformActor(request);
+        Long operatorId = context.getUserId();
+        Integer operatorRole = context.getGlobalRole();
 
         if (isSelf(userId, operatorId)) {
             throw new IllegalArgumentException("不能逻辑删除自己的账号");
@@ -105,8 +127,11 @@ public class InternalAdminUserController {
 
     @DeleteMapping("/{userId}/purge")
     public ApiResponse<Void> purgeUser(@PathVariable Long userId,
-                                       @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
-                                       @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole) {
+                                       HttpServletRequest request) {
+        TrustedRequestContext context =
+                contextPolicy.requirePlatformActor(request);
+        Long operatorId = context.getUserId();
+        Integer operatorRole = context.getGlobalRole();
 
         if (!Integer.valueOf(0).equals(operatorRole)) {
             throw new IllegalArgumentException("只有超级管理员可以直接物理删除");
@@ -123,15 +148,19 @@ public class InternalAdminUserController {
 
     @PostMapping("/{userId}/purge-requests")
     public ApiResponse<Long> requestPurgeUser(@PathVariable Long userId,
-                                              @RequestHeader(value = "X-User-Id", required = false) Long requesterId,
-                                              @RequestHeader(value = "X-User-Name", required = false) String requesterName,
-                                              @RequestHeader(value = "X-User-Role", required = false) Integer requesterRole,
+                                              HttpServletRequest request,
                                               @RequestBody(required = false) UserPurgeRequestDTO purgeRequestDTO) {
+        TrustedRequestContext context =
+                contextPolicy.requirePlatformActor(request);
+        Long requesterId = context.getUserId();
+        Integer requesterRole = context.getGlobalRole();
 
         // 普通管理员可以申请删除普通用户，但不能替其他管理员发起删除申请。
         rejectPeerAdminModification(userId, requesterRole);
 
         String reason = purgeRequestDTO == null ? null : purgeRequestDTO.getReason();
+        String requesterName =
+                userManageService.getUser(requesterId).getUsername();
 
         Long requestId = userOperationRequestService.requestPurge(userId, requesterId, requesterName, reason);
 
@@ -140,19 +169,24 @@ public class InternalAdminUserController {
 
     @GetMapping("/operation-requests")
     public ApiResponse<UserOperationRequestPageResult>
-    pageOperationRequests(@RequestParam(defaultValue = "1") Integer current,
+    pageOperationRequests(HttpServletRequest request,
+                          @RequestParam(defaultValue = "1") Integer current,
                           @RequestParam(defaultValue = "10") Integer size,
                           @RequestParam(required = false) Integer status) {
-
+        contextPolicy.requirePlatformActor(request);
         return ApiResponse.success(userOperationRequestService.pageRequests(current, size, status));
     }
 
     @PutMapping("/operation-requests/{id}/review")
     public ApiResponse<Void> reviewOperationRequest(@PathVariable Long id,
-                                                    @RequestHeader(value = "X-User-Id", required = false) Long approverId,
-                                                    @RequestHeader(value = "X-User-Name", required = false) String approverName,
-                                                    @RequestHeader(value = "X-User-Role", required = false) Integer approverRole,
+                                                    HttpServletRequest request,
                                                     @RequestBody UserOperationReviewDTO dto) {
+        TrustedRequestContext context =
+                contextPolicy.requirePlatformActor(request);
+        Long approverId = context.getUserId();
+        Integer approverRole = context.getGlobalRole();
+        String approverName =
+                userManageService.getUser(approverId).getUsername();
 
         userOperationRequestService.review(id, approverId, approverName, approverRole, dto);
 

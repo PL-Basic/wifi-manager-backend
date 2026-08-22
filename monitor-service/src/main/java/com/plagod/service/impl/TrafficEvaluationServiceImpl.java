@@ -58,7 +58,7 @@ public class TrafficEvaluationServiceImpl implements TrafficEvaluationService {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    /** (mac|ruleCode) -> last trigger epoch millis. 同一 mac 命中同一规则在冷却内不再触发告警/动作。 */
+    /** (tenantId|mac|ruleCode) -> last trigger epoch millis. */
     private final ConcurrentHashMap<String, Long> lastHit = new ConcurrentHashMap<>();
 
     @Override
@@ -82,19 +82,22 @@ public class TrafficEvaluationServiceImpl implements TrafficEvaluationService {
         // 数据库事务回滚时，撤销本次尚未真正生效的内存冷却状态。
         registerCooldownRollback(cooldownReservations);
 
-        for (AccessRule rule : accessRuleCache.getEnabledRules()) {
+        for (AccessRule rule : accessRuleCache.getEnabledRules(
+                request.getTenantId())) {
             if (!matches(rule, request)) {
                 continue;
             }
 
-            String cooldownKey = request.getMac() + "|" + rule.getRuleCode();
+            String cooldownKey = request.getTenantId()
+                    + "|" + request.getMac()
+                    + "|" + rule.getRuleCode();
             Long last = lastHit.get(cooldownKey);
             boolean suppressed = last != null && now - last < cooldownMillis;
 
             RuleHitRecord record = buildRuleHitRecord(request, rule, suppressed);
 
             // 同一设备、事件和规则只能处理一次。
-            if (ruleHitRecordMapper.insertIgnore(record) != 1) {
+            if (ruleHitRecordMapper.insertIgnoreByTenant(record) != 1) {
                 continue;
             }
 
@@ -135,7 +138,11 @@ public class TrafficEvaluationServiceImpl implements TrafficEvaluationService {
             throw new IllegalStateException("规则告警保存失败");
         }
 
-        int bound = ruleHitRecordMapper.bindAlert(request.getDeviceCode(), request.getEventId(), alert.getId());
+        int bound = ruleHitRecordMapper.bindAlertByTenant(
+                request.getTenantId(),
+                request.getDeviceCode(),
+                request.getEventId(),
+                alert.getId());
 
         // 告警和所有可执行命中必须完整关联，否则整体回滚。
         if (bound != actionableHits.size()) {
@@ -166,6 +173,7 @@ public class TrafficEvaluationServiceImpl implements TrafficEvaluationService {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("type", "alert");
         payload.put("alertId", alert.getId());
+        payload.put("tenantId", alert.getTenantId());
         payload.put("level", alert.getLevel());
         payload.put("ruleCode", alert.getRuleCode());
         payload.put("title", alert.getTitle());
@@ -173,7 +181,9 @@ public class TrafficEvaluationServiceImpl implements TrafficEvaluationService {
         payload.put("userId", alert.getUserId());
         payload.put("createTime", alert.getCreateTime());
         payload.put("hits", hits);
-        alertWebSocketHandler.broadcast(payload);
+        alertWebSocketHandler.broadcastToTenant(
+                alert.getTenantId(),
+                payload);
     }
 
     private boolean matches(AccessRule rule, TrafficEvaluationRequest req) {
@@ -218,6 +228,7 @@ public class TrafficEvaluationServiceImpl implements TrafficEvaluationService {
         }
 
         AlertEvent alert = new AlertEvent();
+        alert.setTenantId(req.getTenantId());
         alert.setLevel(worst.getLevel() == null ? 2 : worst.getLevel());
         alert.setRuleCode(worst.getRuleCode());
         alert.setTitle(buildTitle(worst, hits.size()));
@@ -251,6 +262,7 @@ public class TrafficEvaluationServiceImpl implements TrafficEvaluationService {
 
         RuleHitRecord record = new RuleHitRecord();
 
+        record.setTenantId(request.getTenantId());
         record.setEventId(request.getEventId());
         record.setDeviceCode(request.getDeviceCode());
         record.setNodeId(request.getNodeId());
@@ -273,6 +285,10 @@ public class TrafficEvaluationServiceImpl implements TrafficEvaluationService {
 
         if (request == null) {
             throw new IllegalArgumentException("流量评估请求不能为空");
+        }
+
+        if (request.getTenantId() == null || request.getTenantId() <= 0) {
+            throw new IllegalArgumentException("流量评估缺少有效tenantId");
         }
 
         if (request.getEventId() == null || request.getEventId().trim().isEmpty() || request.getEventId().length() > 64) {

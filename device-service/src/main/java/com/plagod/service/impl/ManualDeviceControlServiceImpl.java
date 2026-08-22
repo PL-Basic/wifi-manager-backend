@@ -1,6 +1,8 @@
 package com.plagod.service.impl;
 
 import com.plagod.audit.Audited;
+import com.plagod.audit.AuditTargetId;
+import com.plagod.audit.AuditTenantId;
 import com.plagod.constant.DeviceCommandPurpose;
 import com.plagod.dto.device.ManualBlockTrafficDTO;
 import com.plagod.dto.device.ManualDisconnectMacDTO;
@@ -22,9 +24,16 @@ public class ManualDeviceControlServiceImpl implements ManualDeviceControlServic
     @Override
     @Audited(
             action = "device.manual-disconnect-mac",
+            targetType = "DEVICE",
             scope = Audited.Scope.TENANT,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
-    public DeviceCommandResult disconnectMac(Long tenantId, String deviceCode, ManualDisconnectMacDTO dto, Integer operatorRole) {
+            tenantIdSource = Audited.TenantIdSource.ARGUMENT,
+            recordDenied = true,
+            recordFailed = true)
+    public DeviceCommandResult disconnectMac(
+            @AuditTenantId Long tenantId,
+            @AuditTargetId String deviceCode,
+            ManualDisconnectMacDTO dto,
+            Integer operatorRole) {
 
         validateAdminRole(operatorRole);
 
@@ -38,9 +47,16 @@ public class ManualDeviceControlServiceImpl implements ManualDeviceControlServic
     @Override
     @Audited(
             action = "device.manual-block-traffic",
+            targetType = "DEVICE",
             scope = Audited.Scope.TENANT,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
-    public DeviceCommandResult blockTraffic(Long tenantId, String deviceCode, ManualBlockTrafficDTO dto, Integer operatorRole) {
+            tenantIdSource = Audited.TenantIdSource.ARGUMENT,
+            recordDenied = true,
+            recordFailed = true)
+    public DeviceCommandResult blockTraffic(
+            @AuditTenantId Long tenantId,
+            @AuditTargetId String deviceCode,
+            ManualBlockTrafficDTO dto,
+            Integer operatorRole) {
 
         validateAdminRole(operatorRole);
 

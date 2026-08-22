@@ -3,8 +3,10 @@ package com.plagod.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.plagod.client.UserRoleClient;
+import com.plagod.audit.AuditDetail;
+import com.plagod.audit.AuditTargetId;
 import com.plagod.audit.Audited;
+import com.plagod.client.UserRoleClient;
 import com.plagod.dto.ApiResponse;
 import com.plagod.dto.tenant.DefaultTenantMembershipRequest;
 import com.plagod.dto.tenant.TenantCreateRequest;
@@ -13,13 +15,19 @@ import com.plagod.dto.tenant.TenantUpdateRequest;
 import com.plagod.dto.user.UserRoleBatchRequest;
 import com.plagod.entity.SaasPlan;
 import com.plagod.entity.Tenant;
+import com.plagod.entity.TenantCreationReceipt;
+import com.plagod.entity.TenantDomainOutbox;
 import com.plagod.entity.TenantMember;
 import com.plagod.entity.TenantSubscription;
 import com.plagod.exception.ApiStatusException;
 import com.plagod.mapper.SaasPlanMapper;
+import com.plagod.mapper.TenantCreationReceiptMapper;
+import com.plagod.mapper.TenantDomainOutboxMapper;
 import com.plagod.mapper.TenantMapper;
 import com.plagod.mapper.TenantMemberMapper;
 import com.plagod.mapper.TenantSubscriptionMapper;
+import com.plagod.security.TrustedContextType;
+import com.plagod.security.TrustedRequestContext;
 import com.plagod.service.TenantService;
 import com.plagod.support.PageBounds;
 import com.plagod.support.StableUnits;
@@ -33,9 +41,14 @@ import com.plagod.vo.user.UserRoleSnapshotVO;
 import org.springframework.beans.BeanUtils;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.DateTimeException;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -53,27 +66,47 @@ public class TenantServiceImpl implements TenantService {
 
     private static final String DEFAULT_TENANT_CODE = "default-tenant";
     private static final String ACTIVE = "ACTIVE";
+    private static final String DISABLED = "DISABLED";
+    private static final String TENANT_OWNER = "TENANT_OWNER";
+    private static final String TENANT_ADMIN = "TENANT_ADMIN";
+    private static final String RECEIPT_APPLIED = "APPLIED";
+    private static final String TENANT_CREATED = "TENANT_CREATED";
+    private static final String CLIENT_REQUEST_ID_PATTERN =
+            "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$";
 
     private final TenantMapper tenantMapper;
     private final TenantMemberMapper tenantMemberMapper;
     private final SaasPlanMapper saasPlanMapper;
     private final TenantSubscriptionMapper tenantSubscriptionMapper;
+    private final TenantCreationReceiptMapper creationReceiptMapper;
+    private final TenantDomainOutboxMapper tenantDomainOutboxMapper;
     private final UserRoleClient userRoleClient;
+    private final TransactionTemplate transactionTemplate;
 
     public TenantServiceImpl(TenantMapper tenantMapper,
                              TenantMemberMapper tenantMemberMapper,
                              SaasPlanMapper saasPlanMapper,
                              TenantSubscriptionMapper tenantSubscriptionMapper,
-                             UserRoleClient userRoleClient) {
+                             TenantCreationReceiptMapper creationReceiptMapper,
+                             TenantDomainOutboxMapper tenantDomainOutboxMapper,
+                             UserRoleClient userRoleClient,
+                             PlatformTransactionManager transactionManager) {
         this.tenantMapper = tenantMapper;
         this.tenantMemberMapper = tenantMemberMapper;
         this.saasPlanMapper = saasPlanMapper;
         this.tenantSubscriptionMapper = tenantSubscriptionMapper;
+        this.creationReceiptMapper = creationReceiptMapper;
+        this.tenantDomainOutboxMapper = tenantDomainOutboxMapper;
         this.userRoleClient = userRoleClient;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
     @Override
-    public TenantPageResult pageTenants(Integer current, Integer size, String keyword) {
+    public TenantPageResult pageTenants(TrustedRequestContext context,
+                                        Integer current,
+                                        Integer size,
+                                        String keyword) {
+        requirePlatformContext(context);
         PageBounds bounds = PageBounds.of(current, size);
         Page<Tenant> page = new Page<>(bounds.getCurrent(), bounds.getSize());
         QueryWrapper<Tenant> wrapper = new QueryWrapper<>();
@@ -93,13 +126,19 @@ public class TenantServiceImpl implements TenantService {
     }
 
     @Override
-    public TenantVO getTenant(String tenantId) {
-        return toTenantVO(requiredTenant(parseId(tenantId, "租户ID")));
+    public TenantVO getTenant(
+            TrustedRequestContext context,
+            String tenantId) {
+        return toTenantVO(requiredScopedTenant(context, tenantId, false));
     }
 
     @Override
-    public TenantMemberPageResult pageMembers(String tenantId, Integer current, Integer size) {
-        Tenant tenant = requiredTenant(parseId(tenantId, "租户ID"));
+    public TenantMemberPageResult pageMembers(
+            TrustedRequestContext context,
+            String tenantId,
+            Integer current,
+            Integer size) {
+        Tenant tenant = requiredScopedTenant(context, tenantId, false);
         PageBounds bounds = PageBounds.of(current, size);
         Page<TenantMember> page = new Page<>(bounds.getCurrent(), bounds.getSize());
         QueryWrapper<TenantMember> wrapper = new QueryWrapper<TenantMember>()
@@ -126,7 +165,8 @@ public class TenantServiceImpl implements TenantService {
     }
 
     @Override
-    public List<SaasPlanVO> listPlans() {
+    public List<SaasPlanVO> listPlans(TrustedRequestContext context) {
+        requirePlatformContext(context);
         return saasPlanMapper.selectList(new QueryWrapper<SaasPlan>().orderByAsc("plan_id"))
                 .stream()
                 .map(this::toPlanVO)
@@ -171,42 +211,70 @@ public class TenantServiceImpl implements TenantService {
     }
 
     @Override
-    @Transactional
     @Audited(
             action = "tenant.create",
+            targetType = "TENANT",
             scope = Audited.Scope.PLATFORM,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
-    public TenantVO createTenant(TenantCreateRequest request, Long operatorId, Integer operatorRole) {
-        requireSuperAdmin(operatorRole);
+            tenantIdSource = Audited.TenantIdSource.REQUEST,
+            recordDenied = true,
+            recordFailed = true)
+    public TenantVO createTenant(
+            TenantCreateRequest request,
+            TrustedRequestContext context) {
+        requirePlatformContext(context);
+        String clientRequestId = requireClientRequestId(
+                request.getClientRequestId());
         String code = request.getTenantCode().trim();
         if (DEFAULT_TENANT_CODE.equals(code)) {
             throw ApiStatusException.conflict("系统默认租户编码不可占用");
         }
         String timezone = validateTimezone(request.getTimezone());
-        if (operatorId == null || operatorId <= 0) {
-            throw new IllegalArgumentException("可信操作者用户ID无效");
-        }
+        String name = request.getName().trim();
+        Long operatorId = context.getUserId();
         Long ownerUserId = operatorId;
+        String fingerprint = tenantCreationFingerprint(
+                operatorId,
+                code,
+                name,
+                timezone);
+
+        TenantCreationReceipt existing =
+                findCreationReceipt(operatorId, clientRequestId);
+        if (existing != null) {
+            return toTenantVO(resolveCreationReceipt(
+                    existing,
+                    fingerprint));
+        }
+
+        // User 是远程所有者，校验必须发生在 Tenant 本地事务之外。
         UserRoleSnapshotVO owner = requiredUser(ownerUserId);
         if (!Integer.valueOf(0).equals(owner.getRole()) || !Integer.valueOf(1).equals(owner.getStatus())) {
             throw ApiStatusException.conflict("租户所有者必须是有效的超级管理员");
         }
 
-        Tenant tenant = new Tenant();
-        tenant.setTenantCode(code);
-        tenant.setName(request.getName().trim());
-        tenant.setStatus(ACTIVE);
-        tenant.setTimezone(timezone);
-        tenant.setOwnerUserId(ownerUserId);
-        tenant.setContextVersion(1L);
-        tenant.setVersion(0);
-        tenant.setDelFlag(0);
-
+        Tenant tenant;
         try {
-            tenantMapper.insert(tenant);
-            tenantMemberMapper.insert(newMember(tenant.getTenantId(), ownerUserId, "TENANT_OWNER", false));
+            tenant = transactionTemplate.execute(status ->
+                    createTenantInTransaction(
+                            operatorId,
+                            ownerUserId,
+                            clientRequestId,
+                            fingerprint,
+                            code,
+                            name,
+                            timezone));
         } catch (DuplicateKeyException exception) {
+            TenantCreationReceipt concurrent =
+                    findCreationReceipt(operatorId, clientRequestId);
+            if (concurrent != null) {
+                return toTenantVO(resolveCreationReceipt(
+                        concurrent,
+                        fingerprint));
+            }
             throw ApiStatusException.conflict("租户编码或成员关系已存在");
+        }
+        if (tenant == null) {
+            throw new IllegalStateException("租户创建事务未返回结果");
         }
         return toTenantVO(tenant);
     }
@@ -215,11 +283,18 @@ public class TenantServiceImpl implements TenantService {
     @Transactional
     @Audited(
             action = "tenant.update",
-            scope = Audited.Scope.PLATFORM,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
-    public TenantVO updateTenant(String tenantId, TenantUpdateRequest request, Integer operatorRole) {
-        requireSuperAdmin(operatorRole);
-        Tenant tenant = requiredTenant(parseId(tenantId, "租户ID"));
+            targetType = "TENANT",
+            scope = Audited.Scope.CONTEXT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST,
+            recordDenied = true,
+            recordFailed = true)
+    public TenantVO updateTenant(
+            TrustedRequestContext context,
+            @AuditTargetId
+            @AuditDetail("tenantId")
+            String tenantId,
+            TenantUpdateRequest request) {
+        Tenant tenant = requiredScopedTenant(context, tenantId, true);
         String timezone = validateTimezone(request.getTimezone());
         int updated = tenantMapper.update(null, new UpdateWrapper<Tenant>()
                 .eq("tenant_id", tenant.getTenantId())
@@ -231,19 +306,28 @@ public class TenantServiceImpl implements TenantService {
         if (updated != 1) {
             throw ApiStatusException.conflict("租户信息已变化，请刷新后重试");
         }
-        return toTenantVO(requiredTenant(tenant.getTenantId()));
+        return toTenantVO(
+                requiredScopedTenant(context, tenantId, true));
     }
 
     @Override
     @Transactional
     @Audited(
             action = "tenant.status",
-            scope = Audited.Scope.PLATFORM,
-            tenantIdSource = Audited.TenantIdSource.REQUEST)
-    public TenantVO updateStatus(String tenantId, TenantStatusRequest request, Integer operatorRole) {
-        requireSuperAdmin(operatorRole);
-        Tenant tenant = requiredTenant(parseId(tenantId, "租户ID"));
-        String targetStatus = request.getStatus();
+            targetType = "TENANT",
+            scope = Audited.Scope.CONTEXT,
+            tenantIdSource = Audited.TenantIdSource.REQUEST,
+            recordDenied = true,
+            recordFailed = true)
+    public TenantVO updateStatus(
+            TrustedRequestContext context,
+            @AuditTargetId
+            @AuditDetail("tenantId")
+            String tenantId,
+            TenantStatusRequest request) {
+        Tenant tenant = requiredScopedTenant(context, tenantId, true);
+        String targetStatus = requireTenantStatus(
+                request == null ? null : request.getStatus());
         if (DEFAULT_TENANT_CODE.equals(tenant.getTenantCode()) && !ACTIVE.equals(targetStatus)) {
             throw ApiStatusException.conflict("默认兼容租户在首版迁移期间不能停用");
         }
@@ -252,6 +336,7 @@ public class TenantServiceImpl implements TenantService {
         }
         int updated = tenantMapper.update(null, new UpdateWrapper<Tenant>()
                 .eq("tenant_id", tenant.getTenantId())
+                .eq("status", tenant.getStatus())
                 .eq("version", tenant.getVersion())
                 .set("status", targetStatus)
                 .setSql("context_version = context_version + 1")
@@ -259,12 +344,13 @@ public class TenantServiceImpl implements TenantService {
         if (updated != 1) {
             throw ApiStatusException.conflict("租户状态已变化，请刷新后重试");
         }
-        return toTenantVO(requiredTenant(tenant.getTenantId()));
+        return toTenantVO(
+                requiredScopedTenant(context, tenantId, true));
     }
 
     @Override
-    @Transactional
     public void ensureDefaultMembership(DefaultTenantMembershipRequest request) {
+        // 该入口只消费 User-owned Outbox 事件，不取得或推进 User Outbox。
         UserRoleSnapshotVO user = requiredUser(request.getUserId());
         if (!Objects.equals(user.getRole(), request.getRole())) {
             throw ApiStatusException.conflict("注册事件角色与当前用户角色不一致");
@@ -272,6 +358,56 @@ public class TenantServiceImpl implements TenantService {
         if (!Integer.valueOf(1).equals(user.getStatus())) {
             throw ApiStatusException.conflict("停用用户不能创建默认租户成员关系");
         }
+        transactionTemplate.executeWithoutResult(status ->
+                ensureDefaultMembershipInTransaction(request, user));
+    }
+
+    private Tenant createTenantInTransaction(
+            Long operatorId,
+            Long ownerUserId,
+            String clientRequestId,
+            String fingerprint,
+            String code,
+            String name,
+            String timezone) {
+        TenantCreationReceipt existing =
+                findCreationReceipt(operatorId, clientRequestId);
+        if (existing != null) {
+            return resolveCreationReceipt(existing, fingerprint);
+        }
+
+        Tenant tenant = new Tenant();
+        tenant.setTenantCode(code);
+        tenant.setName(name);
+        tenant.setStatus(ACTIVE);
+        tenant.setTimezone(timezone);
+        tenant.setOwnerUserId(ownerUserId);
+        tenant.setContextVersion(1L);
+        tenant.setVersion(0);
+        tenant.setDelFlag(0);
+
+        tenantMapper.insert(tenant);
+        tenantMemberMapper.insert(
+                newMember(
+                        tenant.getTenantId(),
+                        ownerUserId,
+                        TENANT_OWNER,
+                        false));
+        tenantDomainOutboxMapper.insert(newTenantCreatedOutbox(
+                operatorId,
+                clientRequestId,
+                tenant));
+        creationReceiptMapper.insert(newAppliedCreationReceipt(
+                operatorId,
+                clientRequestId,
+                fingerprint,
+                tenant.getTenantId()));
+        return tenant;
+    }
+
+    private void ensureDefaultMembershipInTransaction(
+            DefaultTenantMembershipRequest request,
+            UserRoleSnapshotVO user) {
         Tenant tenant = tenantMapper.selectOne(new QueryWrapper<Tenant>().eq("tenant_code", DEFAULT_TENANT_CODE));
         if (tenant == null || !ACTIVE.equals(tenant.getStatus())) {
             throw ApiStatusException.serviceUnavailable("默认租户当前不可用");
@@ -316,6 +452,117 @@ public class TenantServiceImpl implements TenantService {
         }
     }
 
+    private TenantCreationReceipt findCreationReceipt(
+            Long platformActorId,
+            String clientRequestId) {
+        return creationReceiptMapper.selectOne(
+                new QueryWrapper<TenantCreationReceipt>()
+                        .eq("platform_actor_id", platformActorId)
+                        .eq("client_request_id", clientRequestId)
+                        .last("limit 1"));
+    }
+
+    private Tenant resolveCreationReceipt(
+            TenantCreationReceipt receipt,
+            String fingerprint) {
+        if (!Objects.equals(
+                receipt.getRequestFingerprint(),
+                fingerprint)) {
+            throw ApiStatusException.idempotencyConflict(
+                    "clientRequestId 已被其他租户创建参数使用");
+        }
+        if (!RECEIPT_APPLIED.equals(receipt.getReceiptStatus())
+                || receipt.getTargetTenantId() == null) {
+            throw ApiStatusException.serviceUnavailable(
+                    "租户创建请求尚未形成可重放结果");
+        }
+        Tenant tenant = tenantMapper.selectById(
+                receipt.getTargetTenantId());
+        if (tenant == null) {
+            throw ApiStatusException.serviceUnavailable(
+                    "租户创建结果暂时不可用");
+        }
+        return tenant;
+    }
+
+    private TenantCreationReceipt newAppliedCreationReceipt(
+            Long operatorId,
+            String clientRequestId,
+            String fingerprint,
+            Long tenantId) {
+        TenantCreationReceipt receipt = new TenantCreationReceipt();
+        receipt.setPlatformActorId(operatorId);
+        receipt.setClientRequestId(clientRequestId);
+        receipt.setRequestFingerprint(fingerprint);
+        receipt.setTargetTenantId(tenantId);
+        receipt.setReceiptStatus(RECEIPT_APPLIED);
+        receipt.setResultCode(TENANT_CREATED);
+        receipt.setVersion(0);
+        return receipt;
+    }
+
+    private TenantDomainOutbox newTenantCreatedOutbox(
+            Long operatorId,
+            String clientRequestId,
+            Tenant tenant) {
+        TenantDomainOutbox outbox = new TenantDomainOutbox();
+        outbox.setEventId(sha256(
+                "tenant-created-event-v1\n"
+                        + operatorId + "\n"
+                        + clientRequestId));
+        outbox.setTenantId(tenant.getTenantId());
+        outbox.setAggregateType("TENANT");
+        outbox.setAggregateId(tenant.getTenantId());
+        outbox.setContextVersion(tenant.getContextVersion());
+        outbox.setEventType(TENANT_CREATED);
+        outbox.setOutboxStatus("PENDING");
+        outbox.setAttemptCount(0);
+        outbox.setVersion(0);
+        return outbox;
+    }
+
+    private String tenantCreationFingerprint(
+            Long operatorId,
+            String code,
+            String name,
+            String timezone) {
+        return sha256(
+                "tenant-create-v1\n"
+                        + operatorId + "\n"
+                        + code.length() + ":" + code + "\n"
+                        + name.length() + ":" + name + "\n"
+                        + timezone.length() + ":" + timezone);
+    }
+
+    private String requireClientRequestId(String clientRequestId) {
+        if (clientRequestId == null
+                || !clientRequestId.matches(
+                CLIENT_REQUEST_ID_PATTERN)) {
+            throw new IllegalArgumentException(
+                    "clientRequestId 格式不正确");
+        }
+        return clientRequestId;
+    }
+
+    private String sha256(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder result =
+                    new StringBuilder(digest.length * 2);
+            for (byte current : digest) {
+                result.append(String.format(
+                        "%02x",
+                        current & 0xff));
+            }
+            return result.toString();
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException(
+                    "SHA-256不可用",
+                    exception);
+        }
+    }
+
     private TenantMember newMember(Long tenantId, Long userId, String role, boolean defaultTenant) {
         TenantMember member = new TenantMember();
         member.setTenantId(tenantId);
@@ -329,8 +576,17 @@ public class TenantServiceImpl implements TenantService {
         return member;
     }
 
-    private Tenant requiredTenant(Long tenantId) {
-        Tenant tenant = tenantMapper.selectById(tenantId);
+    private Tenant requiredScopedTenant(
+            TrustedRequestContext context,
+            String businessTenantId,
+            boolean writeRequest) {
+        requireTenantResourceContext(context, writeRequest);
+        Long contextTenantId = parseId(context.getTenantId(), "可信租户ID");
+        Long resourceTenantId = parseId(businessTenantId, "租户ID");
+        Tenant tenant = tenantMapper.selectOne(new QueryWrapper<Tenant>()
+                .eq("tenant_id", contextTenantId)
+                .eq("tenant_id", resourceTenantId)
+                .last("limit 1"));
         if (tenant == null) {
             throw ApiStatusException.notFound("租户不存在");
         }
@@ -427,9 +683,47 @@ public class TenantServiceImpl implements TenantService {
         throw ApiStatusException.conflict("用户全局角色无效");
     }
 
-    private void requireSuperAdmin(Integer operatorRole) {
-        if (!Integer.valueOf(0).equals(operatorRole)) {
-            throw ApiStatusException.forbidden("仅超级管理员可以执行平台租户操作");
+    private void requirePlatformContext(TrustedRequestContext context) {
+        requireUserActor(context);
+        if (context.getContextType() != TrustedContextType.PLATFORM
+                || !Integer.valueOf(0).equals(context.getGlobalRole())) {
+            throw ApiStatusException.forbidden(
+                    "当前操作仅允许平台上下文");
+        }
+    }
+
+    private void requireTenantResourceContext(
+            TrustedRequestContext context,
+            boolean writeRequest) {
+        requireUserActor(context);
+        if (context.getContextType() == TrustedContextType.PLATFORM) {
+            throw ApiStatusException.forbidden(
+                    "平台用户必须进入平台代管上下文后访问租户资源");
+        }
+        if (context.getContextType() != TrustedContextType.TENANT
+                && context.getContextType()
+                != TrustedContextType.PLATFORM_TENANT) {
+            throw ApiStatusException.forbidden(
+                    "当前身份不能访问租户资源");
+        }
+        if (context.getContextType() == TrustedContextType.PLATFORM_TENANT
+                && context.getPlatformAuthorities().isEmpty()) {
+            throw ApiStatusException.forbidden(
+                    "平台代管上下文缺少平台能力");
+        }
+        if (writeRequest
+                && context.getContextType() == TrustedContextType.TENANT
+                && !TENANT_OWNER.equals(context.getTenantRole())
+                && !TENANT_ADMIN.equals(context.getTenantRole())) {
+            throw ApiStatusException.forbidden(
+                    "当前租户角色不能修改租户资源");
+        }
+    }
+
+    private void requireUserActor(TrustedRequestContext context) {
+        if (context == null || !context.hasUserActor()) {
+            throw ApiStatusException.forbidden(
+                    "内部服务身份不能直接访问用户或租户资源");
         }
     }
 
@@ -452,6 +746,14 @@ public class TenantServiceImpl implements TenantService {
             throw new IllegalArgumentException("时区必须是有效的IANA时区");
         }
         return value;
+    }
+
+    private String requireTenantStatus(String status) {
+        if (!ACTIVE.equals(status) && !DISABLED.equals(status)) {
+            throw new IllegalArgumentException(
+                    "租户状态只能是ACTIVE或DISABLED");
+        }
+        return status;
     }
 
 }

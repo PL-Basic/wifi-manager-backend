@@ -9,17 +9,19 @@ import com.plagod.mapper.DeviceCommandRecordMapper;
 import com.plagod.mqtt.MqttCommandPublisher;
 import com.plagod.security.WifiCommandPayloadCrypto;
 import com.plagod.service.DeviceCommandDispatchService;
+import com.plagod.service.DeviceCommandDispatchTransactionService;
 import com.plagod.service.DeviceWifiConfigLifecycleService;
 import com.plagod.service.SessionCommandLifecycleService;
-import com.plagod.web.SafeExceptionLogFormatter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -30,6 +32,9 @@ public class DeviceCommandDispatchServiceImpl implements DeviceCommandDispatchSe
 
     @Autowired
     private MqttCommandPublisher mqttCommandPublisher;
+
+    @Autowired
+    private DeviceCommandDispatchTransactionService dispatchTransactionService;
 
     @Autowired
     private SessionCommandLifecycleService sessionCommandLifecycleService;
@@ -47,11 +52,16 @@ public class DeviceCommandDispatchServiceImpl implements DeviceCommandDispatchSe
     @Value("${wifi.command.publish-retry-delay-seconds:3}")
     private long publishRetryDelaySeconds;
 
+    @Value("${wifi.command.dispatch-lease-seconds:30}")
+    private long dispatchLeaseSeconds;
+
     @Value("${wifi.command.result-timeout-seconds:15}")
     private long resultTimeoutSeconds;
 
+    private String dispatchWorkerId =
+            "device-command-" + UUID.randomUUID().toString();
+
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public void dispatchOne(Long commandId) {
         validateConfiguration();
 
@@ -59,49 +69,59 @@ public class DeviceCommandDispatchServiceImpl implements DeviceCommandDispatchSe
             return;
         }
 
-        DeviceCommandRecord command = commandRecordMapper.selectByCommandIdForUpdate(commandId);
-
-        if (command == null || !Integer.valueOf(DeviceCommandStatus.PENDING).equals(command.getStatus())) {
-            return;
-        }
-
         LocalDateTime now = LocalDateTime.now();
-        if (command.getNextRetryTime() != null && command.getNextRetryTime().isAfter(now)) {
-            return;
-        }
-
-        if (DeviceCommandType.isSensitiveType(command.getCommandType()) && DeviceCommandPurpose.isSensitivePurpose(command.getPurpose()) && !wifiCommandPayloadCrypto.isAvailable()) {
-
-            deferUnavailableSensitiveCommand(command, now);
-            return;
-        }
-
-        // 同一 Session 的旧 ALLOW 尚未发布时，REVOKE 必须等待。
-        // 否则多实例调度可能让撤销命令先到 Broker，随后旧 ALLOW 又重新授权客户端。
-        if (shouldWaitForEarlierSessionAllow(command)) {
+        DeviceCommandRecord command = dispatchTransactionService.claim(
+                commandId,
+                dispatchWorkerId,
+                now,
+                now.plusSeconds(dispatchLeaseSeconds),
+                publishMaxAttempts,
+                publishRetryDelaySeconds);
+        if (command == null) {
             return;
         }
 
         try {
             String publishPayload = resolvePublishPayload(command);
+            if (TransactionSynchronizationManager.isActualTransactionActive()) {
+                throw new IllegalStateException("MQTT 发布不能位于 Device 本地事务中");
+            }
             mqttCommandPublisher.publish(command.getTopic(), publishPayload);
-
         } catch (Exception exception) {
-            handlePublishFailure(command, exception);
+            boolean finalized = dispatchTransactionService.finalizeFailure(
+                    commandId,
+                    dispatchWorkerId,
+                    LocalDateTime.now(),
+                    publishMaxAttempts,
+                    publishRetryDelaySeconds);
+            log.warn(
+                    "设备命令发布失败，commandId={}, requestId={}, attempts={}, finalized={}, type={}",
+                    command.getCommandId(),
+                    command.getRequestId(),
+                    command.getRetryCount(),
+                    finalized,
+                    exception.getClass().getName());
             return;
         }
 
-        // 保存失败必须向外抛出并回滚，不能伪装成 MQTT 发布失败。
         LocalDateTime publishedAt = LocalDateTime.now();
-        command.setStatus(DeviceCommandStatus.PUBLISHED);
-        command.setPublishTime(publishedAt);
-        command.setDeadlineTime(publishedAt.plusSeconds(resultTimeoutSeconds));
-        command.setNextRetryTime(null);
-        command.setResultMessage(null);
-        command.setUpdateTime(publishedAt);
-
-        save(command);
-        log.info("设备命令发布成功，commandId={}, requestId={}", commandId, command.getRequestId());
+        boolean finalized = dispatchTransactionService.finalizePublished(
+                commandId,
+                dispatchWorkerId,
+                publishedAt,
+                publishedAt.plusSeconds(resultTimeoutSeconds));
+        if (finalized) {
+            log.info(
+                    "设备命令发布成功，commandId={}, requestId={}, attempts={}",
+                    commandId,
+                    command.getRequestId(),
+                    command.getRetryCount());
+        } else {
+            log.warn(
+                    "设备命令已发布但 claim 不再归当前 worker，等待同一 requestId 重投，commandId={}, requestId={}",
+                    commandId,
+                    command.getRequestId());
+        }
     }
 
     @Override
@@ -137,56 +157,6 @@ public class DeviceCommandDispatchServiceImpl implements DeviceCommandDispatchSe
         log.warn("设备命令结果超时，commandId={}, requestId={}", commandId, command.getRequestId());
     }
 
-    /**
-     * 密钥暂不可用时延后敏感命令，不消耗发布重试次数。
-     * 这样既保留待发送命令，也不会长期占据 Outbox 扫描批次。
-     */
-    private void deferUnavailableSensitiveCommand(DeviceCommandRecord command, LocalDateTime now) {
-
-        command.setNextRetryTime(now.plusSeconds(publishRetryDelaySeconds));
-        command.setResultMessage("敏感命令功能暂不可用，等待密钥配置");
-        command.setUpdateTime(now);
-
-        save(command);
-    }
-
-    private void handlePublishFailure(DeviceCommandRecord command, Exception exception) {
-
-        LocalDateTime failedAt = LocalDateTime.now();
-        int failedAttempts = command.getRetryCount() == null ? 1 : command.getRetryCount() + 1;
-
-        command.setRetryCount(failedAttempts);
-        command.setPublishTime(null);
-        command.setDeadlineTime(null);
-        command.setResultMessage(cleanErrorMessage(exception));
-        command.setUpdateTime(failedAt);
-
-        if (failedAttempts >= publishMaxAttempts) {
-            command.setStatus(DeviceCommandStatus.PUBLISH_FAILED);
-            command.setNextRetryTime(null);
-            command.setResultTime(failedAt);
-        } else {
-            command.setStatus(DeviceCommandStatus.PENDING);
-            command.setNextRetryTime(failedAt.plusSeconds(publishRetryDelaySeconds));
-            command.setResultTime(null);
-        }
-
-        save(command);
-        if (Integer.valueOf(DeviceCommandStatus.PUBLISH_FAILED).equals(command.getStatus())) {
-
-            clearEncryptedPayload(command, failedAt);
-            wifiConfigLifecycleService.handleTerminalCommand(command);
-            sessionCommandLifecycleService.handleTerminalCommand(command);
-        }
-        log.warn(
-                "设备命令发布失败，commandId={}, requestId={}, attempts={}, type={}, safeStack={}",
-                command.getCommandId(),
-                command.getRequestId(),
-                failedAttempts,
-                exception.getClass().getName(),
-                SafeExceptionLogFormatter.format(exception));
-    }
-
     // 显式保存命令运行状态。
     private void save(DeviceCommandRecord command) {
         if (command == null || command.getCommandId() == null) {
@@ -211,16 +181,6 @@ public class DeviceCommandDispatchServiceImpl implements DeviceCommandDispatchSe
         }
     }
 
-    private String cleanErrorMessage(Exception exception) {
-        String message = exception == null ? null : exception.getMessage();
-        if (!StringUtils.hasText(message)) {
-            message = exception == null ? "MQTT 发布失败" : exception.getClass().getSimpleName();
-        }
-
-        message = message.trim();
-        return message.length() <= 255 ? message : message.substring(0, 255);
-    }
-
     private void validateConfiguration() {
         if (publishMaxAttempts < 1 || publishMaxAttempts > 10) {
             throw new IllegalStateException("MQTT 最大发布次数必须在 1 到 10 之间");
@@ -228,22 +188,12 @@ public class DeviceCommandDispatchServiceImpl implements DeviceCommandDispatchSe
         if (publishRetryDelaySeconds < 1) {
             throw new IllegalStateException("MQTT 发布重试间隔必须大于 0");
         }
+        if (dispatchLeaseSeconds < 1) {
+            throw new IllegalStateException("MQTT dispatch lease 必须大于 0");
+        }
         if (resultTimeoutSeconds < 1) {
             throw new IllegalStateException("command-result 超时时间必须大于 0");
         }
-    }
-
-    private boolean shouldWaitForEarlierSessionAllow(DeviceCommandRecord command) {
-        if (!"REVOKE_ACCESS".equals(command.getCommandType()) || !DeviceCommandPurpose.isSessionRevokePurpose(command.getPurpose()) || command.getSessionId() == null || command.getSessionId() <= 0) {
-            return false;
-        }
-        long pendingAllowCount = commandRecordMapper.countEarlierPendingSessionAllowCommands(
-                command.getTenantId(),
-                command.getSessionId(),
-                command.getCommandId(),
-                DeviceCommandStatus.PENDING);
-
-        return pendingAllowCount > 0;
     }
 
     private String resolvePublishPayload(DeviceCommandRecord command) {

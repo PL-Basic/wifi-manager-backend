@@ -2,8 +2,6 @@ package com.plagod.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.plagod.client.UserEntitlementClient;
-import com.plagod.client.UserPolicyClient;
 import com.plagod.constant.DeviceCommandPurpose;
 import com.plagod.constant.SessionStatus;
 import com.plagod.dto.DeviceTrafficEvent;
@@ -18,6 +16,8 @@ import com.plagod.mapper.*;
 import com.plagod.service.ClientSignalQueryService;
 import com.plagod.service.DeviceCommandOutboxService;
 import com.plagod.service.DeviceCommandService;
+import com.plagod.service.DeviceUserRemoteGateway;
+import com.plagod.service.PortalAuthorizationFingerprint;
 import com.plagod.service.SessionLeaseService;
 import com.plagod.service.TrafficRuleEvaluator;
 import com.plagod.vo.device.SessionRecordVO;
@@ -51,11 +51,9 @@ class DeviceIdempotencyRegressionTest {
     @Mock
     private DeviceCommandService deviceCommandService;
     @Mock
-    private UserEntitlementClient userEntitlementClient;
+    private DeviceUserRemoteGateway userRemoteGateway;
     @Mock
     private ClientSignalQueryService clientSignalQueryService;
-    @Mock
-    private UserPolicyClient userPolicyClient;
     @Mock
     private SessionUserGuardMapper sessionUserGuardMapper;
     @Mock
@@ -68,6 +66,8 @@ class DeviceIdempotencyRegressionTest {
     private TrafficRuleEvaluator trafficRuleEvaluator;
     @Mock
     private DeviceCommandOutboxService deviceCommandOutboxService;
+    @Mock
+    private DeviceCommandRecordMapper deviceCommandRecordMapper;
 
     private PortalSessionServiceImpl portalSessionService;
     private TrafficEventServiceImpl trafficEventService;
@@ -80,13 +80,12 @@ class DeviceIdempotencyRegressionTest {
         ReflectionTestUtils.setField(portalSessionService, "macBlacklistMapper", macBlacklistMapper);
         ReflectionTestUtils.setField(portalSessionService, "sessionRecordMapper", sessionRecordMapper);
         ReflectionTestUtils.setField(portalSessionService, "deviceCommandService", deviceCommandService);
-        ReflectionTestUtils.setField(portalSessionService, "userEntitlementClient", userEntitlementClient);
+        ReflectionTestUtils.setField(portalSessionService, "userRemoteGateway", userRemoteGateway);
         ReflectionTestUtils.setField(portalSessionService, "clientSignalQueryService", clientSignalQueryService);
-        ReflectionTestUtils.setField(portalSessionService, "userPolicyClient", userPolicyClient);
         ReflectionTestUtils.setField(portalSessionService, "sessionUserGuardMapper", sessionUserGuardMapper);
         ReflectionTestUtils.setField(portalSessionService, "sessionLeaseService", sessionLeaseService);
         ReflectionTestUtils.setField(portalSessionService, "clientAccessGuardMapper", clientAccessGuardMapper);
-        ReflectionTestUtils.setField(portalSessionService, "internalToken", "test-internal-token");
+        ReflectionTestUtils.setField(portalSessionService, "deviceCommandRecordMapper", deviceCommandRecordMapper);
         ReflectionTestUtils.setField(portalSessionService, "clientSignalMaxAgeSeconds", 30L);
 
         trafficEventService = new TrafficEventServiceImpl();
@@ -100,6 +99,7 @@ class DeviceIdempotencyRegressionTest {
     @Test
     void repeatedWaitingReplacementAuthorizationOnlyReturnsExistingSession() {
         PortalAuthorizeDTO request = new PortalAuthorizeDTO();
+        request.setClientRequestId("portal-request-101");
         request.setDeviceCode(DEVICE_CODE);
         request.setMac(MAC.toLowerCase());
         request.setIp("192.168.4.20");
@@ -111,17 +111,19 @@ class DeviceIdempotencyRegressionTest {
         waiting.setSessionId(101L);
         waiting.setTenantId(TENANT_ID);
         waiting.setUserId(7L);
+        waiting.setClientRequestId(request.getClientRequestId());
+        waiting.setRequestFingerprint(
+                PortalAuthorizationFingerprint.calculate(
+                        TENANT_ID, 7L, request));
         waiting.setNodeId(node.getNodeId());
         waiting.setReplacedSessionId(88L);
         waiting.setMac(MAC);
         waiting.setIp("192.168.4.10");
         waiting.setStatus(SessionStatus.WAITING_REPLACEMENT);
 
-        when(clientAccessGuardMapper.selectMacForUpdate(TENANT_ID, MAC)).thenReturn(MAC);
-        when(esp32NodeMapper.selectByDeviceCodeForUpdateAndTenantIncludeDeleted(TENANT_ID, DEVICE_CODE)).thenReturn(node);
-        when(macBlacklistMapper.selectCount(any(QueryWrapper.class))).thenReturn(0L);
-        when(clientSignalQueryService.wasRecentlyObserved(eq(TENANT_ID), eq(node.getNodeId()), eq(DEVICE_CODE), eq(MAC), any(LocalDateTime.class))).thenReturn(true);
-        when(sessionRecordMapper.selectOne(any(QueryWrapper.class))).thenReturn(waiting);
+        when(sessionRecordMapper.selectByAuthorizeRequest(
+                TENANT_ID, 7L, request.getClientRequestId()))
+                .thenReturn(waiting);
 
         SessionRecordVO result = portalSessionService.authorize(TENANT_ID, request, 7L);
 
@@ -135,7 +137,11 @@ class DeviceIdempotencyRegressionTest {
         verify(sessionRecordMapper, never()).updateById(any(SessionRecord.class));
 
         // WAITING_REPLACEMENT 从未发送 ALLOW，重复认证不能提前放行。
-        verifyNoInteractions(userEntitlementClient, userPolicyClient, deviceCommandService, sessionLeaseService, sessionUserGuardMapper);
+        verifyNoInteractions(
+                userRemoteGateway,
+                deviceCommandService,
+                sessionLeaseService,
+                sessionUserGuardMapper);
     }
 
     @Test

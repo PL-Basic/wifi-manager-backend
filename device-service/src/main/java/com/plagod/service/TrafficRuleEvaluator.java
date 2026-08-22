@@ -1,5 +1,6 @@
 package com.plagod.service;
 
+import com.plagod.audit.AuditActorContext;
 import com.plagod.client.MonitorServiceClient;
 import com.plagod.dto.ApiResponse;
 import com.plagod.dto.DeviceTrafficEvent;
@@ -10,15 +11,18 @@ import com.plagod.vo.device.TrafficEvaluationResult;
 import com.plagod.entity.device.Esp32Node;
 import com.plagod.entity.device.SessionRecord;
 import com.plagod.mapper.Esp32NodeMapper;
+import com.plagod.request.RequestId;
+import com.plagod.security.TrustedRequestContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
+import java.util.Objects;
+import java.util.regex.Pattern;
 
 /**
  * 异步评估 traffic + 派发自动 action。从 TrafficEventServiceImpl 抽出来有两个目的：
@@ -35,6 +39,8 @@ public class TrafficRuleEvaluator {
     private static final int ACTION_KICK = 1;
     private static final int ACTION_BLOCK_TRAFFIC = 2;
     private static final int ACTION_ALERT_ONLY = 3;
+    private static final Pattern AUDIT_EVENT_ID_PATTERN =
+            Pattern.compile("^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$");
 
     @Autowired
     private Esp32NodeMapper esp32NodeMapper;
@@ -45,24 +51,31 @@ public class TrafficRuleEvaluator {
     @Autowired
     private RuleActionExecutor ruleActionExecutor;
 
-    @Value("${wifi.internal.token}")
-    private String internalToken;
-
     @Async("monitorEvalExecutor")
     public void evaluateAndAct(DeviceTrafficEvent event, TrafficLog trafficLog, SessionRecord sessionRecord) {
+        Long tenantId = resolvePersistedTenantId(trafficLog, sessionRecord);
+        if (tenantId == null) {
+            log.warn("monitor evaluate skipped for inconsistent persisted traffic relation, eventId={}",
+                    trafficLog == null ? null : trafficLog.getEventId());
+            return;
+        }
 
-        TrafficEvaluationResult result = callEvaluate(event, trafficLog, sessionRecord);
+        TrafficEvaluationResult result = callEvaluate(event, trafficLog, sessionRecord, tenantId);
 
         if (result != null && result.isHit()) {
             executeActions(event, trafficLog, sessionRecord, result);
         }
     }
 
-    private TrafficEvaluationResult callEvaluate(DeviceTrafficEvent event, TrafficLog trafficLog, SessionRecord sessionRecord) {
+    private TrafficEvaluationResult callEvaluate(DeviceTrafficEvent event,
+                                                 TrafficLog trafficLog,
+                                                 SessionRecord sessionRecord,
+                                                 Long tenantId) {
 
         TrafficEvaluationRequest request = new TrafficEvaluationRequest();
 
         request.setEventId(trafficLog.getEventId());
+        request.setTenantId(tenantId);
         request.setDeviceCode(trafficLog.getDeviceCode());
         request.setNodeId(trafficLog.getNodeId());
         request.setSessionId(trafficLog.getSessionId());
@@ -75,8 +88,8 @@ public class TrafficRuleEvaluator {
         request.setEventTime(trafficLog.getLogTime());
 
         try {
-            ApiResponse<TrafficEvaluationResult> response = monitorServiceClient.evaluate(
-                    internalToken, String.valueOf(trafficLog.getTenantId()), request);
+            ApiResponse<TrafficEvaluationResult> response =
+                    monitorServiceClient.evaluate(request);
 
             if (response == null || response.getData() == null) {
                 return null;
@@ -96,6 +109,22 @@ public class TrafficRuleEvaluator {
         }
     }
 
+    private Long resolvePersistedTenantId(TrafficLog trafficLog,
+                                          SessionRecord sessionRecord) {
+        if (trafficLog == null || sessionRecord == null
+                || trafficLog.getTenantId() == null
+                || trafficLog.getTenantId() <= 0
+                || !Objects.equals(
+                        trafficLog.getTenantId(),
+                        sessionRecord.getTenantId())
+                || !Objects.equals(
+                        trafficLog.getSessionId(),
+                        sessionRecord.getSessionId())) {
+            return null;
+        }
+        return trafficLog.getTenantId();
+    }
+
     private void executeActions(DeviceTrafficEvent event,
                                 TrafficLog trafficLog,
                                 SessionRecord sessionRecord,
@@ -113,24 +142,43 @@ public class TrafficRuleEvaluator {
         }
 
         try {
+            AuditActorContext actorContext = serviceActor(trafficLog);
             if (action == ACTION_KICK) {
                 ruleActionExecutor.disconnectMac(
                         trafficLog.getTenantId(),
                         deviceCode,
                         event.getMac(),
-                        result.getAlertId());
+                        result.getAlertId(),
+                        actorContext);
             } else if (action == ACTION_BLOCK_TRAFFIC) {
                 ruleActionExecutor.blockTraffic(
                         trafficLog.getTenantId(),
                         deviceCode,
                         event.getDstIp(),
                         event.getSni(),
-                        result.getAlertId());
+                        result.getAlertId(),
+                        actorContext);
             }
         } catch (Exception ex) {
             log.warn("auto-action publish failed action={} alertId={} type={}",
                     action, result.getAlertId(), ex.getClass().getName());
         }
+    }
+
+    private AuditActorContext serviceActor(TrafficLog trafficLog) {
+        TrustedRequestContext context =
+                TrustedRequestContext.scheduledService(
+                        String.valueOf(trafficLog.getTenantId()),
+                        RequestId.generate());
+        String eventId = trafficLog.getEventId();
+        String safeEventId = eventId != null
+                && AUDIT_EVENT_ID_PATTERN.matcher(eventId).matches()
+                ? eventId
+                : null;
+        return AuditActorContext.service(
+                context,
+                "device-service",
+                safeEventId);
     }
 
     private Integer pickStrongestAction(List<RuleHitVO> hits) {

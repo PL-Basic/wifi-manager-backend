@@ -1,6 +1,12 @@
 package com.plagod.ws;
 
 import com.plagod.configuration.AlertWebSocketProperties;
+import com.plagod.security.TrustedContextType;
+import com.plagod.security.TrustedRequestContext;
+import com.plagod.security.TrustedRequestContextException;
+import com.plagod.security.TrustedRequestContextResolver;
+import com.plagod.security.TrustedRequestHeaders;
+import com.plagod.security.TrustedSource;
 import com.plagod.support.SafeConfigurationValue;
 import com.plagod.support.StructuredRedactor;
 import org.slf4j.Logger;
@@ -10,12 +16,14 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
+import org.springframework.http.server.ServletServerHttpRequest;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.server.HandshakeInterceptor;
 
 import javax.annotation.PostConstruct;
+import javax.servlet.http.HttpServletRequest;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Collections;
@@ -29,14 +37,6 @@ public class AlertWebSocketHandshakeInterceptor
         implements HandshakeInterceptor {
 
     private static final Logger log = LoggerFactory.getLogger(AlertWebSocketHandshakeInterceptor.class);
-
-    private static final String GATEWAY_TOKEN_HEADER = "X-Gateway-Token";
-
-    private static final String USER_ID_HEADER = "X-User-Id";
-
-    private static final String USER_NAME_HEADER = "X-User-Name";
-
-    private static final String USER_ROLE_HEADER = "X-User-Role";
 
     private static final String ORIGIN_HEADER = "Origin";
 
@@ -56,9 +56,9 @@ public class AlertWebSocketHandshakeInterceptor
                 "origin",
                 "gatewayTokenPresent",
                 "accessTokenProtocolPresent",
-                "identityHeadersPresent",
                 "trustedUserId",
-                "trustedRole");
+                "trustedTenantId",
+                "trustedContextType");
         SAFE_REJECTION_LOG_KEYS = Collections.unmodifiableSet(keys);
 
         Set<String> redactedKeys = new HashSet<>();
@@ -72,6 +72,9 @@ public class AlertWebSocketHandshakeInterceptor
 
     @Autowired
     private AlertWebSocketProperties webSocketProperties;
+
+    @Autowired
+    private TrustedRequestContextResolver contextResolver;
 
     private Set<String> allowedOrigins;
 
@@ -111,44 +114,110 @@ public class AlertWebSocketHandshakeInterceptor
 
         if (!isAllowedOrigin(request.getHeaders().getFirst(ORIGIN_HEADER))) {
 
-            return reject(response, HttpStatus.FORBIDDEN, "ORIGIN_NOT_ALLOWED", request, null, null);
+            return reject(
+                    response,
+                    HttpStatus.FORBIDDEN,
+                    "ORIGIN_NOT_ALLOWED",
+                    request,
+                    null);
         }
 
-        String suppliedGatewayToken = request.getHeaders().getFirst(GATEWAY_TOKEN_HEADER);
+        String suppliedGatewayToken = request.getHeaders().getFirst(
+                TrustedRequestHeaders.GATEWAY_TOKEN);
 
         if (!constantTimeEquals(suppliedGatewayToken, expectedGatewayToken)) {
 
-            return reject(response, HttpStatus.UNAUTHORIZED, "GATEWAY_TOKEN_MISMATCH", request, null, null);
+            return reject(
+                    response,
+                    HttpStatus.UNAUTHORIZED,
+                    "GATEWAY_TOKEN_MISMATCH",
+                    request,
+                    null);
         }
 
         if (!hasAccessTokenProtocol(request)) {
-            return reject(response, HttpStatus.UNAUTHORIZED, "ACCESS_TOKEN_PROTOCOL_MISSING", request, null, null);
+            return reject(
+                    response,
+                    HttpStatus.UNAUTHORIZED,
+                    "ACCESS_TOKEN_PROTOCOL_MISSING",
+                    request,
+                    null);
         }
 
-        Long headerUserId;
-        Integer headerRole;
+        if (!(request instanceof ServletServerHttpRequest)) {
+            return reject(
+                    response,
+                    HttpStatus.UNAUTHORIZED,
+                    "SERVLET_REQUEST_REQUIRED",
+                    request,
+                    null);
+        }
 
+        HttpServletRequest servletRequest =
+                ((ServletServerHttpRequest) request).getServletRequest();
+        TrustedRequestContext context;
         try {
-            headerUserId = parseLong(request.getHeaders().getFirst(USER_ID_HEADER));
-            headerRole = parseInteger(request.getHeaders().getFirst(USER_ROLE_HEADER));
-        } catch (Exception exception) {
-            return reject(response, HttpStatus.UNAUTHORIZED, "IDENTITY_HEADER_INVALID", request, null, null);
+            context = contextResolver.resolve(servletRequest);
+        } catch (TrustedRequestContextException exception) {
+            HttpStatus status = exception.getHttpStatus() == 403
+                    ? HttpStatus.FORBIDDEN
+                    : HttpStatus.UNAUTHORIZED;
+            return reject(
+                    response,
+                    status,
+                    status == HttpStatus.FORBIDDEN
+                            ? "TRUSTED_CONTEXT_FORBIDDEN"
+                            : "TRUSTED_CONTEXT_INVALID",
+                    request,
+                    null);
         }
 
-        String headerUsername = request.getHeaders().getFirst(USER_NAME_HEADER);
-
-        if (headerUserId == null || headerUserId <= 0 || !StringUtils.hasText(headerUsername) || headerRole == null) {
-            return reject(response, HttpStatus.UNAUTHORIZED, "IDENTITY_HEADER_INVALID", request, headerUserId, headerRole);
+        if (context == null) {
+            return reject(
+                    response,
+                    HttpStatus.UNAUTHORIZED,
+                    "TRUSTED_CONTEXT_MISSING",
+                    request,
+                    null);
         }
 
-        if (!isAdmin(headerRole)) {
-            return reject(response, HttpStatus.FORBIDDEN, "IDENTITY_ROLE_FORBIDDEN", request, headerUserId, headerRole);
+        if (context.getTrustedSource() != TrustedSource.GATEWAY_USER) {
+            return reject(
+                    response,
+                    HttpStatus.FORBIDDEN,
+                    "TRUSTED_SOURCE_FORBIDDEN",
+                    request,
+                    context);
         }
 
-        // JWT 已由 Gateway 验证；这里只接收 Gateway 注入且经过服务凭据保护的身份。
-        attributes.put("userId", headerUserId);
-        attributes.put("username", headerUsername);
-        attributes.put("role", headerRole);
+        if (!canSubscribe(context)) {
+            return reject(
+                    response,
+                    HttpStatus.FORBIDDEN,
+                    "TRUSTED_CONTEXT_NOT_SUBSCRIBER",
+                    request,
+                    context);
+        }
+
+        Long tenantId = parseTenantId(context.getTenantId());
+        if (tenantId == null) {
+            return reject(
+                    response,
+                    HttpStatus.UNAUTHORIZED,
+                    "TRUSTED_TENANT_INVALID",
+                    request,
+                    context);
+        }
+
+        attributes.put(
+                AlertWebSocketHandler.ATTRIBUTE_TENANT_ID,
+                tenantId);
+        attributes.put(
+                AlertWebSocketHandler.ATTRIBUTE_USER_ID,
+                context.getUserId());
+        attributes.put(
+                AlertWebSocketHandler.ATTRIBUTE_CONTEXT_TYPE,
+                context.getContextType());
 
         return true;
     }
@@ -174,24 +243,24 @@ public class AlertWebSocketHandshakeInterceptor
         return StringUtils.hasText(origin) && allowedOrigins.contains(origin.trim());
     }
 
-    private boolean isAdmin(Integer role) {
-        return Integer.valueOf(0).equals(role) || Integer.valueOf(1).equals(role);
-    }
-
-    private Long parseLong(Object value) {
-        if (value == null) {
+    private Long parseTenantId(String value) {
+        if (!StringUtils.hasText(value)) {
             return null;
         }
-
-        return Long.valueOf(String.valueOf(value));
-    }
-
-    private Integer parseInteger(Object value) {
-        if (value == null) {
+        try {
+            long parsed = Long.parseLong(value);
+            return parsed > 0 ? parsed : null;
+        } catch (NumberFormatException exception) {
             return null;
         }
+    }
 
-        return Integer.valueOf(String.valueOf(value));
+    private boolean canSubscribe(TrustedRequestContext context) {
+        if (context.getContextType() == TrustedContextType.TENANT) {
+            return "TENANT_ADMIN".equals(context.getTenantRole());
+        }
+        return context.getContextType()
+                == TrustedContextType.PLATFORM_TENANT;
     }
 
     private boolean constantTimeEquals(String supplied, String expected) {
@@ -209,8 +278,7 @@ public class AlertWebSocketHandshakeInterceptor
             HttpStatus status,
             String reason,
             ServerHttpRequest request,
-            Long trustedUserId,
-            Integer trustedRole) {
+            TrustedRequestContext context) {
 
         response.setStatusCode(status);
 
@@ -222,13 +290,19 @@ public class AlertWebSocketHandshakeInterceptor
         fields.put(
                 "gatewayTokenPresent",
                 StringUtils.hasText(request.getHeaders().getFirst(
-                        GATEWAY_TOKEN_HEADER)));
+                        TrustedRequestHeaders.GATEWAY_TOKEN)));
         fields.put(
                 "accessTokenProtocolPresent",
                 hasAccessTokenProtocol(request));
-        fields.put("identityHeadersPresent", hasIdentityHeaders(request));
-        fields.put("trustedUserId", trustedUserId);
-        fields.put("trustedRole", trustedRole);
+        fields.put(
+                "trustedUserId",
+                context == null ? null : context.getUserId());
+        fields.put(
+                "trustedTenantId",
+                context == null ? null : context.getTenantId());
+        fields.put(
+                "trustedContextType",
+                context == null ? null : context.getContextType());
 
         log.warn(
                 "alert websocket handshake rejected: context={}",
@@ -238,12 +312,6 @@ public class AlertWebSocketHandshakeInterceptor
                         REDACTED_REJECTION_LOG_KEYS));
 
         return false;
-    }
-
-    private boolean hasIdentityHeaders(ServerHttpRequest request) {
-        return StringUtils.hasText(request.getHeaders().getFirst(USER_ID_HEADER))
-                && StringUtils.hasText(request.getHeaders().getFirst(USER_NAME_HEADER))
-                && StringUtils.hasText(request.getHeaders().getFirst(USER_ROLE_HEADER));
     }
 
     private void addAllowedOrigin(String origin) {

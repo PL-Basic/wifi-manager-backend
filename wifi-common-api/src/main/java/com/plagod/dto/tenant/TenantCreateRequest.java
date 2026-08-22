@@ -9,6 +9,13 @@ import javax.validation.constraints.Size;
 @Data
 public class TenantCreateRequest {
 
+    @NotBlank(message = "clientRequestId 不能为空")
+    @Size(max = 64, message = "clientRequestId 不能超过64个字符")
+    @Pattern(
+            regexp = "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$",
+            message = "clientRequestId 格式不正确")
+    private String clientRequestId;
+
     @NotBlank(message = "租户编码不能为空")
     @Pattern(regexp = "^[a-z][a-z0-9-]{2,63}$", message = "租户编码必须以小写字母开头，且只能包含小写字母、数字和短横线")
     private String tenantCode;

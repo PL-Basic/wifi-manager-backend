@@ -1,8 +1,11 @@
 package com.plagod.job;
 
 import com.plagod.constant.DeviceCommandStatus;
+import com.plagod.constant.SessionStatus;
+import com.plagod.entity.device.DeviceCommandRecord;
 import com.plagod.mapper.DeviceCommandRecordMapper;
 import com.plagod.service.DeviceCommandDispatchService;
+import com.plagod.service.PortalSessionService;
 import com.plagod.web.SafeExceptionLogFormatter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,6 +28,9 @@ public class DeviceCommandScheduler {
 
     @Autowired
     private DeviceCommandDispatchService commandDispatchService;
+
+    @Autowired
+    private PortalSessionService portalSessionService;
 
     @Value("${wifi.command.scan-batch-size:50}")
     private int scanBatchSize;
@@ -67,6 +73,29 @@ public class DeviceCommandScheduler {
                 log.error(
                         "命令结果超时处理失败，commandId={}, type={}, safeStack={}",
                         commandId,
+                        exception.getClass().getName(),
+                        SafeExceptionLogFormatter.format(exception));
+            }
+        }
+    }
+
+    @Scheduled(fixedDelayString = "${wifi.command.replacement-recovery-scan-interval-ms:1000}",
+            initialDelayString = "${wifi.command.scheduler-initial-delay-ms:5000}")
+    public void recoverWaitingReplacements() {
+        List<DeviceCommandRecord> commands =
+                commandRecordMapper.selectRecoverableForceReplacementCommands(
+                        DeviceCommandStatus.SUCCEEDED,
+                        SessionStatus.WAITING_REPLACEMENT,
+                        scanBatchSize);
+        for (DeviceCommandRecord command : commands) {
+            try {
+                portalSessionService.activateWaitingReplacement(
+                        command.getTenantId(), command.getSessionId());
+            } catch (Exception exception) {
+                log.error(
+                        "强制替换恢复处理失败，commandId={}, sessionId={}, type={}, safeStack={}",
+                        command.getCommandId(),
+                        command.getSessionId(),
                         exception.getClass().getName(),
                         SafeExceptionLogFormatter.format(exception));
             }

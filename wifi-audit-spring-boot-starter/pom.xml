@@ -19,6 +19,10 @@
     <dependencies>
         <dependency>
             <groupId>org.example</groupId>
+            <artifactId>wifi-common-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.example</groupId>
             <artifactId>wifi-service-security-spring-boot-starter</artifactId>
             <optional>true</optional>
         </dependency>
@@ -48,6 +52,10 @@
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
         </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+        </dependency>
 
         <!-- 配置元数据生成（IDE 在 application.yml 提示 wifi.audit.enabled） -->
         <dependency>
@@ -72,6 +80,11 @@
                     <artifactId>junit-vintage-engine</artifactId>
                 </exclusion>
             </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 </project>

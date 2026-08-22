@@ -3,6 +3,7 @@ package com.plagod.filter;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.plagod.ratelimit.GatewayRateLimiter;
+import com.plagod.security.TrustedRequestHeaders;
 import com.plagod.service.GatewayIdentityContext;
 import com.plagod.service.GatewayIdentityValidationService;
 import com.plagod.service.GatewayValidationException;
@@ -29,6 +30,7 @@ import reactor.core.publisher.Mono;
 
 import java.net.InetSocketAddress;
 import java.time.Duration;
+import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -90,13 +92,14 @@ class GatewaySecurityRegressionTest {
         when(gatewayRateLimiter.acquire(eq("auth"), eq("127.0.0.1"), eq(3), eq(Duration.ofMinutes(1))))
                 .thenReturn(Mono.just(GatewayRateLimiter.Decision.allowed(60L, false)));
 
+        HttpHeaders forgedHeaders = new HttpHeaders();
+        TrustedRequestHeaders.GATEWAY_STRIPPED_HEADERS
+                .forEach(header -> forgedHeaders.add(header, "forged"));
         MockServerHttpRequest request = MockServerHttpRequest
                 .method(HttpMethod.POST, "/auth/login")
                 .remoteAddress(new InetSocketAddress("127.0.0.1", 50100))
-                .header("X-User-Id", "999")
-                .header("X-User-Role", "0")
-                .header("X-Gateway-Token", "forged")
-                .header("X-Client-IP", "8.8.8.8")
+                .headers(forgedHeaders)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ignored-on-white-path")
                 .header("X-Forwarded-For", "9.9.9.9")
                 .build();
 
@@ -108,12 +111,42 @@ class GatewaySecurityRegressionTest {
         ServerWebExchange result = forwarded.get();
 
         assertNotNull(result);
-        assertNull(result.getRequest().getHeaders().getFirst("X-User-Id"));
-        assertNull(result.getRequest().getHeaders().getFirst("X-User-Role"));
-        assertEquals("test-gateway-token", result.getRequest().getHeaders().getFirst("X-Gateway-Token"));
-        assertEquals("127.0.0.1", result.getRequest().getHeaders().getFirst("X-Client-IP"));
+        TrustedRequestHeaders.GATEWAY_STRIPPED_HEADERS.stream()
+                .filter(header -> !TrustedRequestHeaders.GATEWAY_TOKEN.equals(header))
+                .filter(header -> !TrustedRequestHeaders.CLIENT_IP.equals(header))
+                .forEach(header -> assertNull(
+                        result.getRequest().getHeaders().getFirst(header),
+                        header + " must not survive external input"));
+        assertEquals(
+                "test-gateway-token",
+                result.getRequest().getHeaders()
+                        .getFirst(TrustedRequestHeaders.GATEWAY_TOKEN));
+        assertEquals(
+                "127.0.0.1",
+                result.getRequest().getHeaders()
+                        .getFirst(TrustedRequestHeaders.CLIENT_IP));
+        assertNull(result.getRequest().getHeaders()
+                .getFirst(HttpHeaders.AUTHORIZATION));
 
         verify(gatewayRateLimiter).acquire("auth", "127.0.0.1", 3, Duration.ofMinutes(1));
+    }
+
+    @Test
+    void externalInternalTokenCannotAuthorizeInternalPath() {
+        MockServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get(
+                                "/internal/auth/sessions/session-id/validate")
+                        .header(
+                                TrustedRequestHeaders.INTERNAL_TOKEN,
+                                "forged-internal-token")
+                        .build());
+        AtomicReference<ServerWebExchange> forwarded = new AtomicReference<>();
+
+        filter.filter(exchange, capture(forwarded)).block();
+
+        assertNull(forwarded.get());
+        assertEquals(HttpStatus.UNAUTHORIZED, exchange.getResponse().getStatusCode());
+        verifyNoInteractions(identityValidationService);
     }
 
     @Test
@@ -125,9 +158,9 @@ class GatewaySecurityRegressionTest {
                 .method(HttpMethod.GET, "/users/7")
                 .remoteAddress(new InetSocketAddress("127.0.0.1", 50101))
                 .header(HttpHeaders.AUTHORIZATION, "Bearer valid-token")
-                .header("X-User-Id", "1")
-                .header("X-User-Name", "admin")
-                .header("X-User-Role", "0")
+                .header(TrustedRequestHeaders.USER_ID, "1")
+                .header(TrustedRequestHeaders.USER_NAME, "admin")
+                .header(TrustedRequestHeaders.USER_ROLE, "0")
                 .build();
 
         MockServerWebExchange exchange = MockServerWebExchange.from(request);
@@ -138,10 +171,14 @@ class GatewaySecurityRegressionTest {
         ServerWebExchange result = forwarded.get();
 
         assertNotNull(result);
-        assertEquals("7", result.getRequest().getHeaders().getFirst("X-User-Id"));
-        assertEquals("alice", result.getRequest().getHeaders().getFirst("X-User-Name"));
-        assertEquals("2", result.getRequest().getHeaders().getFirst("X-User-Role"));
-        assertEquals("test-gateway-token", result.getRequest().getHeaders().getFirst("X-Gateway-Token"));
+        assertEquals("7", result.getRequest().getHeaders()
+                .getFirst(TrustedRequestHeaders.USER_ID));
+        assertEquals("alice", result.getRequest().getHeaders()
+                .getFirst(TrustedRequestHeaders.USER_NAME));
+        assertEquals("2", result.getRequest().getHeaders()
+                .getFirst(TrustedRequestHeaders.USER_ROLE));
+        assertEquals("test-gateway-token", result.getRequest().getHeaders()
+                .getFirst(TrustedRequestHeaders.GATEWAY_TOKEN));
         assertNull(result.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION));
     }
 
@@ -153,12 +190,14 @@ class GatewaySecurityRegressionTest {
         MockServerHttpRequest request = MockServerHttpRequest
                 .method(HttpMethod.GET, "/tenants/me")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer valid-token")
-                .header("X-User-Id", "1")
-                .header("X-User-Name", "admin")
-                .header("X-User-Role", "0")
-                .header("X-Tenant-Id", "999")
-                .header("X-Context-Type", "PLATFORM_TENANT")
-                .header("X-Tenant-Context-Version", "999")
+                .header(TrustedRequestHeaders.USER_ID, "1")
+                .header(TrustedRequestHeaders.USER_NAME, "admin")
+                .header(TrustedRequestHeaders.USER_ROLE, "0")
+                .header(TrustedRequestHeaders.TENANT_ID, "999")
+                .header(
+                        TrustedRequestHeaders.CONTEXT_TYPE,
+                        "PLATFORM_TENANT")
+                .header(TrustedRequestHeaders.TENANT_CONTEXT_VERSION, "999")
                 .build();
 
         AtomicReference<ServerWebExchange> forwarded = new AtomicReference<>();
@@ -168,14 +207,81 @@ class GatewaySecurityRegressionTest {
         ServerWebExchange result = forwarded.get();
 
         assertNotNull(result);
-        assertEquals("7", result.getRequest().getHeaders().getFirst("X-User-Id"));
-        assertEquals("alice", result.getRequest().getHeaders().getFirst("X-User-Name"));
-        assertEquals("2", result.getRequest().getHeaders().getFirst("X-User-Role"));
-        assertEquals("11", result.getRequest().getHeaders().getFirst("X-Tenant-Id"));
-        assertEquals("TENANT", result.getRequest().getHeaders().getFirst("X-Context-Type"));
-        assertEquals("3", result.getRequest().getHeaders().getFirst("X-Tenant-Context-Version"));
-        assertEquals("test-gateway-token", result.getRequest().getHeaders().getFirst("X-Gateway-Token"));
+        assertEquals("7", result.getRequest().getHeaders()
+                .getFirst(TrustedRequestHeaders.USER_ID));
+        assertEquals("alice", result.getRequest().getHeaders()
+                .getFirst(TrustedRequestHeaders.USER_NAME));
+        assertEquals("2", result.getRequest().getHeaders()
+                .getFirst(TrustedRequestHeaders.USER_ROLE));
+        assertEquals("11", result.getRequest().getHeaders()
+                .getFirst(TrustedRequestHeaders.TENANT_ID));
+        assertEquals("TENANT", result.getRequest().getHeaders()
+                .getFirst(TrustedRequestHeaders.CONTEXT_TYPE));
+        assertEquals("3", result.getRequest().getHeaders()
+                .getFirst(TrustedRequestHeaders.TENANT_CONTEXT_VERSION));
+        assertEquals("test-gateway-token", result.getRequest().getHeaders()
+                .getFirst(TrustedRequestHeaders.GATEWAY_TOKEN));
         assertNull(result.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION));
+    }
+
+    @Test
+    void platformTenantForwardsPlatformScopeWithoutMemberIdentity() {
+        Claims claims = claims(1L, "platform-admin", 0);
+        when(jwtUtils.parseToken("valid-token")).thenReturn(claims);
+
+        GatewayIdentityContext managedIdentity =
+                identity(1L, "platform-admin", 0);
+        TenantContextVO managedContext = managedIdentity.getTenantContext();
+        managedContext.setContextType("PLATFORM_TENANT");
+        managedContext.setTenantId("23");
+        managedContext.setTenantCode("tenant-b");
+        managedContext.setTenantRole(null);
+        managedContext.setContextVersion(7L);
+        managedContext.setMemberContextVersion(null);
+        managedContext.setAuthorities(
+                Collections.singletonList("TENANT_MANAGE"));
+        when(identityValidationService.validate(
+                same(claims),
+                eq(1L),
+                eq("platform-admin"),
+                eq(0),
+                eq(HttpMethod.GET)))
+                .thenReturn(Mono.just(managedIdentity));
+
+        AtomicReference<ServerWebExchange> forwarded = new AtomicReference<>();
+        filter.filter(
+                MockServerWebExchange.from(
+                        MockServerHttpRequest.get("/admin/users")
+                                .header(
+                                        HttpHeaders.AUTHORIZATION,
+                                        "Bearer valid-token")
+                                .header(
+                                        TrustedRequestHeaders.TENANT_ROLE,
+                                        "FORGED_MEMBER")
+                                .header(
+                                        TrustedRequestHeaders
+                                                .MEMBER_CONTEXT_VERSION,
+                                        "999")
+                                .build()),
+                capture(forwarded)).block();
+
+        ServerWebExchange result = forwarded.get();
+
+        assertNotNull(result);
+        assertEquals("PLATFORM_TENANT", result.getRequest().getHeaders()
+                .getFirst(TrustedRequestHeaders.CONTEXT_TYPE));
+        assertEquals("23", result.getRequest().getHeaders()
+                .getFirst(TrustedRequestHeaders.TENANT_ID));
+        assertEquals("tenant-b", result.getRequest().getHeaders()
+                .getFirst(TrustedRequestHeaders.TENANT_CODE));
+        assertEquals("7", result.getRequest().getHeaders()
+                .getFirst(TrustedRequestHeaders.TENANT_CONTEXT_VERSION));
+        assertEquals("TENANT_MANAGE", result.getRequest().getHeaders()
+                .getFirst(TrustedRequestHeaders.PLATFORM_AUTHORITIES));
+        assertNull(result.getRequest().getHeaders()
+                .getFirst(TrustedRequestHeaders.TENANT_ROLE));
+        assertNull(result.getRequest().getHeaders()
+                .getFirst(TrustedRequestHeaders.MEMBER_CONTEXT_VERSION));
     }
 
     @Test
@@ -188,8 +294,8 @@ class GatewaySecurityRegressionTest {
         MockServerHttpRequest request = MockServerHttpRequest
                 .get("/ws/alerts")
                 .header("Sec-WebSocket-Protocol", "access_token, browser.jwt.value")
-                .header("X-User-Id", "999")
-                .header("X-User-Role", "2")
+                .header(TrustedRequestHeaders.USER_ID, "999")
+                .header(TrustedRequestHeaders.USER_ROLE, "2")
                 .build();
 
         AtomicReference<ServerWebExchange> forwarded = new AtomicReference<>();
@@ -201,10 +307,14 @@ class GatewaySecurityRegressionTest {
         assertNotNull(result);
         assertEquals("access_token", result.getRequest().getHeaders().getFirst("Sec-WebSocket-Protocol"));
         assertFalse(result.getRequest().getHeaders().getFirst("Sec-WebSocket-Protocol").contains("browser.jwt.value"));
-        assertEquals("1", result.getRequest().getHeaders().getFirst("X-User-Id"));
-        assertEquals("admin", result.getRequest().getHeaders().getFirst("X-User-Name"));
-        assertEquals("0", result.getRequest().getHeaders().getFirst("X-User-Role"));
-        assertEquals("test-gateway-token", result.getRequest().getHeaders().getFirst("X-Gateway-Token"));
+        assertEquals("1", result.getRequest().getHeaders()
+                .getFirst(TrustedRequestHeaders.USER_ID));
+        assertEquals("admin", result.getRequest().getHeaders()
+                .getFirst(TrustedRequestHeaders.USER_NAME));
+        assertEquals("0", result.getRequest().getHeaders()
+                .getFirst(TrustedRequestHeaders.USER_ROLE));
+        assertEquals("test-gateway-token", result.getRequest().getHeaders()
+                .getFirst(TrustedRequestHeaders.GATEWAY_TOKEN));
     }
 
     @Test
@@ -364,7 +474,9 @@ class GatewaySecurityRegressionTest {
         context.setContextType(Integer.valueOf(0).equals(role) ? "PLATFORM" : "TENANT");
         context.setTenantId(Integer.valueOf(0).equals(role) ? null : "11");
         context.setTenantCode(Integer.valueOf(0).equals(role) ? null : "default-tenant");
-        context.setTenantRole(Integer.valueOf(1).equals(role) ? "TENANT_ADMIN" : "MEMBER");
+        context.setTenantRole(Integer.valueOf(0).equals(role)
+                ? null
+                : Integer.valueOf(1).equals(role) ? "TENANT_ADMIN" : "MEMBER");
         context.setContextVersion(Integer.valueOf(0).equals(role) ? null : 3L);
         context.setMemberContextVersion(Integer.valueOf(0).equals(role) ? null : 5L);
 

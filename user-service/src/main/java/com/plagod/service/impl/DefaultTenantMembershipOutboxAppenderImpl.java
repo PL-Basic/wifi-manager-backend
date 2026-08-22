@@ -35,6 +35,8 @@ public class DefaultTenantMembershipOutboxAppenderImpl
         outbox.setStatus("PENDING");
         outbox.setRetryCount(0);
         outbox.setNextRetryTime(LocalDateTime.now());
-        outboxMapper.insert(outbox);
+        if (outboxMapper.insert(outbox) != 1) {
+            throw new IllegalStateException("默认租户成员事件写入失败");
+        }
     }
 }

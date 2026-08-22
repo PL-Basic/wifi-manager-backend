@@ -85,22 +85,16 @@ public class AdminDeviceController {
 
     @PostMapping("/{deviceCode}/disconnect-mac")
     public ApiResponse<DeviceCommandResult> disconnectMac(@PathVariable String deviceCode,
-                                                          @Valid @RequestBody ManualDisconnectMacDTO dto,
-                                                          @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
-                                                          @RequestHeader(value = "X-User-Name", required = false) String operatorName,
-                                                          @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole) {
+                                                          @Valid @RequestBody ManualDisconnectMacDTO dto) {
 
-        return deviceServiceClient.disconnectMac(deviceCode, dto, operatorId, operatorName, operatorRole);
+        return deviceServiceClient.disconnectMac(deviceCode, dto);
     }
 
     @PostMapping("/{deviceCode}/block-traffic")
     public ApiResponse<DeviceCommandResult> blockTraffic(@PathVariable String deviceCode,
-                                                         @Valid @RequestBody ManualBlockTrafficDTO dto,
-                                                         @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
-                                                         @RequestHeader(value = "X-User-Name", required = false) String operatorName,
-                                                         @RequestHeader(value = "X-User-Role", required = false) Integer operatorRole) {
+                                                         @Valid @RequestBody ManualBlockTrafficDTO dto) {
 
-        return deviceServiceClient.blockTraffic(deviceCode, dto, operatorId, operatorName, operatorRole);
+        return deviceServiceClient.blockTraffic(deviceCode, dto);
     }
 
     @PostMapping("/{deviceCode}/wifi-config/candidate")

@@ -1,0 +1,30 @@
+server:
+  port: 8387
+
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: ${MYSQL_URL:jdbc:mysql://localhost:3306/wifi?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&useSSL=false}
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD:}
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+
+wifi:
+  internal:
+    token: ${WIFI_INTERNAL_TOKEN:local-internal-token-change-me}
+  security:
+    enabled: true
+    gateway-token: ${WIFI_GATEWAY_TOKEN:local-gateway-token-change-me}
+    internal-token: ${WIFI_INTERNAL_TOKEN:local-internal-token-change-me}
+    internal-token-required: true
+    internal-path-prefixes:
+      - /internal/
+  support:
+    review:
+      batch-size: ${WIFI_SUPPORT_REVIEW_BATCH_SIZE:50}
+      worker-id: ${WIFI_SUPPORT_REVIEW_WORKER_ID:}
+      scan-delay-ms: ${WIFI_SUPPORT_REVIEW_SCAN_DELAY_MS:1000}
+      scan-initial-delay-ms: ${WIFI_SUPPORT_REVIEW_SCAN_INITIAL_DELAY_MS:1000}

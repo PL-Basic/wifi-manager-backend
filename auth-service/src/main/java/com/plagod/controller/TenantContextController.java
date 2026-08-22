@@ -1,6 +1,8 @@
 package com.plagod.controller;
 
 import com.plagod.audit.Audited;
+import com.plagod.audit.AuditDetail;
+import com.plagod.audit.AuditTargetId;
 import com.plagod.client.TenantContextClient;
 import com.plagod.dto.ApiResponse;
 import com.plagod.dto.auth.AuthResultDTO;
@@ -14,6 +16,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import feign.FeignException;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -33,13 +38,18 @@ public class TenantContextController {
     private final TenantContextClient tenantContextClient;
     private final AuthSessionService authSessionService;
     private final String internalToken;
+    private final TransactionTemplate remoteCallTemplate;
 
     public TenantContextController(TenantContextClient tenantContextClient,
                                    AuthSessionService authSessionService,
+                                   PlatformTransactionManager transactionManager,
                                    @Value("${wifi.internal.token}") String internalToken) {
         this.tenantContextClient = tenantContextClient;
         this.authSessionService = authSessionService;
         this.internalToken = internalToken;
+        this.remoteCallTemplate = new TransactionTemplate(transactionManager);
+        this.remoteCallTemplate.setPropagationBehavior(
+                TransactionDefinition.PROPAGATION_NOT_SUPPORTED);
     }
 
     @PostMapping("/tenant-context/switch")
@@ -57,14 +67,16 @@ public class TenantContextController {
     @PostMapping("/platform-context")
     @Audited(
             action = "auth.platform_context",
-            scope = Audited.Scope.PLATFORM,
+            targetType = "CONTEXT",
+            scope = Audited.Scope.CONTEXT,
             tenantIdSource = Audited.TenantIdSource.REQUEST,
             target = "PLATFORM",
-            includeArgs = false,
-            includeResult = false)
+            recordDenied = true,
+            recordFailed = true)
     public ApiResponse<AuthResultDTO> returnPlatform(
             @RequestHeader("X-Session-Id") String sessionId,
             @RequestHeader("X-User-Id") Long userId,
+            @AuditDetail("globalRole")
             @RequestHeader("X-User-Role") Integer role) {
         requireSuperAdmin(role);
         TenantContextVO context = resolve(userId, role, "PLATFORM", null);
@@ -76,14 +88,17 @@ public class TenantContextController {
     @PostMapping("/platform-context/tenants/{tenantId}")
     @Audited(
             action = "auth.platform_tenant_context",
-            scope = Audited.Scope.PLATFORM,
+            targetType = "TENANT",
+            scope = Audited.Scope.CONTEXT,
             tenantIdSource = Audited.TenantIdSource.REQUEST,
-            includeResult = false)
+            recordDenied = true,
+            recordFailed = true)
     public ApiResponse<AuthResultDTO> enterPlatformTenant(
-            @PathVariable String tenantId,
+            @AuditTargetId @PathVariable String tenantId,
             @Valid @RequestBody PlatformTenantContextRequest request,
             @RequestHeader("X-Session-Id") String sessionId,
             @RequestHeader("X-User-Id") Long userId,
+            @AuditDetail("globalRole")
             @RequestHeader("X-User-Role") Integer role) {
         requireSuperAdmin(role);
         if (request.getReason().trim().isEmpty()) {
@@ -103,7 +118,8 @@ public class TenantContextController {
         request.setTenantId(tenantId);
         ApiResponse<TenantContextVO> response;
         try {
-            response = tenantContextClient.resolve(internalToken, request);
+            response = remoteCallTemplate.execute(status ->
+                    tenantContextClient.resolve(internalToken, request));
         } catch (FeignException exception) {
             LOGGER.warn(
                     "tenant context controller resolve failed: status={}, exception={}, contextType={}, tenantIdPresent={}",

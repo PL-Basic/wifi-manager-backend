@@ -14,64 +14,30 @@ http://{gateway-host}:8080
 {"code":200,"message":"操作成功","data":{}}
 ```
 
-Demo 1.4 S1 已在共享入口实现 `http-envelope-v1`：`ApiResponse` 保留
-`code/message/data`，并以仅在非空时序列化的方式增加 `errorKey/requestId`。
-`http-support-v1` 固定 Servlet 的九类状态、`X-Request-Id`、MDC 清理和安全
-500；业务服务 handler 与 Gateway 已通过对应 `P14-*` 完成接入，S2 共享
-收敛见下文。冻结结论、基础错误键、MQTT/AI 样本和 P14 文件所有权见
-[Demo 1.4 S0 公共能力与兼容契约冻结](demo-1.4-s0-contract-freeze.md)。
+当前共享入口约定：
 
-Demo 1.4 C0 在不改变业务接口的前提下补充两组共享入口：
-`wifi-common-api` 提供 `PageBounds`、稳定单位/时区常量、结构化 allowlist
-脱敏和不回显配置值的纯 Java 校验；`wifi-web-support-spring-boot-starter`
-提供无异常 message 的可定位安全堆栈、默认仅暴露 `health/info` 的 Actuator
-基线，以及只约束 `wifi.*` 自定义指标的低基数 `MeterFilter`。服务可显式扩展
-readiness 必要依赖，但不得把外部依赖加入 liveness。
-
-Demo 1.4 S2 将安全堆栈的唯一实现固定为
-`com.plagod.support.SafeExceptionLogFormatter`，位于框架无关的
-`wifi-common-api`。Servlet Starter 中原
-`com.plagod.web.SafeExceptionLogFormatter` 仅作为兼容委托保留；
-Gateway 未分类 500 使用同一实现记录有界的异常类型和定位帧，不记录异常
-message、suppressed 内容或 Throwable 参数。
-
-Demo 1.5 S0 将身份/Header 共享输入冻结为 `trusted-context-v1`：
-
-- `wifi-common-api` 的 `TrustedRequestHeaders` 是 Gateway、Servlet Starter
-  与 Feign 后续唯一可信 Header 常量来源；旧 `TrustedHeaderNames` 仅保留
-  兼容委托。`X-Request-Id` 已进入可信传播清单，但不作为可伪造的身份字段。
-- `TrustedRequestContext` 是不可变快照，分别保存 `trustedSource`、用户与
-  session/jti、`PLATFORM/TENANT/PLATFORM_TENANT`、租户双版本、平台权限和
-  requestId。`GATEWAY_USER`、`INTERNAL_SERVICE`、`SCHEDULED_SERVICE`、
-  `DEVICE_EVENT` 是独立来源；内部/后台/设备身份不能伪造浏览器 actor。
-- Security Starter 的 `TrustedRequestContextResolver` 只接受
-  `TrustedRequestFilter` 已标记的 Gateway/Internal 请求。现有租户写校验
-  与 Feign 出站按需装配并复用该 Context；未新增覆盖所有 Servlet 读路径的
-  全局认证 Filter。
-- Feign 始终删除 Authorization、Cookie、Gateway Token、调用方 Internal
-  Token、手工身份/租户 Header 和手工 requestId，再注入当前服务自己的
-  Internal Token。只有成功装配的用户 Context 才传播用户工作区字段；纯
-  Internal Service 只传播关联 ID，不获得用户、平台或默认租户权限。
-
-`P15-GW` 必须将 Gateway 内现有 Header 字面量切换为
-`TrustedRequestHeaders` 并保持“先删外部同名 Header、再写验证结果”；
-`P15-AUTH` 负责补 session/jti 失效的服务内永久测试；`P15-TENANT` 负责保证
-TENANT 不签发平台权限、PLATFORM_TENANT 不签发 tenantRole/memberVersion；
-其余 `P15-*` 业务包只消费 Resolver/Context，不复制 Header 解析器。以上是
-批次 B 的冻结输入，不表示对应业务目录已经完成接入或真实环境联调。
-
-Demo 1.5 B0 为两个内部跨服务对象增加显式租户载体：
-`TrafficEvaluationRequest.tenantId` 必须由 Device 根据已持久化的
-TrafficLog/Session 关系确定；`LocationSessionContextVO.tenantId` 必须来自
-Device 的 tenant-scoped Session 查询。Monitor 必须拒绝字段缺失、非法或与
-当前可信 Context 不一致的请求，不能从浏览器 Header、请求体用户标识或默认
-租户补全。该变更不修改 entitlement lease/snapshot 契约；现有
-`entitlementId + userId` 的租户重新解析路径继续复用。
-
-`mqtt-protocol-v1` 的最终规范化 SHA-256 为
-`26ABC67B1DCA9A99173D079359B87C57366F74D9D243728EDFB4AE52A5E8AE87`。
-后端与固件本地副本按 UTF-8、LF 换行规范化后必须得到该值；原始文件换行符
-不同不构成协议内容差异。
+- `ApiResponse` 使用 `code/message/data`，并仅在非空时返回
+  `errorKey/requestId`。
+- Servlet 与 Gateway 统一生成或传播 `X-Request-Id`；未分类异常返回安全的
+  500 响应，不向客户端暴露异常堆栈或内部消息。
+- 安全日志只记录有界异常类型和定位帧，不记录密码、Token、Cookie、请求正文
+  或异常参数。
+- `TrustedRequestHeaders` 是 Gateway、Servlet 和 Feign 使用的可信 Header
+  名称来源。外部同名 Header 必须先删除，再写入服务端验证结果。
+- `TrustedRequestContext` 区分 Gateway 用户、内部服务、后台任务和设备事件；
+  内部身份不能伪造浏览器用户或租户权限。
+- Feign 调用会删除调用方提交的 Authorization、Cookie、内部 Token 和身份/
+  租户 Header，再注入当前服务自己的内部凭据。只有已经验证的用户上下文才
+  传播用户工作区信息。
+- 内部跨服务请求必须显式携带业务所需的 tenantId，并由数据所有者从持久化
+  关系确定；不得从浏览器 Header、请求体用户标识或默认租户推断。
+- 需要幂等的写接口使用业务 `clientRequestId` 或 `requestId`。同一键和相同
+  fingerprint 重放首次结果；同一键但不同 fingerprint 返回 409
+  `IDEMPOTENCY_KEY_CONFLICT`。
+- 审计 actor/context 只来自可信请求上下文。审计默认不序列化参数和返回值；
+  仅显式标记的安全标量允许进入 detail。
+- 条件状态更新必须区分成功、重复事件、资源不存在、非法状态和版本冲突；
+  合法状态边仍由所属业务服务决定。
 
 受保护接口使用：
 
@@ -79,7 +45,7 @@ Device 的 tenant-scoped Session 查询。Monitor 必须拒绝字段缺失、非
 Authorization: Bearer {JWT}
 ```
 
-P-2 起 Access JWT 固定约 15 分钟，包含 `jti`、`sid`、`sessionSecurityVersion`
+Access JWT 固定约 15 分钟，包含 `jti`、`sid`、`sessionSecurityVersion`
 和当前租户上下文；同一个有效 Access JWT 可以重复调用普通 API，不是每请求一次性
 Token。7 天免登录由服务端 Refresh Session 承担，浏览器只通过 HttpOnly/SameSite
 Cookie 持有高熵 Refresh Token，服务端只保存哈希。普通 refresh 不递增
@@ -224,7 +190,7 @@ GET  /admin/platform/tenants/{tenantId}/members
 GET  /admin/platform/saas-plans
 ```
 
-租户编码创建后不可修改。`default-tenant` 在首版迁移期间不可停用；P-1 新建租户没有有效订阅时返回 `NO_ACTIVE_SUBSCRIPTION`，不能伪装为可用套餐。
+租户编码创建后不可修改。`default-tenant` 不可停用；新建租户没有有效订阅时返回 `NO_ACTIVE_SUBSCRIPTION`，不能伪装为可用套餐。
 
 ### 概览与用户
 
@@ -381,6 +347,11 @@ User 是 `sys_user`、账号命令收据和默认成员 Outbox 的唯一直接�
 `POST /internal/entitlements/lease` 的首次租约只接受可信
 `X-Tenant-Id` 上下文；无 Servlet 请求上下文的后台续租必须携带已持久化的
 `entitlementId`，由 user-service 校验权益与用户并反查租户。请求体不能自行指定租户。
+
+`POST /internal/entitlements/lease` 的请求体 `requestId` 是该租约业务的
+HTTP 幂等键，不等于链路 `X-Request-Id`。首次与重放均由 User 私有 Receipt
+返回稳定业务结果；重放仅把 `duplicate` 置为 `true`，不得再次扣减权益或
+写入 usage log。
 
 这些接口依赖 `WIFI_INTERNAL_TOKEN` 或可信 Gateway 请求机制。禁止在 Gateway 增加 `/internal/**` 路由，也禁止客户端自行构造 `X-User-*`、`X-Gateway-Token` 或内部 Token。
 

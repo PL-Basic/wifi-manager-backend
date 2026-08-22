@@ -2,8 +2,8 @@ package com.plagod.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.plagod.audit.AuditTargetId;
 import com.plagod.audit.Audited;
-import com.plagod.client.DeviceLocationSessionClient;
 import com.plagod.dto.ApiResponse;
 import com.plagod.dto.ClientLocationReportDTO;
 import com.plagod.entity.monitor.ClientLocation;
@@ -11,11 +11,11 @@ import com.plagod.entity.monitor.LocationAuthorization;
 import com.plagod.exception.ApiStatusException;
 import com.plagod.mapper.ClientLocationMapper;
 import com.plagod.mapper.LocationAuthorizationMapper;
+import com.plagod.security.MonitorTenantScope;
+import com.plagod.security.TrustedRequestContext;
 import com.plagod.service.ClientLocationService;
-import com.plagod.support.PageBounds;
-import com.plagod.support.StableUnits;
 import com.plagod.service.GeofenceEvaluationService;
-import com.plagod.util.GeoMath;
+import com.plagod.support.PageBounds;
 import com.plagod.vo.device.LocationSessionContextVO;
 import com.plagod.vo.monitor.ClientLocationPageResult;
 import com.plagod.vo.monitor.ClientLocationVO;
@@ -33,6 +33,7 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 @Service
 public class ClientLocationServiceImpl implements ClientLocationService {
@@ -44,12 +45,14 @@ public class ClientLocationServiceImpl implements ClientLocationService {
     @Autowired
     private LocationAuthorizationMapper locationAuthorizationMapper;
     @Autowired
-    private DeviceLocationSessionClient deviceLocationSessionClient;
+    private DeviceLocationSessionGateway deviceLocationSessionGateway;
+    @Autowired
+    private ClientLocationReportTransactionService reportTransactionService;
     @Autowired
     private GeofenceEvaluationService geofenceEvaluationService;
+    @Autowired
+    private MonitorTenantScope tenantScope;
 
-    @Value("${wifi.internal.token:}")
-    private String internalToken;
     @Value("${wifi.location.minimum-report-interval-seconds:3}")
     private long minimumReportIntervalSeconds;
     @Value("${wifi.location.maximum-speed-meters-per-second:100}")
@@ -60,84 +63,72 @@ public class ClientLocationServiceImpl implements ClientLocationService {
     @Override
     @Audited(
             action = "location.report",
-            scope = Audited.Scope.TENANT,
+            targetType = "LOCATION_SESSION",
+            scope = Audited.Scope.CONTEXT,
             tenantIdSource = Audited.TenantIdSource.REQUEST,
-            includeArgs = false)
-    @Transactional(rollbackFor = Exception.class)
-    public Long report(Long sessionId, ClientLocationReportDTO dto, Long userId) {
+            recordDenied = true,
+            recordFailed = true)
+    public Long report(TrustedRequestContext trustedContext,
+                       @AuditTargetId Long sessionId,
+                       ClientLocationReportDTO dto) {
+        Long tenantId = tenantScope.requireTenantId(trustedContext);
+        Long userId = trustedContext.getUserId();
         validateIdentity(userId, sessionId);
         validateLocationPolicyConfiguration();
 
-        LocationSessionContextVO context = resolveContext(userId, sessionId);
-        LocalDateTime now = LocalDateTime.now();
-
-        locationAuthorizationMapper.ensureAuthorizationRow(userId);
-        LocationAuthorization authorization = locationAuthorizationMapper.selectByUserIdForUpdate(userId);
-
-        if (authorization == null || !Integer.valueOf(1).equals(authorization.getEnabled()) || authorization.getConsentTime() == null) {
-
-            throw ApiStatusException.conflict("用户尚未开启位置共享");
-        }
-
-        validateReportInterval(authorization, now);
-        ClientLocation previous = clientLocationMapper.selectLatestTrustedPoint(userId, sessionId);
-        validateLocationJump(previous, dto, now);
-
-        ClientLocation entity = new ClientLocation();
-        entity.setUserId(context.getUserId());
-        entity.setSessionId(context.getSessionId());
-        entity.setNodeId(context.getNodeId());
-        entity.setDeviceCode(context.getDeviceCode());
-        entity.setMac(context.getMac());
-        entity.setTrustedBinding(1);
-        entity.setLatitude(dto.getLatitude());
-        entity.setLongitude(dto.getLongitude());
-        entity.setAccuracy(dto.getAccuracy());
-        entity.setSource(normalizeSource(dto.getSource()));
-        entity.setConsentTime(authorization.getConsentTime());
-        entity.setReportTime(now);
-        entity.setCreateTime(now);
-
-        if (clientLocationMapper.insert(entity) != 1 || entity.getId() == null) {
-            throw new IllegalStateException("位置上报保存失败");
-        }
-
-        authorization.setLastReportTime(now);
-        authorization.setUpdateTime(now);
-
-        if (locationAuthorizationMapper.updateById(authorization) != 1) {
-            throw new IllegalStateException("位置授权状态更新失败");
-        }
-
-        geofenceEvaluationService.evaluate(previous, entity);
-
-        return entity.getId();
+        LocationSessionContextVO context = resolveContext(
+                tenantId,
+                userId,
+                sessionId);
+        return reportTransactionService.persist(
+                tenantId,
+                context,
+                dto,
+                minimumReportIntervalSeconds,
+                maximumSpeedMetersPerSecond);
     }
 
     @Override
-    public LocationAuthorizationVO getAuthorization(Long userId) {
-        validateUserId(userId);
-        return toAuthorizationVO(userId, locationAuthorizationMapper.selectById(userId));
+    public LocationAuthorizationVO getAuthorization(
+            TrustedRequestContext context) {
+        Long tenantId = tenantScope.requireTenantId(context);
+        Long userId = context.getUserId();
+        return toAuthorizationVO(
+                userId,
+                locationAuthorizationMapper.selectByUserIdAndTenant(
+                        tenantId,
+                        userId));
     }
 
     @Override
     @Audited(
             action = "location.consent.grant",
-            scope = Audited.Scope.TENANT,
+            targetType = "LOCATION_AUTHORIZATION",
+            target = "self",
+            scope = Audited.Scope.CONTEXT,
             tenantIdSource = Audited.TenantIdSource.REQUEST,
-            includeArgs = false)
+            recordDenied = true,
+            recordFailed = true)
     @Transactional(rollbackFor = Exception.class)
-    public LocationAuthorizationVO grantAuthorization(Long userId) {
-        validateUserId(userId);
+    public LocationAuthorizationVO grantAuthorization(
+            TrustedRequestContext context) {
+        Long tenantId = tenantScope.requireTenantId(context);
+        Long userId = context.getUserId();
 
-        locationAuthorizationMapper.ensureAuthorizationRow(userId);
-        LocationAuthorization authorization = locationAuthorizationMapper.selectByUserIdForUpdate(userId);
+        locationAuthorizationMapper.ensureAuthorizationRowByTenant(
+                tenantId,
+                userId);
+        LocationAuthorization authorization =
+                locationAuthorizationMapper.selectByUserIdForUpdateAndTenant(
+                        tenantId,
+                        userId);
 
         if (authorization == null) {
             throw new IllegalStateException("位置授权记录初始化失败");
         }
+        validateAuthorizationState(authorization);
 
-        if (!Integer.valueOf(1).equals(authorization.getEnabled()) || authorization.getConsentTime() == null) {
+        if (Integer.valueOf(0).equals(authorization.getEnabled())) {
 
             LocalDateTime now = LocalDateTime.now();
 
@@ -147,11 +138,10 @@ public class ClientLocationServiceImpl implements ClientLocationService {
 
             // 新授权周期不继承上一个周期的频率限制时间。
             authorization.setLastReportTime(null);
-            authorization.setUpdateTime(now);
-
-            if (locationAuthorizationMapper.updateById(authorization) != 1) {
-                throw new IllegalStateException("位置授权保存失败");
-            }
+            persistAuthorization(
+                    tenantId,
+                    authorization,
+                    "位置授权保存失败");
         }
         return toAuthorizationVO(userId, authorization);
     }
@@ -159,29 +149,39 @@ public class ClientLocationServiceImpl implements ClientLocationService {
     @Override
     @Audited(
             action = "location.consent.revoke",
-            scope = Audited.Scope.TENANT,
+            targetType = "LOCATION_AUTHORIZATION",
+            target = "self",
+            scope = Audited.Scope.CONTEXT,
             tenantIdSource = Audited.TenantIdSource.REQUEST,
-            includeArgs = false)
+            recordDenied = true,
+            recordFailed = true)
     @Transactional(rollbackFor = Exception.class)
-    public LocationAuthorizationVO revokeAuthorization(Long userId) {
-        validateUserId(userId);
+    public LocationAuthorizationVO revokeAuthorization(
+            TrustedRequestContext context) {
+        Long tenantId = tenantScope.requireTenantId(context);
+        Long userId = context.getUserId();
 
-        locationAuthorizationMapper.ensureAuthorizationRow(userId);
-        LocationAuthorization authorization = locationAuthorizationMapper.selectByUserIdForUpdate(userId);
+        locationAuthorizationMapper.ensureAuthorizationRowByTenant(
+                tenantId,
+                userId);
+        LocationAuthorization authorization =
+                locationAuthorizationMapper.selectByUserIdForUpdateAndTenant(
+                        tenantId,
+                        userId);
 
         if (authorization == null) {
             throw new IllegalStateException("位置授权记录初始化失败");
         }
+        validateAuthorizationState(authorization);
 
-        if (!Integer.valueOf(0).equals(authorization.getEnabled()) || authorization.getRevokedTime() == null) {
+        if (Integer.valueOf(1).equals(authorization.getEnabled())) {
             LocalDateTime now = LocalDateTime.now();
             authorization.setEnabled(0);
             authorization.setRevokedTime(now);
-            authorization.setUpdateTime(now);
-
-            if (locationAuthorizationMapper.updateById(authorization) != 1) {
-                throw new IllegalStateException("位置授权撤销失败");
-            }
+            persistAuthorization(
+                    tenantId,
+                    authorization,
+                    "位置授权撤销失败");
         }
 
         return toAuthorizationVO(userId, authorization);
@@ -190,42 +190,80 @@ public class ClientLocationServiceImpl implements ClientLocationService {
     @Override
     @Audited(
             action = "location.history.clear",
-            scope = Audited.Scope.TENANT,
+            targetType = "LOCATION_HISTORY",
+            target = "self",
+            scope = Audited.Scope.CONTEXT,
             tenantIdSource = Audited.TenantIdSource.REQUEST,
-            includeArgs = false)
+            recordDenied = true,
+            recordFailed = true)
     @Transactional(rollbackFor = Exception.class)
-    public long clearOwnedHistory(Long userId) {
-        validateUserId(userId);
+    public long clearOwnedHistory(TrustedRequestContext context) {
+        Long tenantId = tenantScope.requireTenantId(context);
+        Long userId = context.getUserId();
 
-        locationAuthorizationMapper.ensureAuthorizationRow(userId);
+        locationAuthorizationMapper.ensureAuthorizationRowByTenant(
+                tenantId,
+                userId);
 
-        if (locationAuthorizationMapper.selectByUserIdForUpdate(userId) == null) {
+        if (locationAuthorizationMapper
+                .selectByUserIdForUpdateAndTenant(tenantId, userId)
+                == null) {
             throw new IllegalStateException("位置授权记录初始化失败");
         }
 
         QueryWrapper<ClientLocation> deleteQuery = new QueryWrapper<>();
+        deleteQuery.eq("tenant_id", tenantId);
         deleteQuery.eq("user_id", userId);
-        geofenceEvaluationService.clearUserData(userId);
+        geofenceEvaluationService.clearUserData(tenantId, userId);
         return clientLocationMapper.delete(deleteQuery);
     }
 
     @Override
-    public ClientLocationPageResult pageLocations(long current, long size, String mac, Long userId, LocalDateTime startTime, LocalDateTime endTime) {
-
-        return page(current, size, mac, userId, startTime, endTime);
+    public ClientLocationPageResult pageLocations(
+            TrustedRequestContext context,
+            long current,
+            long size,
+            String mac,
+            Long userId,
+            LocalDateTime startTime,
+            LocalDateTime endTime) {
+        return page(
+                tenantScope.requireTenantId(context),
+                current,
+                size,
+                mac,
+                userId,
+                startTime,
+                endTime);
     }
 
     @Override
-    public ClientLocationPageResult pageOwnedLocations(Long ownerUserId, long current, long size, String mac, LocalDateTime startTime, LocalDateTime endTime) {
-
-        if (ownerUserId == null || ownerUserId <= 0) {
-            throw new IllegalArgumentException("缺少有效用户身份");
-        }
-
-        return page(current, size, mac, ownerUserId, startTime, endTime);
+    public ClientLocationPageResult pageOwnedLocations(
+            TrustedRequestContext context,
+            long current,
+            long size,
+            String mac,
+            LocalDateTime startTime,
+            LocalDateTime endTime) {
+        Long tenantId = tenantScope.requireTenantId(context);
+        return page(
+                tenantId,
+                current,
+                size,
+                mac,
+                context.getUserId(),
+                startTime,
+                endTime);
     }
 
-    private ClientLocationPageResult page(long current, long size, String mac, Long userId, LocalDateTime startTime, LocalDateTime endTime) {
+    private ClientLocationPageResult page(
+            Long tenantId,
+            long current,
+            long size,
+            String mac,
+            Long userId,
+            LocalDateTime startTime,
+            LocalDateTime endTime) {
 
         if (startTime != null && endTime != null && endTime.isBefore(startTime)) {
 
@@ -241,6 +279,7 @@ public class ClientLocationServiceImpl implements ClientLocationService {
                         : (int) Math.min(size, Integer.MAX_VALUE));
 
         QueryWrapper<ClientLocation> query = new QueryWrapper<>();
+        query.eq("tenant_id", tenantId);
 
         if (StringUtils.hasText(mac)) {
             query.like("mac", mac.trim());
@@ -280,16 +319,16 @@ public class ClientLocationServiceImpl implements ClientLocationService {
         return result;
     }
 
-    private LocationSessionContextVO resolveContext(Long userId, Long sessionId) {
-
-        if (!StringUtils.hasText(internalToken)) {
-            throw ApiStatusException.serviceUnavailable("位置 Session 校验功能当前不可用");
-        }
+    private LocationSessionContextVO resolveContext(
+            Long tenantId,
+            Long userId,
+            Long sessionId) {
 
         ApiResponse<LocationSessionContextVO> response;
 
         try {
-            response = deviceLocationSessionClient.getLocationContext(sessionId, userId, internalToken);
+            response = deviceLocationSessionGateway.getLocationContext(
+                    sessionId);
         } catch (FeignException exception) {
             log.warn("位置 Session 上下文调用失败，sessionId={}，status={}", sessionId, exception.status());
 
@@ -310,13 +349,20 @@ public class ClientLocationServiceImpl implements ClientLocationService {
             throw ApiStatusException.badGateway("设备服务未返回有效 Session 关系");
         }
 
-        if (!java.util.Objects.equals(userId, context.getUserId())
-                || !java.util.Objects.equals(sessionId, context.getSessionId())
+        if (!Objects.equals(userId, context.getUserId())
+                || !Objects.equals(sessionId, context.getSessionId())
                 || context.getNodeId() == null
                 || !StringUtils.hasText(context.getDeviceCode())
                 || !StringUtils.hasText(context.getMac())) {
 
             throw ApiStatusException.badGateway("设备服务返回的 Session 关系不完整");
+        }
+
+        if (context.getTenantId() == null
+                || context.getTenantId() <= 0
+                || !Objects.equals(tenantId, context.getTenantId())) {
+            throw ApiStatusException.badGateway(
+                    "设备服务返回的 Session 租户归属不一致");
         }
 
         return context;
@@ -358,13 +404,6 @@ public class ClientLocationServiceImpl implements ClientLocationService {
         }
     }
 
-    private String normalizeSource(String source) {
-        if (!StringUtils.hasText(source)) {
-            return "browser";
-        }
-        return source.trim().toLowerCase(java.util.Locale.ROOT);
-    }
-
     private LocationAuthorizationVO toAuthorizationVO(Long userId, LocationAuthorization authorization) {
 
         LocationAuthorizationVO vo = new LocationAuthorizationVO();
@@ -382,6 +421,43 @@ public class ClientLocationServiceImpl implements ClientLocationService {
         return vo;
     }
 
+    private void persistAuthorization(
+            Long tenantId,
+            LocationAuthorization authorization,
+            String failureMessage) {
+        Integer expectedVersion = authorization.getVersion();
+        if (expectedVersion == null || expectedVersion < 0) {
+            throw new IllegalStateException("位置授权版本无效");
+        }
+
+        int affected = locationAuthorizationMapper.updateByTenantAndVersion(
+                tenantId,
+                authorization.getUserId(),
+                authorization.getEnabled(),
+                authorization.getConsentTime(),
+                authorization.getRevokedTime(),
+                authorization.getLastReportTime(),
+                expectedVersion);
+        if (affected != 1) {
+            throw ApiStatusException.conflict(failureMessage);
+        }
+        authorization.setVersion(expectedVersion + 1);
+    }
+
+    private void validateAuthorizationState(
+            LocationAuthorization authorization) {
+        Integer enabled = authorization.getEnabled();
+        boolean granted = Integer.valueOf(1).equals(enabled);
+        boolean revokedOrInitial = Integer.valueOf(0).equals(enabled);
+        if (!granted && !revokedOrInitial) {
+            throw ApiStatusException.conflict("位置授权状态无效");
+        }
+        if (granted && (authorization.getConsentTime() == null
+                || authorization.getRevokedTime() != null)) {
+            throw ApiStatusException.conflict("位置授权状态不一致");
+        }
+    }
+
     private void validateLocationPolicyConfiguration() {
         if (minimumReportIntervalSeconds < 1 || minimumReportIntervalSeconds > 3600) {
             throw new IllegalStateException("位置上报最小间隔配置无效");
@@ -391,61 +467,5 @@ public class ClientLocationServiceImpl implements ClientLocationService {
             throw new IllegalStateException("位置异常跳点速度配置无效");
         }
     }
-
-    private void validateReportInterval(LocationAuthorization authorization, LocalDateTime now) {
-
-        LocalDateTime lastReportTime = authorization.getLastReportTime();
-
-        if (lastReportTime == null) {
-            return;
-        }
-
-        LocalDateTime nextAllowedTime = lastReportTime.plusSeconds(minimumReportIntervalSeconds);
-
-        if (!now.isBefore(nextAllowedTime)) {
-            return;
-        }
-
-        long remainingMillis = java.time.Duration.between(now, nextAllowedTime).toMillis();
-
-        long retryAfterSeconds = Math.max(
-                1L,
-                (remainingMillis
-                        + StableUnits.MILLISECONDS_PER_SECOND
-                        - 1L)
-                        / StableUnits.MILLISECONDS_PER_SECOND);
-
-        throw ApiStatusException.tooManyRequests("位置上报过于频繁，请稍后再试", retryAfterSeconds);
-    }
-
-    private void validateLocationJump(ClientLocation previous, ClientLocationReportDTO current, LocalDateTime now) {
-
-        if (previous == null) {
-            return;
-        }
-
-        if (previous.getLatitude() == null || previous.getLongitude() == null || previous.getAccuracy() == null || previous.getReportTime() == null) {
-            throw new IllegalStateException("最近可信位置数据不完整");
-        }
-
-        long elapsedMillis = java.time.Duration.between(previous.getReportTime(), now).toMillis();
-
-        if (elapsedMillis <= 0) {
-            throw new IllegalArgumentException("位置上报时间顺序异常");
-        }
-
-        double elapsedSeconds = elapsedMillis
-                / (double) StableUnits.MILLISECONDS_PER_SECOND;
-
-        double distanceMeters = GeoMath.distanceMeters(previous.getLatitude(), previous.getLongitude(), current.getLatitude(), current.getLongitude());
-
-        // 两次定位精度作为误差缓冲，避免普通GPS漂移被当成异常移动。
-        double allowedDistance = maximumSpeedMetersPerSecond * elapsedSeconds + previous.getAccuracy().doubleValue() + current.getAccuracy().doubleValue();
-
-        if (distanceMeters > allowedDistance) {
-            throw new IllegalArgumentException("位置变化明显异常，本次上报已拒绝");
-        }
-    }
-
 
 }

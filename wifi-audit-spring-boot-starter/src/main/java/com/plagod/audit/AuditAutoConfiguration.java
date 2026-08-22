@@ -1,12 +1,17 @@
 package com.plagod.audit;
 
-import com.plagod.security.TrustedHeaderNames;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.plagod.security.TrustedRequestContextResolver;
+import io.micrometer.core.instrument.MeterRegistry;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import javax.servlet.http.HttpServletRequest;
 
@@ -21,7 +26,7 @@ import javax.servlet.http.HttpServletRequest;
 @ConditionalOnClass({
         HttpServletRequest.class,
         JdbcTemplate.class,
-        TrustedHeaderNames.class
+        TrustedRequestContextResolver.class
 })
 @ConditionalOnProperty(prefix = "wifi.audit", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class AuditAutoConfiguration {
@@ -32,7 +37,49 @@ public class AuditAutoConfiguration {
     }
 
     @Bean
-    public AuditAspect auditAspect(AuditWriter auditWriter) {
-        return new AuditAspect(auditWriter);
+    public AuditWriteFailureReporter auditWriteFailureReporter(
+            ObjectProvider<MeterRegistry> meterRegistry) {
+        return new AuditWriteFailureReporter(
+                meterRegistry.getIfAvailable());
+    }
+
+    @Bean
+    public AfterCommitAuditWriter afterCommitAuditWriter(
+            AuditWriter auditWriter,
+            PlatformTransactionManager transactionManager,
+            AuditWriteFailureReporter failureReporter) {
+        return new AfterCommitAuditWriter(
+                auditWriter,
+                transactionManager,
+                failureReporter);
+    }
+
+    @Bean
+    public IndependentAuditWriter independentAuditWriter(
+            AuditWriter auditWriter,
+            PlatformTransactionManager transactionManager,
+            AuditWriteFailureReporter failureReporter) {
+        return new IndependentAuditWriter(
+                auditWriter,
+                transactionManager,
+                failureReporter);
+    }
+
+    @Bean
+    public AuditAspect auditAspect(
+            AfterCommitAuditWriter successWriter,
+            IndependentAuditWriter failureWriter,
+            AuditWriteFailureReporter failureReporter,
+            TrustedRequestContextResolver contextResolver,
+            ObjectMapper objectMapper,
+            @Value("${spring.application.name:unknown-service}")
+                    String sourceService) {
+        return new AuditAspect(
+                successWriter,
+                failureWriter,
+                failureReporter,
+                contextResolver,
+                objectMapper,
+                sourceService);
     }
 }

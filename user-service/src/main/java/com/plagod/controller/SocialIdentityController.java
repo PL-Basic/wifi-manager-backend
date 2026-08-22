@@ -1,11 +1,14 @@
 package com.plagod.controller;
 
 import com.plagod.dto.ApiResponse;
+import com.plagod.security.TrustedRequestContext;
+import com.plagod.security.UserRequestContextPolicy;
 import com.plagod.service.SocialIdentityService;
 import com.plagod.vo.user.SocialIdentityVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+import javax.servlet.http.HttpServletRequest;
 import java.util.List;
 
 @RestController
@@ -15,27 +18,26 @@ public class SocialIdentityController {
     @Autowired
     private SocialIdentityService socialIdentityService;
 
+    @Autowired
+    private UserRequestContextPolicy contextPolicy;
+
     @GetMapping
     public ApiResponse<List<SocialIdentityVO>> list(@PathVariable Long userId,
-                                                    @RequestHeader("X-User-Id") Long currentUserId) {
-
-        requireSelf(userId, currentUserId);
+                                                    HttpServletRequest request) {
+        TrustedRequestContext context =
+                contextPolicy.requireUserActor(request);
+        contextPolicy.requireSelf(context, userId);
         return ApiResponse.success(socialIdentityService.listOwnedIdentities(userId));
     }
 
     @DeleteMapping("/{identityId}")
     public ApiResponse<Void> unbind(@PathVariable Long userId,
                                     @PathVariable Long identityId,
-                                    @RequestHeader("X-User-Id") Long currentUserId) {
-
-        requireSelf(userId, currentUserId);
+                                    HttpServletRequest request) {
+        TrustedRequestContext context =
+                contextPolicy.requireUserActor(request);
+        contextPolicy.requireSelf(context, userId);
         socialIdentityService.unbindOwnedIdentity(userId, identityId);
         return ApiResponse.success("社交身份解绑成功", null);
-    }
-
-    private void requireSelf(Long userId, Long currentUserId) {
-        if (userId == null || currentUserId == null || !userId.equals(currentUserId)) {
-            throw new IllegalArgumentException("只能管理本人绑定的社交身份");
-        }
     }
 }

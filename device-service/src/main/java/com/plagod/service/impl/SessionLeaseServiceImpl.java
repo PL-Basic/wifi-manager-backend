@@ -1,6 +1,5 @@
 package com.plagod.service.impl;
 
-import com.plagod.client.UserEntitlementClient;
 import com.plagod.constant.SessionStatus;
 import com.plagod.dto.ApiResponse;
 import com.plagod.dto.user.EntitlementLeaseRequest;
@@ -9,13 +8,15 @@ import com.plagod.entity.device.SessionRecord;
 import com.plagod.mapper.Esp32NodeMapper;
 import com.plagod.mapper.SessionRecordMapper;
 import com.plagod.service.DeviceCommandService;
+import com.plagod.service.DeviceUserRemoteGateway;
 import com.plagod.service.SessionLeaseService;
 import com.plagod.vo.user.EntitlementLeaseResult;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
 import java.time.Duration;
@@ -33,12 +34,11 @@ public class SessionLeaseServiceImpl implements SessionLeaseService {
     @Autowired
     private Esp32NodeMapper esp32NodeMapper;
     @Autowired
-    private UserEntitlementClient userEntitlementClient;
+    private DeviceUserRemoteGateway userRemoteGateway;
     @Autowired
     private DeviceCommandService deviceCommandService;
-
-    @Value("${wifi.internal.token}")
-    private String internalToken;
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     @Value("${wifi.portal.lease-ttl-seconds:20}")
     private int leaseTtlSeconds;
@@ -47,23 +47,37 @@ public class SessionLeaseServiceImpl implements SessionLeaseService {
     private long offlineTimeoutSeconds;
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public void processSession(Long sessionId) {
-        SessionRecord session = sessionRecordMapper.selectByIdForUpdateGlobal(sessionId);
-        if (session == null || !Integer.valueOf(1).equals(session.getStatus())) {
+        validateConfiguration();
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        transaction.setPropagationBehavior(
+                TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        SessionLeasePlan plan = transaction.execute(status ->
+                prepareSessionLease(sessionId, LocalDateTime.now()));
+        if (plan == null) {
             return;
         }
 
-        validateConfiguration();
+        EntitlementLeaseResult lease = acquireLease(plan);
+        transaction.executeWithoutResult(status ->
+                applySessionLease(plan, lease, LocalDateTime.now()));
+    }
 
-        LocalDateTime now = LocalDateTime.now();
+    private SessionLeasePlan prepareSessionLease(
+            Long sessionId,
+            LocalDateTime now) {
+        SessionRecord session = sessionRecordMapper.selectByIdForUpdateGlobal(sessionId);
+        if (session == null || !Integer.valueOf(1).equals(session.getStatus())) {
+            return null;
+        }
+
         Esp32Node node = esp32NodeMapper.selectByNodeIdAndTenantIncludeDeleted(
                 session.getTenantId(), session.getNodeId());
         boolean nodeUnavailable = node == null || Integer.valueOf(1).equals(node.getDelFlag()) || !Integer.valueOf(1).equals(node.getStatus());
 
         if (session.getLastSeenTime() == null) {
             handleUnconfirmedSession(session, now, nodeUnavailable);
-            return;
+            return null;
         }
 
         LocalDateTime billedTime = session.getLastBilledTime();
@@ -87,11 +101,46 @@ public class SessionLeaseServiceImpl implements SessionLeaseService {
         if (offline && usageSeconds == 0) {
             closeSession(session, now, nodeUnavailable ? "NODE_UNAVAILABLE" : "RSSI_TIMEOUT");
             saveSession(session);
+            return null;
+        }
+
+        return new SessionLeasePlan(
+                session.getSessionId(),
+                session.getTenantId(),
+                session.getUserId(),
+                session.getEntitlementId(),
+                session.getNodeId(),
+                session.getMac(),
+                node == null ? null : node.getDeviceCode(),
+                billedTime,
+                billingCutoff,
+                usageSeconds,
+                offline,
+                nodeUnavailable);
+    }
+
+    private void applySessionLease(
+            SessionLeasePlan plan,
+            EntitlementLeaseResult lease,
+            LocalDateTime now) {
+        SessionRecord session =
+                sessionRecordMapper.selectByIdForUpdate(
+                        plan.tenantId, plan.sessionId);
+        if (session == null || !SessionStatus.isActive(session.getStatus())) {
             return;
         }
 
-        EntitlementLeaseResult lease = acquireLease(session, billedTime, usageSeconds);
-        applyLeaseResult(session, lease, billingCutoff, usageSeconds);
+        LocalDateTime currentBilledTime = session.getLastBilledTime();
+        if (currentBilledTime == null) {
+            currentBilledTime = session.getLoginTime();
+        }
+        if (currentBilledTime == null
+                || !currentBilledTime.equals(plan.billedTime)) {
+            return;
+        }
+
+        applyLeaseResult(
+                session, lease, plan.billingCutoff, plan.usageSeconds);
 
         if (!Boolean.TRUE.equals(lease.getAllowed())) {
             closeSession(session, now, lease.getReason());
@@ -105,8 +154,13 @@ public class SessionLeaseServiceImpl implements SessionLeaseService {
         }
 
         // 离线时只进行最后结算，不再重新发布 ALLOW。
-        if (offline) {
-            closeSession(session, now, nodeUnavailable ? "NODE_UNAVAILABLE" : "RSSI_TIMEOUT");
+        if (plan.offline) {
+            closeSession(
+                    session,
+                    now,
+                    plan.nodeUnavailable
+                            ? "NODE_UNAVAILABLE"
+                            : "RSSI_TIMEOUT");
             saveSession(session);
             return;
         }
@@ -116,19 +170,39 @@ public class SessionLeaseServiceImpl implements SessionLeaseService {
         saveSession(session);
 
         // Session 更新和续租命令入队共享当前事务。
-        deviceCommandService.refreshClientLease(session.getNodeId(), node.getDeviceCode(), session.getMac(), session.getSessionId(), ttlSeconds);
+        deviceCommandService.refreshClientLease(
+                plan.nodeId,
+                plan.deviceCode,
+                plan.mac,
+                plan.sessionId,
+                ttlSeconds);
     }
 
     @Override
-    @Transactional(propagation = Propagation.MANDATORY, rollbackFor = Exception.class)
-    public void settleFinalUsage(SessionRecord session, LocalDateTime now) {
-        if (session == null || now == null) {
-            throw new IllegalArgumentException("最终结算缺少 Session 或当前时间");
+    public void settleFinalUsage(Long sessionId) {
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        transaction.setPropagationBehavior(
+                TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        SessionLeasePlan plan = transaction.execute(status ->
+                prepareFinalSettlement(sessionId, LocalDateTime.now()));
+        if (plan == null) {
+            return;
         }
 
-        // PENDING 尚未被 ESP32 真正放行，没有可结算的在线使用时长。
-        if (!SessionStatus.isActive(session.getStatus()) || session.getLastSeenTime() == null) {
-            return;
+        EntitlementLeaseResult lease = acquireFinalLease(plan);
+        transaction.executeWithoutResult(status ->
+                applyFinalSettlement(plan, lease));
+    }
+
+    private SessionLeasePlan prepareFinalSettlement(
+            Long sessionId,
+            LocalDateTime now) {
+        SessionRecord session =
+                sessionRecordMapper.selectByIdForUpdateGlobal(sessionId);
+        if (session == null
+                || !SessionStatus.isActive(session.getStatus())
+                || session.getLastSeenTime() == null) {
+            return null;
         }
 
         LocalDateTime billedTime = session.getLastBilledTime();
@@ -139,17 +213,72 @@ public class SessionLeaseServiceImpl implements SessionLeaseService {
             throw new IllegalStateException("Session 缺少计费基准时间");
         }
 
-        // 只使用后端观测到的 RSSI 时间，并禁止未来时间扩大扣费区间。
-        LocalDateTime observedTime = session.getLastSeenTime().isAfter(now) ? now : session.getLastSeenTime();
-        LocalDateTime billingCutoff = observedTime.isAfter(billedTime) ? observedTime : billedTime;
+        LocalDateTime observedTime =
+                session.getLastSeenTime().isAfter(now)
+                        ? now
+                        : session.getLastSeenTime();
+        LocalDateTime billingCutoff =
+                observedTime.isAfter(billedTime)
+                        ? observedTime
+                        : billedTime;
+        long usageSeconds = Math.min(
+                Math.max(
+                        0L,
+                        Duration.between(
+                                billedTime, billingCutoff).getSeconds()),
+                MAX_USAGE_SECONDS);
+        if (usageSeconds == 0L) {
+            return null;
+        }
 
-        long elapsedSeconds = Math.max(0L, Duration.between(billedTime, billingCutoff).getSeconds());
-        long usageSeconds = Math.min(elapsedSeconds, MAX_USAGE_SECONDS);
+        return new SessionLeasePlan(
+                session.getSessionId(),
+                session.getTenantId(),
+                session.getUserId(),
+                session.getEntitlementId(),
+                session.getNodeId(),
+                session.getMac(),
+                null,
+                billedTime,
+                billingCutoff,
+                usageSeconds,
+                true,
+                false);
+    }
 
-        // 使用独立前缀：本地事务回滚重试时 requestId 保持一致，不会重复扣费。
-        EntitlementLeaseResult lease = acquireLease(session, billedTime, usageSeconds, "session-final-");
+    private EntitlementLeaseResult acquireFinalLease(SessionLeasePlan plan) {
+        EntitlementLeaseRequest request = leaseRequest(plan);
+        ApiResponse<EntitlementLeaseResult> response =
+                userRemoteGateway.acquireLease(request);
+        if (response == null
+                || response.getCode() != 200
+                || response.getData() == null) {
+            throw new IllegalStateException("权益最终结算服务调用失败");
+        }
+        return response.getData();
+    }
 
-        applyLeaseResult(session, lease, billingCutoff, usageSeconds);
+    private void applyFinalSettlement(
+            SessionLeasePlan plan,
+            EntitlementLeaseResult lease) {
+        SessionRecord session =
+                sessionRecordMapper.selectByIdForUpdate(
+                        plan.tenantId, plan.sessionId);
+        if (session == null || !SessionStatus.isActive(session.getStatus())) {
+            return;
+        }
+
+        LocalDateTime billedTime = session.getLastBilledTime();
+        if (billedTime == null) {
+            billedTime = session.getLoginTime();
+        }
+        if (!plan.billedTime.equals(billedTime)) {
+            return;
+        }
+
+        applyLeaseResult(
+                session, lease, plan.billingCutoff, plan.usageSeconds);
+        saveSession(session);
     }
 
     private void validateConfiguration() {
@@ -188,27 +317,32 @@ public class SessionLeaseServiceImpl implements SessionLeaseService {
         }
     }
 
-    private EntitlementLeaseResult acquireLease(SessionRecord session, LocalDateTime billedTime, Long usageSeconds, String requestIdPrefix) {
-        EntitlementLeaseRequest request = new EntitlementLeaseRequest();
+    private EntitlementLeaseResult acquireLease(SessionLeasePlan plan) {
+        EntitlementLeaseRequest request = leaseRequest(plan);
 
-        request.setEntitlementId(session.getEntitlementId());
-        request.setRequestId(requestIdPrefix + session.getSessionId() + "-" + billedTime.format(REQUEST_TIME));
-        request.setUserId(session.getUserId());
-        request.setSessionId(session.getSessionId());
-        request.setUsageSeconds(usageSeconds);
-        request.setRequestedTtlSeconds(leaseTtlSeconds);
-
-        ApiResponse<EntitlementLeaseResult> response = userEntitlementClient.acquireLease(
-                internalToken, String.valueOf(session.getTenantId()), request);
-
-        if (response == null || response.getCode() != 200 || response.getData() == null) {
+        ApiResponse<EntitlementLeaseResult> response =
+                userRemoteGateway.acquireLease(request);
+        if (response == null
+                || response.getCode() != 200
+                || response.getData() == null) {
             throw new IllegalStateException("权益续租服务调用失败");
         }
         return response.getData();
     }
 
-    private EntitlementLeaseResult acquireLease(SessionRecord session, LocalDateTime billedTime, Long usageSeconds) {
-        return acquireLease(session, billedTime, usageSeconds, "session-lease-");
+    private EntitlementLeaseRequest leaseRequest(SessionLeasePlan plan) {
+        EntitlementLeaseRequest request = new EntitlementLeaseRequest();
+        request.setEntitlementId(plan.entitlementId);
+        request.setRequestId(
+                "session-lease-"
+                        + plan.sessionId
+                        + "-"
+                        + plan.billedTime.format(REQUEST_TIME));
+        request.setUserId(plan.userId);
+        request.setSessionId(plan.sessionId);
+        request.setUsageSeconds(plan.usageSeconds);
+        request.setRequestedTtlSeconds(leaseTtlSeconds);
+        return request;
     }
 
     private void applyLeaseResult(SessionRecord session, EntitlementLeaseResult lease, LocalDateTime billingCutoff, Long requestedUsageSeconds) {
@@ -230,5 +364,47 @@ public class SessionLeaseServiceImpl implements SessionLeaseService {
 
         long consumed = session.getConsumedSeconds() == null ? 0L : session.getConsumedSeconds();
         session.setConsumedSeconds(consumed + chargedSeconds);
+    }
+
+    private static final class SessionLeasePlan {
+        private final Long sessionId;
+        private final Long tenantId;
+        private final Long userId;
+        private final Long entitlementId;
+        private final Long nodeId;
+        private final String mac;
+        private final String deviceCode;
+        private final LocalDateTime billedTime;
+        private final LocalDateTime billingCutoff;
+        private final Long usageSeconds;
+        private final boolean offline;
+        private final boolean nodeUnavailable;
+
+        private SessionLeasePlan(
+                Long sessionId,
+                Long tenantId,
+                Long userId,
+                Long entitlementId,
+                Long nodeId,
+                String mac,
+                String deviceCode,
+                LocalDateTime billedTime,
+                LocalDateTime billingCutoff,
+                Long usageSeconds,
+                boolean offline,
+                boolean nodeUnavailable) {
+            this.sessionId = sessionId;
+            this.tenantId = tenantId;
+            this.userId = userId;
+            this.entitlementId = entitlementId;
+            this.nodeId = nodeId;
+            this.mac = mac;
+            this.deviceCode = deviceCode;
+            this.billedTime = billedTime;
+            this.billingCutoff = billingCutoff;
+            this.usageSeconds = usageSeconds;
+            this.offline = offline;
+            this.nodeUnavailable = nodeUnavailable;
+        }
     }
 }
