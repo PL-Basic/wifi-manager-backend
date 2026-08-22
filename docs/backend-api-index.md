@@ -1,42 +1,5 @@
 # Wifi Manager 后端接口清单
 
-## 0. Demo 2.1 S0 核心用例交叉引用
-
-本文件继续只记录真实 HTTP、WebSocket 和内部传输入口。传输入口数量不等于
-业务用例数量，也不能从 Controller、BFF、Feign 或 worker 反推第二套业务
-owner。
-
-Demo 2.1 S0 已在
-[核心用例索引](core-use-case-index.md) 中冻结 58 个业务用例组和 183 个全局
-唯一 `QUERY/COMMAND operationId`；对应机器事实源为
-`wifi-test-kit/src/test/resources/fixtures/core-use-cases-v1/manifest.json`。
-机器索引采用“中央 manifest + 分域 fixture”：8 个业务分域文件分别拥有唯一
-group、operation 和 stateMachine，跨 owner 事件与审计关闭矩阵使用独立文件。
-测试只按 manifest 固定清单在内存组合，不递归加载，也不生成单体聚合 JSON。
-fixture 使用 42 个对象级状态模型，不保留
-`AUTH_REFRESH/ACCOUNT_ENTITLEMENT/SAAS_QUOTA/MARKETPLACE/SUPPORT/DEVICE/`
-`MONITOR` 等聚合状态机。每个 operation 都是物理自描述对象，只允许一个业务
-owner，并在自身登记 actor/context、状态引用或 `STATELESS`、输入输出、错误、
-证据、`REUSE/PARTIAL/GAP`、完整冲突和唯一 `targetLayer`；不得依赖 manifest
-默认值、loader 默认值、全局 defaults 或组级继承。
-
-八个后续证据包的输入固定为：
-
-- `P21-AUTH`：`AUTH-01..05`；
-- `P21-USER`：`ACCOUNT-01..03`、`ENT-01..06`、`GOV-01` 的 USER 边界；
-- `P21-TENANT`：`TENANT-01..03`、`SAAS-01..02`、`QUOTA-01..02`、
-  `GOV-01` 的 TENANT 边界；
-- `P21-MARKET`：`MARKET-01..06`；
-- `P21-SUPPORT`：`ANN-01..06`、`SUPPORT-01..06`；
-- `P21-AI`：`AI-01..03`；
-- `P21-DEVICE`：`DEVICE-01..05`、`SESSION-01..02`、`TELEMETRY-01`；
-- `P21-MONITOR`：`RULE-01..02`、`ALERT-01`、`AUDIT-01`、
-  `LOCATION-01`、`GEOFENCE-01`、`ANALYTICS-01`。
-
-本节不声明上述 P21 包已经启动。后续包只能用真实入口核对中央 operation，
-不能新增 operationId、改变状态词、修改中央索引或把 `/internal/**` 暴露给
-浏览器/设备。发现入口与中央索引冲突时必须停止并退回 2.1 协调门。
-
 ## 1. 访问入口
 
 客户端、前端和第三方回调统一通过 Gateway：
@@ -51,211 +14,30 @@ http://{gateway-host}:8080
 {"code":200,"message":"操作成功","data":{}}
 ```
 
-Demo 1.4 S1 已在共享入口实现 `http-envelope-v1`：`ApiResponse` 保留
-`code/message/data`，并以仅在非空时序列化的方式增加 `errorKey/requestId`。
-`http-support-v1` 固定 Servlet 的九类状态、`X-Request-Id`、MDC 清理和安全
-500；业务服务 handler 与 Gateway 已通过对应 `P14-*` 完成接入，S2 共享
-收敛见下文。冻结结论、基础错误键、MQTT/AI 样本和 P14 文件所有权见
-[Demo 1.4 S0 公共能力与兼容契约冻结](demo-1.4-s0-contract-freeze.md)。
+当前共享入口约定：
 
-Demo 1.4 C0 在不改变业务接口的前提下补充两组共享入口：
-`wifi-common-api` 提供 `PageBounds`、稳定单位/时区常量、结构化 allowlist
-脱敏和不回显配置值的纯 Java 校验；`wifi-web-support-spring-boot-starter`
-提供无异常 message 的可定位安全堆栈、默认仅暴露 `health/info` 的 Actuator
-基线，以及只约束 `wifi.*` 自定义指标的低基数 `MeterFilter`。服务可显式扩展
-readiness 必要依赖，但不得把外部依赖加入 liveness。
-
-Demo 1.4 S2 将安全堆栈的唯一实现固定为
-`com.plagod.support.SafeExceptionLogFormatter`，位于框架无关的
-`wifi-common-api`。Servlet Starter 中原
-`com.plagod.web.SafeExceptionLogFormatter` 仅作为兼容委托保留；
-Gateway 未分类 500 使用同一实现记录有界的异常类型和定位帧，不记录异常
-message、suppressed 内容或 Throwable 参数。
-
-Demo 1.5 S0 将身份/Header 共享输入冻结为 `trusted-context-v1`：
-
-- `wifi-common-api` 的 `TrustedRequestHeaders` 是 Gateway、Servlet Starter
-  与 Feign 后续唯一可信 Header 常量来源；旧 `TrustedHeaderNames` 仅保留
-  兼容委托。`X-Request-Id` 已进入可信传播清单，但不作为可伪造的身份字段。
-- `TrustedRequestContext` 是不可变快照，分别保存 `trustedSource`、用户与
-  session/jti、`PLATFORM/TENANT/PLATFORM_TENANT`、租户双版本、平台权限和
-  requestId。`GATEWAY_USER`、`INTERNAL_SERVICE`、`SCHEDULED_SERVICE`、
-  `DEVICE_EVENT` 是独立来源；内部/后台/设备身份不能伪造浏览器 actor。
-- Security Starter 的 `TrustedRequestContextResolver` 只接受
-  `TrustedRequestFilter` 已标记的 Gateway/Internal 请求。现有租户写校验
-  与 Feign 出站按需装配并复用该 Context；未新增覆盖所有 Servlet 读路径的
-  全局认证 Filter。
-- Feign 始终删除 Authorization、Cookie、Gateway Token、调用方 Internal
-  Token、手工身份/租户 Header 和手工 requestId，再注入当前服务自己的
-  Internal Token。只有成功装配的用户 Context 才传播用户工作区字段；纯
-  Internal Service 只传播关联 ID，不获得用户、平台或默认租户权限。
-
-`P15-GW` 必须将 Gateway 内现有 Header 字面量切换为
-`TrustedRequestHeaders` 并保持“先删外部同名 Header、再写验证结果”；
-`P15-AUTH` 负责补 session/jti 失效的服务内永久测试；`P15-TENANT` 负责保证
-TENANT 不签发平台权限、PLATFORM_TENANT 不签发 tenantRole/memberVersion；
-其余 `P15-*` 业务包只消费 Resolver/Context，不复制 Header 解析器。以上是
-批次 B 的冻结输入，不表示对应业务目录已经完成接入或真实环境联调。
-
-Demo 1.5 B0 为两个内部跨服务对象增加显式租户载体：
-`TrafficEvaluationRequest.tenantId` 必须由 Device 根据已持久化的
-TrafficLog/Session 关系确定；`LocationSessionContextVO.tenantId` 必须来自
-Device 的 tenant-scoped Session 查询。Monitor 必须拒绝字段缺失、非法或与
-当前可信 Context 不一致的请求，不能从浏览器 Header、请求体用户标识或默认
-租户补全。该变更不修改 entitlement lease/snapshot 契约；现有
-`entitlementId + userId` 的租户重新解析路径继续复用。
-
-Demo 1.5 C0 冻结事务、Outbox 与 HTTP 幂等共享载体：
-
-- `t_default_tenant_membership_outbox` 继续由 User 独占，复用既有
-  `idempotency_key/request_fingerprint`、claim 字段和
-  `idx_default_membership_claim`。状态固定为
-  `PENDING/PROCESSING/RETRY/SUCCEEDED/DEAD`；只有 `PROCESSING` 可以持有
-  worker/lease，且 lease 必须晚于 claim 时间。
-- User 私有 `t_user_auth_session_revoke_outbox` 保存账号业务状态同事务产生
-  的撤销事件。Worker 提交 claim 后，在事务外继续调用现有
-  `POST /internal/auth/sessions/users/{userId}/revoke?reason=...`，再以独立
-  事务 finalize。Auth endpoint 不增加 `eventId`，Auth 不新增消费 Receipt；
-  重复调用继续依赖只撤销 ACTIVE Session/Token 的自然幂等性。
-- User 私有 `t_entitlement_lease_receipt` 以
-  `tenant_id + request_id` 唯一，fingerprint 覆盖
-  `entitlementId/userId/sessionId/usageSeconds/requestedTtlSeconds`。
-  Receipt、权益扣减和 usage log 必须同事务；同 key 同 fingerprint 重放首次
-  结果并返回 `duplicate=true`，不同 fingerprint 返回 409
-  `IDEMPOTENCY_KEY_CONFLICT`。Receipt 同时保存允许与拒绝结果，拒绝结果的
-  entitlement、mode、TTL、remaining 和 subscriptionEndTime 可为空。
-- `TenantCreateRequest.clientRequestId` 与
-  `PortalAuthorizeDTO.clientRequestId` 均为必填，最多 64 字符，格式为
-  `^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$`。调用方必须生成并在同一业务输入的
-  网络/人工重试中复用；服务端不得从 `X-Request-Id`、随机值或默认业务值
-  回退。该字段是 additive JSON 字段，旧 payload 仍可反序列化，但因缺少
-  必填字段明确返回 400。
-
-Demo 1.5 S1 冻结 `audit-v1` 与条件状态转换共享模板：
-
-- 审计 actor/context 只来自 `TrustedRequestContext`；后台服务和设备事件
-  必须显式传入 `AuditActorContext`。匿名 Auth 请求仅在 Security Starter
-  已标记可信 Gateway source 后记录为 `ANONYMOUS`，不解释调用方提交的
-  user/tenant Header。
-- `@Audited` 不再默认序列化 args/result。动态目标只通过
-  `@AuditTargetId`，detail 只接受 `@AuditDetail("固定键")` 标记的安全
-  标量；未标记的密码、Token、Cookie、正文和任意返回对象不会进入审计。
-- SUCCESS 在当前业务事务 `afterCommit` 回调内使用独立
-  `REQUIRES_NEW` 事务追加；无本地事务时在业务成功返回后也使用独立事务。
-  DENIED/FAILED 使用固定 `errorKey` 和独立 `REQUIRES_NEW` writer。
-  writer 失败只产生固定 warning、
-  `wifi.audit.write.failures` 低基数指标和本地失败计数，不改变业务提交或
-  原异常。
-- `Future`/`CompletionStage` 当前不支持异步完成态审计。切面必须返回原
-  异步对象，不得提前记录 SUCCESS，也不得注册无上下文传播保证的完成回调；
-  事件按固定原因 `unsupported_async_result` 丢弃，并写入
-  `wifi.audit.events.dropped` 指标和本地丢弃计数，不影响业务。
-- 沿用 `t_audit_log` 现有列。`requestId/eventId`、actor/context、
-  `platformManaged`、target、outcome、errorKey 和 sourceService 以固定
-  安全 envelope 写入 JSON detail；业务 detail 位于显式 allowlist
-  `fields` 下。
-- `ConditionalStateTransition` 先校验条件更新影响行数：`1` 直接返回
-  `APPLIED`，`0` 才按 duplicate event、资源、状态、版本分类，其他值拒绝。
-  模板只冻结 `fromStates/toState`、`expectedVersion/eventKey` 校验和
-  `APPLIED/REPLAYED/RESOURCE_NOT_FOUND/ILLEGAL_STATE/VERSION_CONFLICT`
-  分类。领域服务仍负责合法边、tenant-scoped 条件更新以及主状态与
-  transition log 的同事务写入。
-- 后续调用方仅分 AUTH、TENANT、USER、DEVICE、MONITOR 五组，并只在以下
-  冻结入口补 target/detail 元数据、可信 context、DENIED/FAILED 开关及
-  本域 transition 接入；不得复制 Starter、修改共享路径或扩大入口集合。
-
-`AUTH` 冻结 4 个入口：
-
-- `auth-service/src/main/java/com/plagod/controller/TenantContextController.java`：
-  `TenantContextController#returnPlatform`（`auth.platform_context`）、
-  `TenantContextController#enterPlatformTenant`
-  （`auth.platform_tenant_context`）。
-- `auth-service/src/main/java/com/plagod/service/impl/UserServiceImpl.java`：
-  `UserServiceImpl#register`（`auth.register`）、
-  `UserServiceImpl#resetPassword`（`auth.reset_password`）。
-
-`TENANT` 冻结 3 个入口：
-
-- `tenant-service/src/main/java/com/plagod/service/impl/TenantServiceImpl.java`：
-  `TenantServiceImpl#createTenant`（`tenant.create`）、
-  `TenantServiceImpl#updateTenant`（`tenant.update`）、
-  `TenantServiceImpl#updateStatus`（`tenant.status`）。
-
-`USER` 冻结 10 个入口：
-
-- `user-service/src/main/java/com/plagod/service/impl/UserManageServiceImpl.java`：
-  `UserManageServiceImpl#updateUser`（`user.update`）、
-  `UserManageServiceImpl#updateStatus`（`user.status`）、
-  `UserManageServiceImpl#deleteUser`（`user.delete`）、
-  `UserManageServiceImpl#purgeUser`（`user.purge`）。
-- `user-service/src/main/java/com/plagod/service/impl/RefundServiceImpl.java`：
-  `RefundServiceImpl#apply`（`refund.apply`）、
-  `RefundServiceImpl#review`（`refund.review`）、
-  `RefundServiceImpl#handleChannelResult`（`refund.channel.result`）。
-- `user-service/src/main/java/com/plagod/service/impl/EntitlementRewardOrderServiceImpl.java`：
-  `EntitlementRewardOrderServiceImpl#create`
-  （`entitlement.reward-order.create`）。
-- `user-service/src/main/java/com/plagod/service/impl/EntitlementAdjustmentServiceImpl.java`：
-  `EntitlementAdjustmentServiceImpl#adjust`（`entitlement.adjust`）、
-  `EntitlementAdjustmentServiceImpl#adjustUnlimited`
-  （`entitlement.unlimited.adjust`）。
-
-`DEVICE` 冻结 17 个入口：
-
-- `device-service/src/main/java/com/plagod/service/RuleActionExecutor.java`：
-  `RuleActionExecutor#disconnectMac`（`monitor.auto.disconnect-mac`）、
-  `RuleActionExecutor#blockTraffic`（`monitor.auto.block-traffic`）。
-- `device-service/src/main/java/com/plagod/service/impl/SessionRevokeServiceImpl.java`：
-  `SessionRevokeServiceImpl#logout`（`session.logout`）、
-  `SessionRevokeServiceImpl#adminRevoke`（`session.admin-revoke`）。
-- `device-service/src/main/java/com/plagod/service/impl/PortalSessionServiceImpl.java`：
-  `PortalSessionServiceImpl#authorize`（`session.portal-authorize`）。
-- `device-service/src/main/java/com/plagod/service/impl/MacBlacklistServiceImpl.java`：
-  `MacBlacklistServiceImpl#addBlacklist`（`blacklist.add`）。
-- `device-service/src/main/java/com/plagod/service/impl/DeviceCommandServiceImpl.java`：
-  `DeviceCommandServiceImpl#restoreDevice`（`device.restore`）、
-  `DeviceCommandServiceImpl#createDevice`（`device.create`）、
-  `DeviceCommandServiceImpl#updateDevice`（`device.update`）、
-  `DeviceCommandServiceImpl#deleteDevice`（`device.delete`）、
-  `DeviceCommandServiceImpl#allowDevice`（`device.allow`）、
-  `DeviceCommandServiceImpl#kickDevice`（`device.kick`）、
-  `DeviceCommandServiceImpl#allowClient`（`device.allow-client`）、
-  `DeviceCommandServiceImpl#removeBlacklist`（`blacklist.remove`）。
-- `device-service/src/main/java/com/plagod/service/impl/DeviceWifiConfigServiceImpl.java`：
-  `DeviceWifiConfigServiceImpl#stageCandidate`（`device.wifi.stage`）。
-- `device-service/src/main/java/com/plagod/service/impl/ManualDeviceControlServiceImpl.java`：
-  `ManualDeviceControlServiceImpl#disconnectMac`
-  （`device.manual-disconnect-mac`）、
-  `ManualDeviceControlServiceImpl#blockTraffic`
-  （`device.manual-block-traffic`）。
-
-`MONITOR` 冻结 13 个入口：
-
-- `monitor-service/src/main/java/com/plagod/service/impl/ClientLocationServiceImpl.java`：
-  `ClientLocationServiceImpl#report`（`location.report`）、
-  `ClientLocationServiceImpl#grantAuthorization`
-  （`location.consent.grant`）、
-  `ClientLocationServiceImpl#revokeAuthorization`
-  （`location.consent.revoke`）、
-  `ClientLocationServiceImpl#clearOwnedHistory`
-  （`location.history.clear`）。
-- `monitor-service/src/main/java/com/plagod/service/impl/AlertEventServiceImpl.java`：
-  `AlertEventServiceImpl#handle`（`alert.handle`）。
-- `monitor-service/src/main/java/com/plagod/service/impl/GeofenceAdminServiceImpl.java`：
-  `GeofenceAdminServiceImpl#create`（`geofence.create`）、
-  `GeofenceAdminServiceImpl#update`（`geofence.update`）、
-  `GeofenceAdminServiceImpl#toggle`（`geofence.toggle`）、
-  `GeofenceAdminServiceImpl#delete`（`geofence.delete`）。
-- `monitor-service/src/main/java/com/plagod/service/impl/AccessRuleServiceImpl.java`：
-  `AccessRuleServiceImpl#create`（`rule.create`）、
-  `AccessRuleServiceImpl#update`（`rule.update`）、
-  `AccessRuleServiceImpl#delete`（`rule.delete`）、
-  `AccessRuleServiceImpl#toggleEnabled`（`rule.toggle`）。
-
-`mqtt-protocol-v1` 的最终规范化 SHA-256 为
-`26ABC67B1DCA9A99173D079359B87C57366F74D9D243728EDFB4AE52A5E8AE87`。
-后端与固件本地副本按 UTF-8、LF 换行规范化后必须得到该值；原始文件换行符
-不同不构成协议内容差异。
+- `ApiResponse` 使用 `code/message/data`，并仅在非空时返回
+  `errorKey/requestId`。
+- Servlet 与 Gateway 统一生成或传播 `X-Request-Id`；未分类异常返回安全的
+  500 响应，不向客户端暴露异常堆栈或内部消息。
+- 安全日志只记录有界异常类型和定位帧，不记录密码、Token、Cookie、请求正文
+  或异常参数。
+- `TrustedRequestHeaders` 是 Gateway、Servlet 和 Feign 使用的可信 Header
+  名称来源。外部同名 Header 必须先删除，再写入服务端验证结果。
+- `TrustedRequestContext` 区分 Gateway 用户、内部服务、后台任务和设备事件；
+  内部身份不能伪造浏览器用户或租户权限。
+- Feign 调用会删除调用方提交的 Authorization、Cookie、内部 Token 和身份/
+  租户 Header，再注入当前服务自己的内部凭据。只有已经验证的用户上下文才
+  传播用户工作区信息。
+- 内部跨服务请求必须显式携带业务所需的 tenantId，并由数据所有者从持久化
+  关系确定；不得从浏览器 Header、请求体用户标识或默认租户推断。
+- 需要幂等的写接口使用业务 `clientRequestId` 或 `requestId`。同一键和相同
+  fingerprint 重放首次结果；同一键但不同 fingerprint 返回 409
+  `IDEMPOTENCY_KEY_CONFLICT`。
+- 审计 actor/context 只来自可信请求上下文。审计默认不序列化参数和返回值；
+  仅显式标记的安全标量允许进入 detail。
+- 条件状态更新必须区分成功、重复事件、资源不存在、非法状态和版本冲突；
+  合法状态边仍由所属业务服务决定。
 
 受保护接口使用：
 
@@ -263,7 +45,7 @@ Demo 1.5 S1 冻结 `audit-v1` 与条件状态转换共享模板：
 Authorization: Bearer {JWT}
 ```
 
-P-2 起 Access JWT 固定约 15 分钟，包含 `jti`、`sid`、`sessionSecurityVersion`
+Access JWT 固定约 15 分钟，包含 `jti`、`sid`、`sessionSecurityVersion`
 和当前租户上下文；同一个有效 Access JWT 可以重复调用普通 API，不是每请求一次性
 Token。7 天免登录由服务端 Refresh Session 承担，浏览器只通过 HttpOnly/SameSite
 Cookie 持有高熵 Refresh Token，服务端只保存哈希。普通 refresh 不递增
@@ -408,7 +190,7 @@ GET  /admin/platform/tenants/{tenantId}/members
 GET  /admin/platform/saas-plans
 ```
 
-租户编码创建后不可修改。`default-tenant` 在首版迁移期间不可停用；P-1 新建租户没有有效订阅时返回 `NO_ACTIVE_SUBSCRIPTION`，不能伪装为可用套餐。
+租户编码创建后不可修改。`default-tenant` 不可停用；新建租户没有有效订阅时返回 `NO_ACTIVE_SUBSCRIPTION`，不能伪装为可用套餐。
 
 ### 概览与用户
 

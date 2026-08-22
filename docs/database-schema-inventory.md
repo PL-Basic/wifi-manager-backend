@@ -1,13 +1,11 @@
 # Wifi Manager 数据库对象清单
 
-> 第 1-6 节保留 2026-08-02 历史快照。Demo 1.3 的 2026-08-11 实时数据库、Flyway checksum、V2.9/V2.10 候选清单和只读门禁以第 7 节、[demo-1.3-a-database-audit.md](demo-1.3-a-database-audit.md)及[demo-1.3-h-migration-replay.md](demo-1.3-h-migration-replay.md)为准；P-3B contract 当前状态以 [demo-1.3-b-p3b-contract.md](demo-1.3-b-p3b-contract.md) 为准。不得再把本页的旧表数或 V2.2 待执行状态当作当前事实。
+本清单介绍仓库迁移定义、Entity/Mapper 映射、业务 owner 和关键约束。实际运行库状态必须通过 Flyway history 与 Schema 查询确认，不能仅依据本文推断。
+## 1. 清单口径
 
-## 1. 清单基线
+仓库迁移链定义业务表及 Flyway 元数据表。本文只记录表、迁移来源和代码所有权。
 
-本清单对应 2026-08-02 的 `wifi` schema 快照和当前源码。数据库共有 32 张 BASE TABLE，其中 31 张业务表、1 张 `flyway_schema_history`；VIEW、TRIGGER、EVENT、PROCEDURE、FUNCTION 和 FOREIGN KEY 均为 0。
-
-Flyway 历史为 baseline 1.6 与成功执行的 V1.7。数据库记录的 V1.7 checksum 为 `-1448715625`，当前 `V1_7__reward_order_metadata.sql` 必须在纳入版本控制前由用户再次执行 `flyway validate`。本清单只记录集合关系，不能替代真实库查询或 validate。
-
+迁移文件一旦在共享环境执行不得改写；新增修正必须使用更高版本。执行迁移前必须运行 Flyway validate 并查询目标 Schema 的真实对象集合。
 ## 2. Flyway、Entity、Mapper 与所有者
 
 以下每项依次记录：真实表；Flyway 来源；Entity；Mapper/XML；所属服务；关键唯一约束。
@@ -51,23 +49,23 @@ Flyway 历史为 baseline 1.6 与成功执行的 V1.7。数据库记录的 V1.7 
 - `t_session_user_guard` 和 `t_client_access_guard` 故意不创建 Entity，由专用 Mapper 的原生 SQL承担并发锁行；它们不是遗漏。
 - `t_audit_log` 的 Mapper 位于公共 MyBatis 模块，写入由 audit starter 负责，查询由 monitor-service 负责。
 
-## 4. V2.1 已执行租户基础对象
+## 4. 租户基础对象
 
-P-1 已由用户执行 V2.1 并完成验收。以下对象加入源码、Entity/Mapper 和真实库核对范围：
+以下对象由 V2.1 定义，并纳入 Entity/Mapper 与运行 Schema 核对范围：
 
 - `t_tenant`；V2.1；`Tenant`；`TenantMapper`；tenant-service；tenant code 全局唯一。
 - `t_tenant_member`；V2.1；`TenantMember`；`TenantMemberMapper`；tenant-service；tenant + user 唯一、每个用户最多一个有效默认成员。
 - `t_platform_staff`；V2.1；`PlatformStaff`；`PlatformStaffMapper`；tenant-service；user + authority 唯一。
 - `t_saas_plan`；V2.1；`SaasPlan`；`SaasPlanMapper`；tenant-service；plan code 唯一。
-- `t_saas_plan_version`；V2.1；当前 P-1 仅建表；tenant-service；plan + version no 唯一。
+- `t_saas_plan_version`；V2.1；`SaasPlanVersion`；`SaasPlanVersionMapper`；tenant-service；plan + version no 唯一。
 - `t_tenant_subscription`；V2.1；`TenantSubscription`；`TenantSubscriptionMapper`；tenant-service；每个租户最多一个有效订阅。
-- `t_tenant_quota`；V2.1；当前 P-1 仅建表；tenant-service；tenant + quota type 唯一。
-- `t_tenant_usage_daily`；V2.1；当前 P-1 仅建表；tenant-service；tenant + date + usage type 唯一。
+- `t_tenant_quota`；V2.1；`TenantQuota`；`TenantQuotaMapper`；tenant-service；tenant + quota type 唯一。
+- `t_tenant_usage_daily`；V2.1；`TenantUsageDaily`；`TenantUsageDailyMapper`；tenant-service；tenant + date + usage type 唯一。
 - `t_default_tenant_membership_outbox`；V2.1；`DefaultTenantMembershipOutbox`；auth-service `DefaultTenantMembershipOutboxMapper`；user id 与 event id 唯一。
 
-## 5. V2.2 待执行认证会话对象
+## 5. 认证会话对象
 
-以下对象已经进入 P-2 源码，但在用户执行 V2.2 和真实 schema 核对前不得写成“数据库已存在”：
+以下对象由 V2.2 定义。部署状态必须通过目标环境的 Flyway history 和 Schema 查询确认：
 
 - `t_auth_refresh_session`；V2.2；`AuthRefreshSession`；`AuthRefreshSessionMapper` + XML；auth-service；session id 主键，保存 family 状态、7 天绝对期限、当前可信租户上下文和只在安全事件后递增的 security_version。
 - `t_auth_refresh_token`；V2.2；`AuthRefreshToken`；`AuthRefreshTokenMapper` + XML；auth-service；只保存 refresh token SHA-256 哈希，哈希唯一并保留旋转/重放状态。
@@ -75,22 +73,12 @@ P-1 已由用户执行 V2.1 并完成验收。以下对象加入源码、Entity/
 
 V2.2 不创建 Access JWT “每请求已使用”表。Access `jti` 只用于唯一标识、审计和显式撤销；普通请求不会消费 `jti`。session family 的持久撤销以 `sid` 和上述会话表为准，短时单个 `jti` 撤销使用 Redis TTL。
 
-## 6. 后续迁移门禁
+## 6. 迁移安全
 
-执行任何后续 V2.x 前必须依次完成：数据库备份/恢复点、已执行迁移文件与历史 checksum 核对、用户执行 Flyway validate、重新查询真实对象集合并与本清单逐项比对。禁止用 Entity 与业务表数量相等替代集合核对，也禁止对当前业务库执行 Flyway clean。
+执行迁移前必须备份目标数据库、核对已执行迁移与 checksum、运行 Flyway validate，并重新查询真实对象集合。禁止用 Entity 数量代替 Schema 集合核对，禁止对业务数据库执行 Flyway clean。
+## 7. 业务域所有权
 
-## 7. Demo 1.3 当前候选清单
-
-2026-08-14 R7 最终只读复核确认真实 `wifi` 为 MySQL 主机 `xwh`、rank 9 /
-V2.4.1 / checksum `848930306`。V2.5 至 V2.10 均未执行；2026-08-12
-新增的 V2.9.1 同样未执行。本节只描述仓库候选，不代表真实库现有对象。
-
-仓库当前有 22 个迁移文件、68 个生产 `@TableName` Entity、71 个 Java
-Mapper 和 15 个 Mapper XML。V2.9.1 新增一张业务表；Run
-`20260814r7c` 已证明空库、V2.3.1 快照和 V2.3.2 快照三链在默认
-V2.9.1 及显式 V2.10 后均为 70 张业务表，columns/index/constraint
-指纹一致。
-
+以下矩阵描述仓库迁移链中的业务表、Entity、Mapper/XML 和唯一写入 owner。迁移是否已部署由运行环境决定。
 ### 所有权矩阵
 
 以下每项顺序为：表集合；Entity；Mapper/XML；唯一所有者；允许写入方；
@@ -113,7 +101,7 @@ V2.9.1 及显式 V2.10 后均为 70 张业务表，columns/index/constraint
 - Device：`t_esp32_node`、`t_session`、`t_mac_blacklist`、
   `t_traffic_log`、`t_client_signal`、`t_device_wifi_config`、
   `t_device_command`、`t_session_user_guard`、`t_client_access_guard`；
-  前七张表有 Device 私有 Entity，两张 guard 表按冻结设计无 Entity；
+  前七张表有 Device 私有 Entity，两张 guard 表按并发锁行设计无 Entity；
   九个 Device 私有 Mapper，已有 resultMap XML 由 device-service 打包；
   device-service；仅 Device；其他服务经内部契约读取；device-service。
 - Monitor：`t_access_rule`、`t_client_location`、
@@ -177,14 +165,6 @@ Support 和 AI 继续保持私有持久化模块，不含启动类。
 - Support：12 表 / 12 Entity / 12 Mapper / 0 XML。
 - AI：5 表 / 5 Entity / 5 Mapper / 0 XML。
 
-合计 70 张业务表、68 个生产 Entity、71 个 Java Mapper 和 15 个 Mapper
-XML。六个真实持久化服务 Context 已分别冻结允许注册的 Mapper 集合；
-Admin Context 已证明不存在 DataSource、MyBatis 类、Mapper/Entity Bean 或
-Mapper XML。
+合计 70 张业务表、68 个生产 Entity、71 个 Java Mapper 和 15 个 Mapper XML。各持久化服务 Context 显式限制允许注册的 Mapper 集合；Admin 不持有 DataSource、MyBatis 类、Mapper/Entity Bean 或 Mapper XML。
 
-1.3 不实现 claim、锁行、expectedVersion/expectedStatus 条件更新、业务状态
-转换或分页聚合；这些具名数据访问归 1.5/2.3。
-
-后续真实迁移仍必须重新执行数据库身份、Flyway 历史/checksum、专用测试
-账号和备份门禁。V2.10 还要求 P-3C tenant-aware 代码切换与只读零计数门禁；
-隔离库成功也不能授权执行真实 V2.5-V2.10。
+具名 claim、锁行、条件更新、状态转换和分页聚合属于对应业务模块的数据访问实现，不由本清单宣称完成。真实迁移仍必须核对数据库身份、Flyway history/checksum、专用测试账号和备份；隔离库验证不能替代目标环境确认。
